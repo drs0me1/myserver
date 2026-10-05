@@ -15,7 +15,7 @@ Folder shares can opt into Tailscale, WAN IPv4 or both (DD-179). New shares
 default to Tailscale. WAN uses HTTP with explicit plaintext-risk consent,
 credential-attempt and connection caps; no console/admin endpoint is published.
 
-Model A opens on **Ana Menü** (**DD-213**, **DD-230**): network and server-address widgets, installed
+Model A opens on **Ana Menü** (**DD-213**, **DD-231**): server, live-rate and application-traffic widgets, installed
 application cards and a clock/date header, refreshed every five seconds. One sidebar
 holds navigation and live CPU/RAM/disk indicators. See the
 [clean-install checklist](Data/docs/model-a-clean-install.md).

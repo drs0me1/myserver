@@ -143,31 +143,33 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await emptyStore.click();
     await page.waitForURL("**/#/moduller");
     await navigate("#/genel");
-    const widgetState = () => page.locator("#genel-widgets .widget").evaluateAll(els => els.map(e => [e.dataset.widget,e.dataset.span]));
-    assert.deepEqual(await widgetState(),[["ag","2"],["sunucu","2"]],"retired clock/status preferences are ignored; network and server facts each span two tiles");
+    const widgetState = () => page.locator("#genel-widgets .widget").evaluateAll(els => els.map(e => [e.dataset.widget,e.dataset.span,e.dataset.boy]));
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]],"retired clock/status preferences are ignored; DD-231: Sunucu and Hız are 1×1, Ağ is 2×2");
     assert.equal(await page.locator("#genel-health,#genel-clock,#genel-widgets .rings").count(),0);
     assert(!calls.includes("/api/uygulama/wireguard/state") && !calls.includes("/api/konsol/islemler"));
     assert.equal(await page.locator('script[src^="/uygulama/"]').count(),0,"no package page is loaded while none is installed");
     // DD-230: the address facts are the "Sunucu" widget beside the network card; the sidebar ends with resources.
     const facts = page.locator('#genel-widgets .widget[data-widget="sunucu"]');
-    for (const [id,value] of [["foot-ts","100.64.0.2"],["foot-wan","192.0.2.1"],["foot-uptime","15 dk"],["foot-version","2026.08.06-v2-131"],["foot-access","Tailscale"]]) {
+    for (const [id,value] of [["foot-ts","100.64.0.2"],["foot-wan","192.0.2.1"],["foot-uptime","15 dk"],["foot-version","v2-131"],["foot-access","Tailscale ile bağlı"]]) {
       assert.equal(await facts.locator(`#${id}`).innerText(),value);
       assert(await facts.locator(`#${id}`).isVisible(),`${id} is visible in the Sunucu widget`);
     }
+    assert.equal(await facts.locator("#foot-version").getAttribute("title"),"2026.08.06-v2-131","the full version is the short one's tooltip");
+    assert(await facts.evaluate(el => el.scrollHeight<=el.clientHeight+1),"every Sunucu row fits the 1×1 card");
     assert.equal(await page.locator('#panel-sidebar dl, #panel-sidebar [id^="foot-"]').count(),0,"no address facts in the sidebar");
     assert(await page.locator("#panel-sidebar").evaluate(side => { const r = side.querySelector(".resources");
       return [...side.children].filter(el => el.offsetParent !== null).at(-1) === r; }),"server resources close the sidebar");
     assert.equal(await page.locator('#panel-sidebar time').count(),0,"the sidebar does not duplicate the home clock");
     // WAN rates, module state and host resources refresh together every five seconds.
-    const netCard = page.locator('#genel-widgets .widget[data-widget="ag"]');
-    await netCard.locator("#ag-rx").filter({hasText:"MB/s"}).waitFor();
-    assert.equal(await netCard.locator("#ag-sub").innerText(),"eth0 · son 2 dk");
-    assert.equal(await netCard.locator("#ag-live").innerText(),"Canlı");
-    assert.equal(await netCard.locator("#ag-tx").innerText(),"256 KB/s");
-    assert.equal(await netCard.locator(".net-svg path.down").count(),1,"the chart draws the download line");
-    assert.equal(await netCard.locator(".net-svg path.up").count(),1,"and the upload line");
+    // DD-231: live rates are the 1×1 "Hız" card (no chart); "Ağ" (2×2) lists application totals.
+    const netCard = page.locator('#genel-widgets .widget[data-widget="ag"]'), rateCard = page.locator('#genel-widgets .widget[data-widget="hiz"]');
+    await rateCard.locator("#ag-rx").filter({hasText:"MB/s"}).waitFor();
+    assert.equal(await rateCard.locator("#ag-sub").innerText(),"eth0 · anlık");
+    assert.equal(await rateCard.locator("#ag-live").innerText(),"Canlı");
+    assert.equal(await rateCard.locator("#ag-tx").innerText(),"256 KB/s");
+    assert.equal(await page.locator("#genel-widgets svg.net-svg, #genel-widgets .net-chart").count(),0,"no chart");
     assert.match(await netCard.locator("#ag-apps").innerText(),/Trafiğini bildiren kurulu uygulama yok/);
-    const firstRate = await netCard.locator("#ag-rx").innerText(), polls = netCount;
+    const firstRate = await rateCard.locator("#ag-rx").innerText(), polls = netCount;
     const beforeResources = resourceCount, beforeModules = calls.filter(p => p === '/api/konsol/moduller').length;
     await page.clock.runFor(5100);
     await page.waitForFunction(prev => document.querySelector("#ag-rx").textContent !== prev, firstRate);
@@ -222,18 +224,25 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await page.mouse.move(to.x + 12, to.y + to.height/2, {steps:16});
     await page.mouse.up();
     assert.deepEqual(await order(),["wireguard","torrent"],"dragging WireGuard to the front");
-    assert.deepEqual(await widgetState(),[["ag","2"],["sunucu","2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
     const netBox = await netCard.boundingBox(), tileBoxes = await page.locator("#genel-tiles .tile").evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
     // DD-230: widgets share the tiles' columns, so the network card spans exactly the first two tiles.
-    assert(Math.abs(netBox.x - tileBoxes[0][0]) < 2 && Math.abs(netBox.x + netBox.width - tileBoxes[1][1]) < 2,
-      `the network widget lines up with the two tiles below: ${JSON.stringify([netBox, tileBoxes])}`);
+    // DD-231: Sunucu and Hız stack in the first tile column; Ağ spans the next two columns and both rows.
+    const srvBox = await page.locator('#genel-widgets [data-widget="sunucu"]').boundingBox(), rateBox = await rateCard.boundingBox();
+    const near = (a, b) => Math.abs(a - b) < 2;
+    assert(near(srvBox.x, tileBoxes[0][0]) && near(srvBox.x + srvBox.width, tileBoxes[0][1]) && near(rateBox.x, srvBox.x) && rateBox.y > srvBox.y + srvBox.height,
+      `1×1 cards stack over the first tile: ${JSON.stringify([srvBox, rateBox, tileBoxes])}`);
+    assert(near(netBox.x, tileBoxes[1][0]) && near(netBox.y, srvBox.y) && near(netBox.y + netBox.height, rateBox.y + rateBox.height),
+      `the 2×2 card spans both rows beside them: ${JSON.stringify([netBox, srvBox, rateBox])}`);
+    assert(near(srvBox.height, rateBox.height) && near(netBox.height, srvBox.height * 2 + 14), "1×1 is half of 2×2 (plus the gap)");
     await page.getByRole("button",{name:"Ağ: gizle",exact:true}).click();
     assert.equal(await page.locator('#genel-widgets .widget[data-widget="ag"].is-hidden').count(),1,"a hidden widget stays visible, dimmed, while editing");
     assert.equal(await page.getByRole("button",{name:"Ağ: göster",exact:true}).count(),1);
+    await page.getByRole("button",{name:"Hız: gizle",exact:true}).click();
     await page.screenshot({path:path.join(shots,"model-a-overview-edit.png"),fullPage:true});
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await page.getByText("Düzen kaydedildi.",{exact:true}).first().waitFor();
-    assert.deepEqual(layoutWrites.at(-1),{duzen:{kareler:["wireguard","torrent"],widgetlar:[{id:"ag",genislik:2,gizli:true},{id:"sunucu",genislik:2,gizli:false}]}},
+    assert.deepEqual(layoutWrites.at(-1),{duzen:{kareler:["wireguard","torrent"],widgetlar:[{id:"sunucu",genislik:1,gizli:false},{id:"hiz",genislik:1,gizli:true},{id:"ag",genislik:2,gizli:true}]}},
       "saving drops retired widgets/built-ins and normalizes the network width");
     assert.equal(await page.locator('#genel-widgets .widget[data-widget="ag"]').count(),0,"a hidden widget is not shown");
     assert.equal(await page.locator("#genel-tiles a.tile-link").count(),2,"tiles are links again");
@@ -241,7 +250,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     const hiddenPolls = netCount;
     await page.clock.runFor(5100);
     await page.clock.setSystemTime(new Date());
-    assert.equal(netCount,hiddenPolls,"a hidden network card is not polled");
+    assert.equal(netCount,hiddenPolls,"with Ağ and Hız hidden the network is not polled");
     // The layout lives on the server: another device's order shows up on the next visit.
     layoutSaved = {schema:1,kareler:["ayarlar","torrent","moduller","wireguard","dosyalar","paylasim"],
       widgetlar:[{id:"saat",genislik:1,gizli:false},{id:"durum",genislik:3,gizli:false},{id:"ag",genislik:2,gizli:true}]};
@@ -256,15 +265,15 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.deepEqual(await order(),["torrent","wireguard"]);
     assert.equal(layoutWrites.length,writes,"cancel saves nothing");
     await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
-    assert.deepEqual(await widgetState(),[["ag","2"],["sunucu","2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
     await page.getByRole("button",{name:"Ağ: göster",exact:true}).click();
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await netCard.waitFor();
-    assert.deepEqual(layoutWrites.at(-1),{duzen:{kareler:["torrent","wireguard"],widgetlar:[{id:"ag",genislik:2,gizli:false},{id:"sunucu",genislik:2,gizli:false}]}});
+    assert.deepEqual(layoutWrites.at(-1),{duzen:{kareler:["torrent","wireguard"],widgetlar:[{id:"sunucu",genislik:1,gizli:false},{id:"hiz",genislik:1,gizli:false},{id:"ag",genislik:2,gizli:false}]}});
     await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
     await bar.getByRole("button",{name:"Varsayılan",exact:true}).click();
     assert.deepEqual(await order(),["wireguard","torrent"]);
-    assert.deepEqual(await widgetState(),[["ag","2"],["sunucu","2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await page.getByText("Ana Menü varsayılan düzene döndü.",{exact:true}).first().waitFor();
     assert.deepEqual(layoutWrites.at(-1),{sifirla:true});
@@ -287,7 +296,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert(phoneEnd.y >= phoneTiles.y + phoneTiles.height, "at the end of the page the bar does not cover the last row");
     await page.setViewportSize({width:1440,height:1000});
     await page.emulateMedia({reducedMotion:"no-preference"});
-    await netCard.locator("#ag-rx").waitFor();
+    await rateCard.locator("#ag-rx").waitFor();
     for (const m of modules) Object.assign(m,{installed:false,state:"yok"});
     await refreshResources();
     await page.waitForFunction(() => document.querySelectorAll("#genel-tiles .tile").length === 0);
@@ -447,7 +456,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.equal(await page.locator("#torrent-open").getAttribute("href"),"http://torrent.ayc","tailnet Konsol links the tailnet name");
     // DD-204: the overview shows the installed application as a tile and links its page.
     await navigate("#/genel");
-    assert.equal(await page.locator("#foot-access").innerText(),"Tailscale");
+    assert.equal(await page.locator("#foot-access").innerText(),"Tailscale ile bağlı");
     const appTile = page.locator('#genel-tiles .tile[data-tile="torrent"]');
     await appTile.waitFor();
     assert.equal(await appTile.locator("strong").innerText(),"qBittorrent");
@@ -484,7 +493,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
 
     const geometry = () => page.evaluate(() => {
       const rect = sel => { const r = document.querySelector(sel).getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; };
-      return {live:rect(".net-live"),apps:rect("#ag-apps")};
+      return {card:rect('[data-widget="ag"]'),apps:rect("#ag-apps")};
     });
     const singleRow = await geometry();
     const longName = "Uygulama" + "x".repeat(120);
@@ -493,8 +502,8 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await readTraffic();
     await page.waitForFunction(() => document.querySelectorAll("#ag-apps .net-app").length === 24);
     const manyRows = await geometry();
-    assert(Math.abs(singleRow.apps.height-manyRows.apps.height)<2,"more applications must not grow the fixed-height table half");
-    assert(Math.abs(singleRow.live.height-manyRows.live.height)<2,"more applications must not grow the chart half");
+    assert(Math.abs(singleRow.apps.height-manyRows.apps.height)<2,"more applications must not grow the table area");
+    assert(Math.abs(singleRow.card.height-manyRows.card.height)<2,"more applications must not grow the 2×2 card");
     const trafficList = page.locator("#ag-apps");
     await trafficList.focus();
     const scrollBefore = await trafficList.evaluate(el => { el.scrollTop=80; return el.scrollTop; });
@@ -512,13 +521,12 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
       for (const width of [1440,390,320]) {
         await page.setViewportSize({width,height:950});
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-        const {live,apps} = await geometry();
+        const {card} = await geometry();
         assert(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth+1),`network overflow at ${width}/${colorScheme}`);
-        assert(Math.abs(live.width-apps.width)<2,`network halves have equal width at ${width}/${colorScheme}`);
-        assert(Math.abs(live.height-apps.height)<2,`network halves have equal fixed height at ${width}/${colorScheme}`);
-        // DD-230: the card is two tiles wide everywhere, so its halves sit side by side at every width.
-        assert(Math.abs(live.y-apps.y)<2 && apps.x>=live.x+live.width,`halves sit side by side at ${width}: ${JSON.stringify({live,apps})}`);
-        assert((await netCard.boundingBox()).height<=230,"compact network card stays under 230px tall");
+        assert(card.height<=330,`the 2×2 card keeps its fixed height at ${width}/${colorScheme}: ${card.height}`);
+        const over = await page.locator("#genel-widgets").evaluate(el => [...el.querySelectorAll(".widget")].map(w => [w.dataset.widget, w.scrollHeight, w.clientHeight]));
+        assert(over.every(([, sh, ch]) => sh<=ch+1),
+          `no widget overflows its cell at ${width}/${colorScheme}: ${JSON.stringify(over)}`);
         const heads = await page.locator("#ag-apps thead").evaluate(el => [...el.querySelectorAll("th")].map(th => [th.textContent, th.scrollWidth, th.clientWidth]));
         assert(heads.every(([, sw, cw]) => sw<=cw+1),
           `the table headings are not clipped at ${width}: ${JSON.stringify(heads)}`);
@@ -707,7 +715,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await secure.locator("#torrent-open").waitFor();
     assert.equal(await secure.locator("#torrent-open").getAttribute("href"),"https://qbit.example.net");
     await secure.evaluate(() => { location.hash = "#/genel"; });
-    assert.equal(await secure.locator("#foot-access").innerText(),"İnternet · HTTPS");
+    assert.equal(await secure.locator("#foot-access").innerText(),"İnternet · HTTPS ile bağlı");
     await secure.evaluate(() => { location.hash = "#/torrent"; });
     await secure.locator("#torrent-open").waitFor();
     await secure.locator("details:has(#torrent-account) > summary").click();
@@ -718,7 +726,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.equal(await secure.locator("#torrent-open").count(),0,"no tailnet link on the public address");
     assert.equal(await secure.locator("#torrent-open-note").getByRole("link").getAttribute("href"),"#/ayarlar/web");
     await secure.close();
-    console.log("PASS: Ana Menü, home-only clock/date, five-second polling without duplicates or hidden-page reads; network and Sunucu widgets aligned to two tiles each, legacy layout migration, hide/show and tile reorder; Sunucu widget IP/version/fresh uptime, resources closing the sidebar; cumulative app traffic table, missing/zero totals, equal fixed-height halves, scrolling/focus across refresh, desktop/320/390 light/dark; routes/navigation, subtitle-free Store cards with full details/progress/failure/focus/logs/lifecycle, qBittorrent password/privacy, shared settings, keyboard/5 widths, resources/stale/offline/recovery, archive jobs, WG deep link, public-address links, production CSP. Screenshots: " + shots);
+    console.log("PASS: Ana Menü, home-only clock/date, five-second polling without duplicates or hidden-page reads; 1×1 Sunucu/Hız stacked beside the 2×2 Ağ card on the tiles' columns, legacy layout migration, hide/show and tile reorder; Sunucu widget IP/version/fresh uptime, resources closing the sidebar; cumulative app traffic table, missing/zero totals, fixed-height 2×2 card, scrolling/focus across refresh, desktop/320/390 light/dark; routes/navigation, subtitle-free Store cards with full details/progress/failure/focus/logs/lifecycle, qBittorrent password/privacy, shared settings, keyboard/5 widths, resources/stale/offline/recovery, archive jobs, WG deep link, public-address links, production CSP. Screenshots: " + shots);
   } catch (err) { if (errors.length) console.error("Browser errors:",errors); throw err;
   } finally { await browser.close(); }
 })().catch(err => {console.error(err); process.exit(1);});

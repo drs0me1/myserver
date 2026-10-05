@@ -231,4 +231,5 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-227 | Writable server folders only through the Files account | v2-205; live-verified on nrm 2026-10-05 | design-decisions.md |
 | DD-228 | Install from the public repository with one curl line on the server | v2-206 | design-decisions.md |
 | DD-229 | Overview controls, WireGuard as a whole, and a host closed to containers | v2-207; tile word amended by DD-230 | design-decisions.md |
-| DD-230 | Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards | v2-208 | design-decisions.md |
+| DD-230 | Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards | v2-208; widget sizes amended by DD-231 | design-decisions.md |
+| DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210 | design-decisions.md |

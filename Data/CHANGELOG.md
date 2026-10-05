@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Ana Menü widgets: Sunucu and Hız 1×1, Ağ 2×2 (v2-210)
+
+- The network chart is gone. "Hız" is a small card with the server's live download/upload, shown
+  with download/upload icons. "Ağ" is a double-size card that lists each application's total
+  download/upload on one line; more applications scroll inside the card.
+- "Sunucu" is a small card with the Tailscale and WAN address, uptime and version.
+- On a computer the two small cards stack on the left, "Ağ" sits beside them; on a phone "Ağ"
+  takes the full width and the two small cards share a row (DD-231).
+
 ### 2026-10-05 — Installer accepts a stopped WireGuard (v2-209)
 
 - An installer run with WireGuard stopped from Ana Menü/App Store ended with "wg0 dinleme portu

@@ -114,62 +114,52 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .rl:hover { background:var(--glass-2); }
 .toast { border-radius:12px; }
 
-/* ---- home (DD-213, DD-230): widgets use the tiles' columns; a widget spans two tiles ---- */
-.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); gap:14px; align-items:stretch; }
+/* ---- home (DD-213, DD-230, DD-231): widgets share the tiles' columns. A 1×1 widget is one tile wide
+   and half a tile tall; the 2×2 card is two tiles wide and two rows tall. Desktop flows by column, so
+   the 1×1 cards stack in the first column and the 2×2 card sits beside them. ---- */
+:root { --w-row:150px; }
+.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); grid-template-rows:repeat(2,var(--w-row));
+  grid-auto-flow:column dense; gap:14px; }
 .widgets:empty { display:none; }
-.widget { container-type:inline-size; min-width:0; padding:14px; }
-.widget[data-span="2"] { grid-column:span 2; }
-.widget .card-head h2 { font-size:14.5px; }
-.widget .card-head small { font-size:12px; }
-.server-facts { margin:12px 0 0; display:grid; gap:9px; font-size:12px; }
-.server-facts > div { display:flex; justify-content:space-between; gap:4px 10px; flex-wrap:wrap; min-width:0; }
-.server-facts dt { color:var(--muted); }
-.server-facts dd { margin:0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; text-align:right; }
-.server-facts .mono { font-size:11.5px; }
+.widget { position:relative; container-type:inline-size; min-width:0; min-height:0; padding:12px; display:flex; flex-direction:column; overflow:hidden; }
+.widget[data-boy="2x2"] { grid-column:span 2; grid-row:span 2; padding:14px; }
+.widget .card-head h2 { font-size:13.5px; }
+.widget .card-head small { font-size:11px; }
+.widget[data-boy="2x2"] .card-head h2 { font-size:14.5px; }
+.widget[data-boy="2x2"] .card-head small { font-size:12px; }
+.widget .card-head .hm { font-size:10.5px; padding:2px 7px; }
+.widget[data-boy="1x1"] .card-head { flex-wrap:nowrap; align-items:flex-start; }
+.widget[data-boy="1x1"] .card-head h2 { margin:0; line-height:1.2; }
+.widget[data-boy="1x1"] .card-head small { display:block; margin:2px 0 0; line-height:1.3; }
+.server-facts { margin:auto 0 0; padding-top:6px; display:grid; gap:3px; font-size:11.5px; line-height:1.35; }
+.server-facts > div { display:flex; justify-content:space-between; gap:6px; min-width:0; }
+.server-facts dt { color:var(--muted); flex:none; }
+.server-facts dd { margin:0; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+.server-facts .mono { font-size:11px; }
 
-/* ---- network card: compact equal halves; stack only when their content cannot fit ---- */
+/* ---- Hız (1×1): the server's live rates; Ağ (2×2): application totals, one line per application ---- */
 :root { --net-down:var(--accent); --net-up:#C2783A; }
-.net { display:grid; gap:10px; }
-.net-live, .net-apps { min-width:0; height:90px; }
-.net-live { display:grid; grid-template-rows:auto 1fr; gap:8px; }
-.net-rates { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-@container (min-width:240px) {
-  .net { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .net-live, .net-apps { height:126px; }
-  .net-rates { grid-template-columns:minmax(0,1fr); }
-}
-.net-rate { display:grid; gap:3px; min-width:0; }
-.net-rate .lbl { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); }
-.net-rate .lbl::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--net-down); flex:none; }
-.net-rate.up .lbl::before { background:var(--net-up); }
-.net-rate b { font:600 19px/1.15 var(--f-display); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
-.net-chart { min-height:0; }
-.net-svg { display:block; width:100%; height:100%; }
-.net-svg .base { stroke:var(--line); stroke-width:1; }
-.net-svg .down-fill { fill:var(--accent-soft); stroke:none; }
-.net-svg .down { fill:none; stroke:var(--net-down); stroke-width:1.8; }
-.net-svg .up { fill:none; stroke:var(--net-up); stroke-width:1.5; }
-.net-apps { overflow:auto; scrollbar-width:thin; }
-/* DD-230: a semantic table drawn as two-line rows (name, then down/up totals) so names fit a half card */
-.net-table { display:block; width:100%; border-collapse:collapse; font-size:11px; }
+.net-rates { flex:1; display:grid; align-content:center; gap:6px; margin-top:4px; }
+.net-rate { display:flex; align-items:center; gap:8px; min-width:0; }
+.net-rate svg { width:18px; height:18px; flex:none; color:var(--net-down); stroke-width:2; }
+.net-rate.up svg { color:var(--net-up); }
+.net-rate b { min-width:0; font:600 18px/1.15 var(--f-display); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.net-apps { flex:1; min-height:0; margin-top:10px; overflow:auto; scrollbar-width:thin; }
+.net-table { display:block; width:100%; border-collapse:collapse; font-size:12px; }
 .net-table thead, .net-table tbody { display:block; }
-.net-table tr { display:grid; min-width:0; }
-.net-table tr { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:6px; row-gap:2px; }
-.net-table tbody tr { padding:5px 0; }
-.net-table th, .net-table td { border:0; padding:0; text-align:left; min-width:0; }
-.net-table thead th { color:var(--muted); font-size:10px; font-weight:500; white-space:nowrap; }
-.net-table thead tr { padding-bottom:4px; border-bottom:1px solid var(--glass-line); }
-.net-table thead th:last-child { text-align:right; }
-.net-table thead th + th::before, .net-app .v::before { content:""; display:inline-block; width:6px; height:6px; margin-right:4px; border-radius:50%; background:var(--net-down); vertical-align:1px; }
-.net-table thead th:last-child::before, .net-app .v.up::before { background:var(--net-up); }
-.net-table tbody th, .net-table thead th:first-child { grid-column:1 / -1; }
+.net-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto auto; column-gap:12px; align-items:center; min-width:0; }
+.net-table tbody tr { padding:4px 0; border-top:1px solid var(--glass-line); }
+.net-table th, .net-table td { border:0; padding:0; text-align:right; min-width:0; }
+.net-table thead th { color:var(--muted); font-size:10px; font-weight:500; white-space:nowrap; padding-bottom:5px; }
+.net-table thead th:first-child, .net-table tbody th { text-align:left; }
+.net-table thead th + th::before { content:""; display:inline-block; width:6px; height:6px; margin-right:4px; border-radius:50%; background:var(--net-down); vertical-align:1px; }
+.net-table thead th:last-child::before { background:var(--net-up); }
 .net-app-name { display:flex; align-items:center; gap:5px; min-width:0; }
 .net-app .ico { width:18px; height:18px; border-radius:5px; flex:none; display:grid; place-items:center; color:#fff; }
 .net-app .ico svg { width:12px; height:12px; }
-.net-app strong { min-width:0; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.net-app .v { font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.net-app .v.up { text-align:right; }
-.net-empty { grid-column:1 / -1; color:var(--muted); line-height:1.6; }
+.net-app strong { min-width:0; font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.net-app .v { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.net-empty { grid-column:1 / -1; color:var(--muted); line-height:1.6; text-align:left!important; }
 
 /* ---- edit mode: fixed to the bottom-right corner of the screen; the page keeps room below the tiles ---- */
 section[data-view="genel"] { padding-bottom:72px; }
@@ -191,7 +181,7 @@ section[data-view="genel"] { padding-bottom:72px; }
 .tile-move button:focus-visible, .widget-tools .btn:focus-visible, .edit-bar .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .widgets.editing .widget { outline:2px dashed var(--accent-soft); outline-offset:3px; }
 .widget.is-hidden > :not(.widget-tools) { opacity:.38; }
-.widget-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; padding-top:10px; border-top:1px dashed var(--line); }
+.widget-tools { position:absolute; right:8px; bottom:8px; z-index:1; display:flex; gap:6px; }
 .widget-tools .btn { min-width:34px; justify-content:center; }
 .widget-tools .btn svg { width:14px; height:14px; }
 .section-title { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin:6px 2px 0; flex-wrap:wrap; }
@@ -342,4 +332,4 @@ section[data-view="genel"] { padding-bottom:72px; }
   .store-detail { padding:16px; }
   .store-detail-actions .danger-text { margin-left:0; }
 }
-@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); } .tile { padding-inline:2px; } }
+@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); } .widgets { grid-template-rows:none; grid-auto-rows:var(--w-row); grid-auto-flow:row dense; } .tile { padding-inline:2px; } }

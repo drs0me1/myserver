@@ -3213,7 +3213,7 @@ PY
     grep -qF 'function paintHomeClock()' "$js"
     grep -qF '$("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }));' "$js"
     grep -qF '} else $("title").textContent = hd.title;' "$js"
-    grep -qF '["foot-uptime", "Çalışma süresi", fresh && Number.isFinite(s.uptime)' "$js"
+    grep -qF '["foot-uptime", "Açık", fresh && Number.isFinite(s.uptime)' "$js"
     grep -qF 'function paintFacts() {' "$js"
     run ! grep -qE 'genel-clock|genel-health|const (ring|pie) =|function (ring|pie)\(' "$js"
     run ! grep -qE '(^|[[:space:],])\.(clock(-facts)?|rings?|pie(-box)?)([[:space:].,{]|$)' "$css"
@@ -3244,22 +3244,26 @@ PY
     # ag and sunucu (DD-230) are the widgets; an old width is ignored while visibility is retained.
     local widgets tools totals
     widgets="$(awk '/^  const WIDGETS = \[/,/^  ];$/' "$js")"
-    [ "$(grep -c 'id:' <<<"$widgets")" -eq 2 ]
-    grep -qF '{ id: "ag", ad: "Ağ", label: "Ağ", genislik: 2 },' <<<"$widgets"
-    grep -qF '{ id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 2 },' <<<"$widgets"
+    # DD-231: two 1×1 widgets (Sunucu, Hız) and the 2×2 application traffic card, in that order.
+    [ "$(grep -c 'id:' <<<"$widgets")" -eq 3 ]
+    [ "$(grep -o 'id: "[a-z]*"' <<<"$widgets" | tr '\n' ' ')" = 'id: "sunucu" id: "hiz" id: "ag" ' ]
+    grep -qF '{ id: "hiz", ad: "Hız", label: "Anlık ağ hızı", genislik: 1, boy: "1x1" },' <<<"$widgets"
+    grep -qF '{ id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x2" },' <<<"$widgets"
     grep -qF 'return { genislik: base.genislik, gizli: own ? own.gizli : false };' "$js"
     grep -qF 'widgetlar: WIDGETS.map((w) => ({ id: w.id, ...widgetSetting(w.id) }))' "$js"
     grep -qF 'const defs = tileDefs(), order = activeLayout().kareler || [];' "$js"
     # DD-230: widgets share the tiles' column template, so a span-2 widget is exactly two tiles wide.
     grep -qF '.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     grep -qF '.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
-    grep -qF '.widget[data-span="2"] { grid-column:span 2; }' "$css"
+    grep -qF 'grid-template-rows:repeat(2,var(--w-row));' "$css"
+    grep -qF 'grid-auto-flow:column dense;' "$css"
+    grep -qF '.widget[data-boy="2x2"] { grid-column:span 2; grid-row:span 2;' "$css"
     grep -qF '@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
     grep -qF '.store-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     tools="$(awk '/^  function widgetTools\(def, set\)/,/^  }$/' "$js")"
     grep -qF 'change({ gizli: !set.gizli }, "gizle")' <<<"$tools"
     run ! grep -qE '"data-tool": "(dar|genis)"|genislik:' <<<"$tools"
-    run ! grep -qE 'grid-row:span|data-height|yukseklik' "$js" "$css"
+    run ! grep -qE 'data-height|yukseklik' "$js" "$css"  # DD-231: sizes are fixed per widget (1×1, 2×2), never operator-set
     # The layout is stored by the root backend in KONSOL_AUTH_DIR (format checks only); the shell names no application.
     grep -qx 'LAYOUT_FILE = "duzen.json"' "$backend"
     grep -qx 'LAYOUT_SPANS = (1, 2, 3, 4)' "$backend"
@@ -3283,11 +3287,11 @@ PY
     grep -qF '...["Uygulama", "İndirme", "Yükleme"].map' "$js"
     grep -qF 'class: "net-app-name", title: name' <<<"$totals"
     # Equal-width, equal-height sections and a borderless table with fixed-height overflow.
-    grep -qF '@container (min-width:240px) {' "$css"
-    grep -qF '.net { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
-    grep -qF '.net-live, .net-apps { min-width:0; height:90px; }' "$css"
-    grep -qF '.net-live, .net-apps { height:126px; }' "$css"
-    grep -qF '.net-apps { overflow:auto; scrollbar-width:thin; }' "$css"
+    # DD-231: no chart; the table scrolls inside the fixed 2×2 cell.
+    run ! grep -qE 'netChart|net-svg|net-chart|net-live' "$js" "$css"
+    grep -qF '.net-apps { flex:1; min-height:0; margin-top:10px; overflow:auto; scrollbar-width:thin; }' "$css"
+    grep -qF 'svg("download"), h("b", { id: "ag-rx" }' "$js"
+    grep -qF 'svg("upload"), h("b", { id: "ag-tx" }' "$js"
     grep -qF '.net-table th, .net-table td { border:0;' "$css"
     # Network: WAN counters from sysfs (no command in the sampler), package totals from PAKET_TRAFIK modules.
     grep -qF 'open("/sys/class/net/%s/statistics/%s" % (iface, name), "rb")' "$backend"
@@ -3299,7 +3303,7 @@ PY
     grep -qF 'if (document.hidden || current === "genel") return;' <<<"$poll"
     [ "$(grep -cF 'loadSystem();' <<<"$poll")" -eq 2 ]
     grep -qF 'if (!(MODS || []).some((m) => m.busy)) loadModules();' <<<"$poll"
-    grep -qF 'if (editing || !widgetSetting("ag").gizli) loadNetwork();' <<<"$poll"
+    grep -qF 'if (editing || !widgetSetting("ag").gizli || !widgetSetting("hiz").gizli) loadNetwork();' <<<"$poll"
     grep -qxF '  }, 10000);' <<<"$poll"
     grep -qxF '  }, 5000);' <<<"$poll"
     run ! grep -qE 'loadNetwork\(\).*2000|homeRefresh|overviewActions' "$js"

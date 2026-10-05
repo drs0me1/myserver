@@ -13,6 +13,25 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-231: Home widgets in 1×1 and 2×2 cells; live rates split from application traffic (v2-210)
+
+- **Request (user, 2026-10-05):** remove the network chart, keep the numbers; show the overall
+  download/upload on one line and the applications below; then, after mock-ups compared on the page
+  with four applications: "1x1 sunucu ve anlık ağ kartı, 2x2 uygulama kartı", the 1×1 cards
+  stacked to the left of the 2×2 card, the version inside the server card, and
+  "hız kartına indirme, yükleme yazıları yerine download-upload simgesi kullanalım".
+- **Cells:** `--w-row` (150 px) is one row; `.widgets` keeps the tiles' columns and two rows and
+  flows by column, so `sunucu` and `hiz` (1×1) stack in the first column and `ag` (2×2) spans the
+  next two columns and both rows. Phones (two columns) flow by row: the two 1×1 cards share a row
+  under or above the 2×2 card. Every widget clips to its cell; "Ağ" scrolls its table. Edit
+  tools overlay the card instead of growing it.
+- **Hız:** the server's WAN rates with the existing download/upload glyphs in the legend colours;
+  each row keeps "İndirme"/"Yükleme" as its accessible name and tooltip. The chart and its code are
+  gone (`/api/konsol/ag` still returns its points; nothing reads them).
+- **Sunucu:** short labels (TS, WAN, Açık, Sürüm) and the version's last part (`v2-210`, full
+  string as the tooltip); the access channel is the subtitle ("Tailscale ile bağlı").
+- **Polling:** the network is read while "Hız" or "Ağ" is shown (or in edit mode).
+
 ### DD-230: Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards (v2-208)
 
 - **Request (user, 2026-10-05):** "durdur/başla yerine Dur, Başla yazalım ve puntoyu biraz

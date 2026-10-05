@@ -224,13 +224,15 @@
   // DD-230: the address facts are Ana Menü's "Sunucu" widget; they are painted wherever it is shown.
   function serverFacts() {
     const { s, fresh } = resourceValues();
+    // DD-231: a 1×1 card: short labels; the version shows its last part ("v2-209"), the full string as title.
+    const version = s && s.version || "—", shortVersion = version.replace(/^.*-(v\d+-\d+)$/, "$1");
     return [
-      ["foot-ts", "Tailscale IP", s && s.net.tailscale || "—", true],
-      ["foot-wan", "WAN IP", s && s.net.wan || "—", true],
-      ["foot-uptime", "Çalışma süresi", fresh && Number.isFinite(s.uptime) ? uptimeText(s.uptime + (performance.now() - resourceReceived) / 1000) : "—", false],
-      ["foot-version", "Sürüm", s && s.version || "—", true],
+      ["foot-ts", "TS", s && s.net.tailscale || "—", true],
+      ["foot-wan", "WAN", s && s.net.wan || "—", true],
+      ["foot-uptime", "Açık", fresh && Number.isFinite(s.uptime) ? uptimeText(s.uptime + (performance.now() - resourceReceived) / 1000) : "—", false],
+      ["foot-version", "Sürüm", shortVersion, true, version],
       // DD-195: the tailnet address is HTTP; only the public Konsol address is HTTPS.
-      ["foot-access", "Erişim", location.protocol === "https:" ? "İnternet · HTTPS" : "Tailscale", false],
+      ["foot-access", "Erişim", location.protocol === "https:" ? "İnternet · HTTPS ile bağlı" : "Tailscale ile bağlı", false],
     ];
   }
   function paintFacts() {
@@ -1575,8 +1577,10 @@
     return d ? `${d} g ${hh} sa` : hh ? `${hh} sa ${mm} dk` : `${mm} dk`; };
   // Eski saat/sistem ayarları yok sayılır; ağ kartı masaüstündeki altı alanın ikisini kullanır.
   const WIDGETS = [
-    { id: "ag", ad: "Ağ", label: "Ağ", genislik: 2 },
-    { id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 2 },
+    // DD-231: 1×1 widgets stack in the first column; the 2×2 application traffic card sits beside them.
+    { id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 1, boy: "1x1" },
+    { id: "hiz", ad: "Hız", label: "Anlık ağ hızı", genislik: 1, boy: "1x1" },
+    { id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x2" },
   ];
   // layout: sunucudaki kayıt (null: varsayılan); editing: Düzenle açıkken taslak, değilse null.
   // modsSettled: the module list answered once (or failed), so the tiles do not jump in after the page.
@@ -1605,21 +1609,6 @@
     if (b < GiB) return dec(b / MiB, b < 10 * MiB ? 1 : 0) + " MB/s";
     return dec(b / GiB, 1) + " GB/s";
   }
-  // İndirme dolgulu çizgi, yükleme ince çizgi; x zamana göre (son pencere), ölçek pencerenin en büyüğüne uyar.
-  function netChart(net) {
-    const w = 300, hgt = 64, span = net && net.window > 0 ? net.window : 120, end = net && Number.isFinite(net.read_at) ? net.read_at : 0;
-    const pts = net && Array.isArray(net.points) ? net.points.filter((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite)) : [];
-    const top = Math.max(64 * KiB, ...pts.map((p) => Math.max(p[1], p[2])));
-    const x = (t) => Math.max(0, Math.min(w, w * (1 - (end - t) / span))).toFixed(1);
-    const y = (v) => (hgt - 2 - (hgt - 6) * Math.max(0, v) / top).toFixed(1);
-    const line = (i) => pts.map((p, n) => (n ? "L" : "M") + x(p[0]) + " " + y(p[i])).join(" ");
-    let body = `<line class="base" x1="0" y1="${hgt - 1}" x2="${w}" y2="${hgt - 1}" vector-effect="non-scaling-stroke"/>`;
-    if (pts.length > 1) {
-      body += `<path class="down-fill" d="${line(1)} L${x(pts[pts.length - 1][0])} ${hgt} L${x(pts[0][0])} ${hgt} Z"/>`
-        + `<path class="down" d="${line(1)}" vector-effect="non-scaling-stroke"/><path class="up" d="${line(2)}" vector-effect="non-scaling-stroke"/>`;
-    }
-    return svgFrom(`<svg class="net-svg" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none" aria-hidden="true">${body}</svg>`);
-  }
   function netApps() {
     const apps = NET && Array.isArray(NET.apps) ? NET.apps : [];
     if (!apps.length) return [h("tr", null, h("td", { colspan: 3, class: "net-empty" }, netFailed ? "Uygulama trafiği okunamadı." : NET ? "Trafiğini bildiren kurulu uygulama yok." : "Uygulama trafiği okunuyor…"))];
@@ -1634,30 +1623,31 @@
         total("down", "down"), total("up", "up"));
     });
   }
-  const netSub = () => NET ? (NET.iface ? `${NET.iface} · son ${Math.round((NET.window || 120) / 60)} dk` : "WAN arayüzü bilinmiyor")
+  const netSub = () => NET ? (NET.iface ? `${NET.iface} · anlık` : "WAN arayüzü bilinmiyor")
     : netFailed ? "Ağ bilgisi okunamadı" : "Ölçülüyor…";
-  function netBody() {
+  // DD-231: the server's live rates are the "Hız" widget; "Ağ" lists the applications' totals.
+  function rateBody() {
     const fresh = netFresh();
     return [
-      h("div", { class: "net-live" },
-        h("div", { class: "net-rates" },
-          h("div", { class: "net-rate down" }, h("span", { class: "lbl" }, "İndirme"), h("b", { id: "ag-rx" }, fresh ? speed(NET.rx) : "—")),
-          h("div", { class: "net-rate up" }, h("span", { class: "lbl" }, "Yükleme"), h("b", { id: "ag-tx" }, fresh ? speed(NET.tx) : "—"))),
-        h("div", { class: "net-chart" }, netChart(fresh ? NET : null))),
-      h("div", { class: "net-apps", id: "ag-apps", tabindex: "0", role: "region", "aria-label": "Uygulama trafiği" },
-        h("table", { class: "net-table", "aria-label": "Uygulama aktarım toplamları" },
-          h("thead", null, h("tr", null, ...["Uygulama", "İndirme", "Yükleme"].map(t => h("th", { scope: "col" }, t)))),
-          h("tbody", null, ...netApps()))),
+      // DD-231: download/upload glyphs instead of words; the row keeps its name for assistive technology.
+      h("div", { class: "net-rate down", role: "group", "aria-label": "İndirme", title: "İndirme" }, svg("download"), h("b", { id: "ag-rx" }, fresh ? speed(NET.rx) : "—")),
+      h("div", { class: "net-rate up", role: "group", "aria-label": "Yükleme", title: "Yükleme" }, svg("upload"), h("b", { id: "ag-tx" }, fresh ? speed(NET.tx) : "—")),
     ];
   }
+  function appsTable() {
+    return h("table", { class: "net-table", "aria-label": "Uygulama aktarım toplamları" },
+      h("thead", null, h("tr", null, ...["Uygulama", "İndirme", "Yükleme"].map(t => h("th", { scope: "col" }, t)))),
+      h("tbody", null, ...netApps()));
+  }
   function paintNetwork() {
-    const body = $("ag-body"), sub = $("ag-sub"), live = $("ag-live");
+    const rates = $("hiz-body"), apps = $("ag-apps"), sub = $("ag-sub"), live = $("ag-live");
+    if (rates) rates.replaceChildren(...rateBody());
     // Preserve the scroll/focus of a long application list while replacing its measured values.
-    const old = $("ag-apps"), scroll = old?.scrollTop || 0, focused = old && document.activeElement === old;
-    if (body) {
-      body.replaceChildren(...netBody());
-      $("ag-apps").scrollTop = scroll;
-      if (focused) $("ag-apps").focus({ preventScroll: true });
+    if (apps) {
+      const scroll = apps.scrollTop, focused = document.activeElement === apps;
+      apps.replaceChildren(appsTable());
+      apps.scrollTop = scroll;
+      if (focused) apps.focus({ preventScroll: true });
     }
     if (sub) sub.textContent = netSub();
     if (live) { live.textContent = netFresh() ? "Canlı" : "Bekleniyor"; live.className = "hm" + (netFresh() ? " ok" : ""); }
@@ -1674,15 +1664,23 @@
 
   /* -- widget'lar -- */
   function widgetContent(id) {
-    if (id === "sunucu") return [
-      h("div", { class: "card-head" }, h("div", null, h("h2", null, "Sunucu"), h("small", { class: "hint-s" }, "Adresler ve sürüm"))),
-      h("dl", { class: "server-facts" }, ...serverFacts().map(([key, label, value, mono]) =>
-        h("div", null, h("dt", null, label), h("dd", { id: key, class: mono ? "mono" : null }, value)))),
+    if (id === "sunucu") {
+      const facts = serverFacts(), access = facts.find((f) => f[0] === "foot-access");
+      return [
+        h("div", { class: "card-head" }, h("div", null, h("h2", null, "Sunucu"),
+          h("small", { class: "hint-s", id: "foot-access" }, access[2]))),
+        h("dl", { class: "server-facts" }, ...facts.filter((f) => f[0] !== "foot-access").map(([key, label, value, mono, full]) =>
+          h("div", null, h("dt", null, label), h("dd", { id: key, class: mono ? "mono" : null, title: full || null }, value)))),
+      ];
+    }
+    if (id === "hiz") return [
+      h("div", { class: "card-head" }, h("div", null, h("h2", null, "Hız"), h("small", { class: "hint-s", id: "ag-sub" }, netSub())),
+        h("span", { class: "hm" + (netFresh() ? " ok" : ""), id: "ag-live" }, netFresh() ? "Canlı" : "Bekleniyor")),
+      h("div", { class: "net-rates", id: "hiz-body" }, ...rateBody()),
     ];
     return [
-      h("div", { class: "card-head" }, h("div", null, h("h2", null, "Ağ"), h("small", { class: "hint-s", id: "ag-sub" }, netSub())),
-        h("span", { class: "hm" + (netFresh() ? " ok" : ""), id: "ag-live" }, netFresh() ? "Canlı" : "Bekleniyor")),
-      h("div", { class: "net", id: "ag-body" }, ...netBody()),
+      h("div", { class: "card-head" }, h("div", null, h("h2", null, "Ağ"), h("small", { class: "hint-s" }, "Uygulamalar · toplam aktarım"))),
+      h("div", { class: "net-apps", id: "ag-apps", tabindex: "0", role: "region", "aria-label": "Uygulama trafiği" }, appsTable()),
     ];
   }
   function widgetTools(def, set) {
@@ -1698,7 +1696,7 @@
     return WIDGETS.filter((w) => editing || !widgetSetting(w.id).gizli).map((def) => {
       const set = widgetSetting(def.id);
       const el = h("article", { class: "card widget" + (set.gizli ? " is-hidden" : ""), "aria-label": def.label, "data-widget": def.id,
-        "data-span": String(set.genislik) }, ...widgetContent(def.id));
+        "data-span": String(set.genislik), "data-boy": def.boy }, ...widgetContent(def.id));
       if (editing) el.append(widgetTools(def, set));
       return el;
     });
@@ -2102,7 +2100,7 @@
     if (document.hidden || current !== "genel") return;
     loadSystem();
     if (!(MODS || []).some((m) => m.busy)) loadModules();
-    if (editing || !widgetSetting("ag").gizli) loadNetwork();
+    if (editing || !widgetSetting("ag").gizli || !widgetSetting("hiz").gizli) loadNetwork();
   }, 5000);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing && current === "genel" && !$("sh").open) cancelEdit(); });
   $("logout").addEventListener("click", logout);

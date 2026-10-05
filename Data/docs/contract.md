@@ -504,7 +504,7 @@ Contract in §5–§7 and `folder-shares.md`.
     from the gated `/api/konsol/kaynaklar` endpoint; missing or stale
     measurements show as unknown, never as zero, and close the sidebar. Clock/date replace only the
     home heading; WAN/Tailscale addresses, uptime, version and the access channel are Ana Menü's
-    "Sunucu" widget beside the network card (**DD-230**). Separate home
+    1×1 "Sunucu" widget (**DD-230**, **DD-231**). Separate home
     clock/system widgets, including their unused SVG/CSS, are removed. An unknown route opens
     Ana Menü (`#/genel`); a page of an absent application opens App Store.
   - **Opening an application and its actions (DD-210, DD-212/213).** An application with a native
@@ -533,12 +533,15 @@ Contract in §5–§7 and `folder-shares.md`.
     reachable from App Store details and its route.
   - **Home layout and network card (DD-206, DD-212/213, DD-229, DD-230).** "Düzenle" (fixed to the
     screen's bottom-right corner; the page keeps room below the last row) lets the operator move tiles (dragging with mouse or finger, or arrow
-    buttons) and hide or show the widgets: the network card (`ag`) and the server facts
-    (`sunucu`). The widget area uses the tiles' column template, so each widget is exactly
-    two tiles wide at every screen width (two tiles fill a phone); there are
-    no width controls. The network card keeps its two halves side by side; application
-    totals are two-line rows (name, then download/upload). App Store cards use the same
-    column template and width as the home tiles. "Bitti" saves, "Vazgeç"/Escape drops the
+    buttons) and hide or show the widgets (**DD-231**): "Sunucu" (`sunucu`, 1×1: Tailscale and
+    WAN address, uptime, short version with the full one as tooltip, access channel), "Hız"
+    (`hiz`, 1×1: the server's live WAN download/upload with download/upload glyphs, no chart)
+    and "Ağ" (`ag`, 2×2: each application's total download/upload, one line per application,
+    scrolling inside the card). A 1×1 widget is one tile wide and half a tile tall; the area
+    uses the tiles' column template. On desktop the 1×1 cards stack in the first column with
+    "Ağ" beside them; on phones "Ağ" spans the width and the 1×1 cards share a row. Sizes are
+    fixed; there are no width controls. The network is read only while "Hız" or "Ağ" is
+    shown. App Store cards use the same column template and width as the home tiles. "Bitti" saves, "Vazgeç"/Escape drops the
     draft, "Varsayılan" returns to the defaults. The layout lives on the server:
     `GET /api/konsol/duzen` → `{duzen: {schema, kareler, widgetlar} | null}`, `POST`
     `{duzen: …}` or `{sifirla: true}`; the root backend checks the shape only (keys
