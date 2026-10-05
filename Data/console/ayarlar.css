@@ -1,0 +1,133 @@
+/* v08 settings, using the existing Konsol palette. */
+#settings-page { min-width:0; display:grid; gap:18px; }
+.as-tabs { display:flex; flex-wrap:wrap; gap:5px; border-bottom:1px solid var(--line); padding-bottom:10px; }
+.as-tabs button { border:0; background:none; color:var(--muted); border-radius:7px; padding:10px 13px; font-weight:600; }
+.as-tabs [aria-selected=true] { background:var(--ink); color:var(--surface); }
+.as-stack { display:grid; gap:18px; }
+.as-card { min-width:0; overflow:hidden; }
+.as-card h2 { font-size:16px; }
+.as-card small, .as-footer small { display:block; color:var(--muted); font-size:12px; }
+.as-body { padding:18px; display:grid; gap:16px; }
+.as-inline { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+.as-toolbar { display:flex; align-items:end; gap:12px; flex-wrap:wrap; padding:14px 18px; }
+.as-toolbar .as-field { min-width:110px; }
+.as-toolbar>.btn { margin-left:auto; }
+.as-toolbar>.btn + .btn { margin-left:0; }
+.as-note { margin:0; padding:12px 18px; background:var(--surface-2); color:var(--muted); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.as-note.warn { color:var(--warn); background:var(--warn-soft); }
+.as-field { display:grid; gap:6px; font-size:13px; }
+.as-field input, .as-field select { width:100%; min-width:0; background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:10px; color:var(--ink); font:inherit; }
+.as-formgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.as-tablewrap { overflow:auto; max-width:100%; }
+#settings-page table { border-collapse:collapse; width:100%; text-align:left; }
+#settings-page th { padding:10px 13px; color:var(--muted); font-weight:500; font-size:11px; background:var(--surface-2); white-space:nowrap; }
+#settings-page td { padding:13px; border-bottom:1px solid var(--line); font-size:12px; vertical-align:middle; overflow-wrap:anywhere; }
+#settings-page td strong { display:block; font-size:13px; font-weight:600; }
+#settings-page code { font:12px/1.65 var(--f-mono); overflow-wrap:anywhere; }
+#settings-page tr.changed { background:var(--accent-soft); }
+.as-badge { display:inline-flex; background:var(--surface-2); border-radius:5px; padding:3px 8px; font-size:11px; }
+.as-badge.good { background:var(--ok-soft); color:var(--ok); }
+.as-switch { position:relative; display:inline-flex; align-items:center; gap:8px; white-space:nowrap; border:0; background:none; padding:5px 0; min-height:36px; }
+.as-switch::before { content:""; width:30px; height:19px; border-radius:5px; border:1px solid var(--line); background:var(--surface-2); }
+.as-switch::after { content:""; position:absolute; left:3px; width:10px; height:13px; border-radius:3px; border:1px solid var(--line); background:var(--surface); }
+.as-switch[aria-checked=true]::before { background:var(--ok); border-color:var(--ok); }
+.as-switch[aria-checked=true]::after { left:17px; }
+.as-switch:disabled { opacity:.5; }
+/* Firewall stays a semantic table at every width; only its region scrolls. */
+.as-fw-rules, #as-fw-content { min-width:0; }
+.as-fw-tabs { display:flex; flex-wrap:wrap; gap:4px; padding:12px 18px 0; border-bottom:1px solid var(--line); }
+.as-fw-tabs button { border:0; border-bottom:2px solid transparent; background:none; color:var(--muted); padding:12px; min-height:44px; font-size:12px; font-weight:600; }
+.as-fw-tabs [aria-selected=true] { border-bottom-color:var(--accent); color:var(--ink); }
+.as-fw-controls .btn, .as-fw-actions .btn { background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+.as-fw-controls .btn:hover:not(:disabled), .as-fw-actions .btn:hover:not(:disabled) { background:var(--surface-2); }
+.as-fw-scroll { max-height:70vh; border:1px solid var(--line); border-radius:7px; }
+.as-fw-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+#settings-page .as-fw-table { min-width:1040px; table-layout:fixed; border-collapse:separate; border-spacing:0; }
+#settings-page .as-fw-table caption { text-align:left; padding:12px; color:var(--muted); font-size:12px; background:var(--surface); }
+#settings-page .as-fw-table th,#settings-page .as-fw-table td { padding:12px 10px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); vertical-align:top; }
+#settings-page .as-fw-table tr > :last-child { border-right:0; }
+#settings-page .as-fw-table tbody tr:last-child > * { border-bottom:0; }
+#settings-page .as-fw-table thead th { position:sticky; top:0; z-index:1; font-weight:600; white-space:normal; }
+#settings-page .as-fw-table th[scope=row] { background:transparent; white-space:normal; overflow-wrap:anywhere; }
+#settings-page .as-fw-table strong { display:block; font-size:12px; font-weight:600; color:var(--ink); }
+#settings-page .as-fw-table small { font-size:11px; line-height:1.6; margin-top:4px; }
+#settings-page .as-fw-table tbody tr:nth-child(even) { background:var(--surface-2); }
+#settings-page .as-fw-table tbody tr.changed { background:var(--accent-soft); }
+#settings-page .as-ports thead th:nth-child(1) { width:20%; }
+#settings-page .as-ports thead th:nth-child(2) { width:8%; }
+#settings-page .as-ports thead th:nth-child(3) { width:12%; }
+#settings-page .as-ports thead th:nth-child(4) { width:24%; }
+#settings-page .as-ports thead th:nth-child(5) { width:14%; }
+#settings-page .as-ports thead th:nth-child(6) { width:10%; }
+#settings-page .as-ports thead th:nth-child(7) { width:12%; }
+#settings-page .as-rules thead th:nth-child(1) { width:17%; }
+#settings-page .as-rules thead th:nth-child(2) { width:5%; }
+#settings-page .as-rules thead th:nth-child(3) { width:30%; }
+#settings-page .as-rules thead th:nth-child(4) { width:22%; }
+#settings-page .as-rules thead th:nth-child(5) { width:12%; }
+#settings-page .as-rules thead th:nth-child(6) { width:14%; }
+.as-fw-actions { display:grid; gap:6px; }
+.as-fw-actions .btn { white-space:normal; font-size:11px; padding:6px 8px; }
+.as-footer { display:flex; justify-content:space-between; align-items:center; gap:15px; flex-wrap:wrap; padding:16px 0; border-top:1px solid var(--line); }
+.as-footer strong { font-size:13px; font-weight:600; }
+.as-rollback { padding:16px; border:1px solid var(--warn); border-radius:9px; background:var(--warn-soft); color:var(--warn); }
+.as-rollback p { font-size:13px; }
+.as-rollback.stuck { border-color:var(--danger); background:var(--danger-soft); color:var(--danger); }
+.as-message { margin:0; font-size:13px; overflow-wrap:anywhere; }
+.as-address + .as-address { margin-top:8px; }
+.as-domain-links { display:grid; gap:8px; padding:16px; border:1px solid var(--line); border-radius:9px; overflow-wrap:anywhere; }
+.as-domain-links small { color:var(--muted); }
+.as-local-domain { width:min(100%,620px); justify-self:start; }
+.as-local-domain .card-head, .as-local-domain .as-body { min-width:0; overflow-wrap:anywhere; }
+.as-local-domain .as-body { padding:0; gap:8px; }
+.as-domain-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px; }
+.as-domain-row .btn { min-height:40px; }
+.as-tailnet-guide { border-top:1px solid var(--line); padding-top:14px; display:grid; gap:9px; font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.as-tailnet-guide h3 { margin:0; font-size:13px; font-weight:600; }
+.as-tailnet-guide ol { margin:0; padding-left:20px; display:grid; gap:7px; }
+.as-tailnet-guide a { color:var(--accent); text-decoration:underline; text-underline-offset:3px; }
+.as-dialog { max-width:650px; }
+.as-web-details>summary { padding:12px 0; color:var(--muted); font-size:13px; }
+#settings-page .as-publications { table-layout:fixed; }
+#settings-page .as-publications th { white-space:normal; }
+#settings-page .as-publications th:nth-child(1) { width:19%; }
+#settings-page .as-publications th:nth-child(2),#settings-page .as-publications th:nth-child(3) { width:12%; }
+#settings-page .as-publications th:nth-child(4) { width:32%; }
+#settings-page .as-publications th:nth-child(5) { width:25%; }
+#settings-page .as-publications td { vertical-align:top; }
+.as-publications input { width:100%; min-width:0; padding:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:7px; font:inherit; }
+.as-publications small,.as-publications .btn { display:block; margin-top:7px; }
+.as-publications input:disabled { opacity:.55; }
+@media(max-width:850px) {
+  #settings-page .as-publications,#settings-page .as-publications tbody { display:block; }
+  #settings-page .as-publications thead { display:none; }
+  #settings-page .as-publications tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:16px; border-bottom:1px solid var(--line); }
+  #settings-page .as-publications td { display:block; border:0; padding:0; }
+  #settings-page .as-publications td:first-child,#settings-page .as-publications td:nth-child(4),#settings-page .as-publications td:nth-child(5) { grid-column:1 / -1; }
+  #settings-page .as-publications td:not(:first-child)::before { content:attr(data-label); display:block; font-size:11px; color:var(--muted); margin-bottom:5px; }
+  .as-publications input { font-size:16px; }
+}
+.as-dialog .dlg { display:grid; gap:16px; }
+.as-dialog h3 { margin:0; }
+.as-changes { padding-left:20px; display:grid; gap:10px; font-size:13px; overflow-wrap:anywhere; }
+.as-folder { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.as-folder>div { flex:1; min-width:160px; overflow-wrap:anywhere; }
+.as-folder small { display:block; color:var(--muted); }
+@media(max-width:700px) {
+  .as-tabs button { font-size:12px; padding:9px; }
+  .as-formgrid { grid-template-columns:1fr; }
+  .as-formgrid>div:empty { display:none; }
+  .as-field input, .as-field select { font-size:16px; }
+  .as-switch, .as-toolbar button { min-height:44px; }
+  #settings-page .as-dns thead { display:none; }
+  #settings-page .as-dns tbody { display:block; }
+  #settings-page .as-dns tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:14px; border-bottom:1px solid var(--line); }
+  #settings-page .as-dns td { padding:0; border:0; }
+  .as-dns td:nth-child(1) { grid-area:1/1; }
+  .as-dns td:nth-child(2) { grid-area:2/1; }
+  .as-dns td:nth-child(3) { grid-area:3/1; }
+  .as-dns td:nth-child(4) { grid-area:2/2; }
+  .as-dns td:nth-child(5) { grid-area:3/2; }
+  .as-footer .as-inline { width:100%; }
+  .as-footer .as-inline button { flex:1; }
+}

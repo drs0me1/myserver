@@ -1,0 +1,488 @@
+<!-- Konsol — Dosyalar v02 tasarım taslağı (DD-145 adayı).
+     v01'in renk/tipografi dili korunur; yalnız Dosyalar sekmesi yeniden kurgulanır.
+     Amaç: FileBrowser konteynerinin yaptığı işi Konsol'un içinde yapmak. -->
+<title>Konsol — Dosyalar v02</title>
+<style>
+:root {
+  color-scheme: light;
+  --ground: #F0F2EF; --surface: #FBFCFA; --surface-2: #E6EAE4; --ink: #191C19; --muted: #5E655E; --line: #D6DBD3;
+  --accent: #0E5A73; --accent-hover: #0A485C; --accent-ink: #FFFFFF; --accent-soft: #DCEAEE;
+  --ok: #2B7A4B; --ok-soft: #DCEFE2; --warn: #93600F; --warn-soft: #F4E6CC;
+  --idle: #6F776F; --idle-soft: #E3E7E1; --danger: #B3261E; --danger-soft: #F7E0DC;
+  --video: #6A4C93; --video-soft: #ECE6F4;
+  --tint: #E2EDF0; --tint-line: #BCD3DA;
+  --focus: rgba(14, 90, 115, .38); --shadow: 0 24px 60px -18px rgba(18, 28, 22, .32);
+  --f-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0F1211; --surface: #161A18; --surface-2: #1F2522; --ink: #E5E9E4; --muted: #9AA29B; --line: #2A312D;
+    --accent: #6BBFD8; --accent-hover: #8CD0E4; --accent-ink: #0A1A20; --accent-soft: #15313A;
+    --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14;
+    --idle: #8E968F; --idle-soft: #242A27; --danger: #F08A80; --danger-soft: #3A1B18;
+    --video: #B79BE0; --video-soft: #2A2238;
+    --tint: #13232A; --tint-line: #264650;
+    --focus: rgba(107, 191, 216, .45); --shadow: 0 24px 60px -18px rgba(0, 0, 0, .7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0F1211; --surface: #161A18; --surface-2: #1F2522; --ink: #E5E9E4; --muted: #9AA29B; --line: #2A312D;
+  --accent: #6BBFD8; --accent-hover: #8CD0E4; --accent-ink: #0A1A20; --accent-soft: #15313A;
+  --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14;
+  --idle: #8E968F; --idle-soft: #242A27; --danger: #F08A80; --danger-soft: #3A1B18;
+  --video: #B79BE0; --video-soft: #2A2238;
+  --tint: #13232A; --tint-line: #264650;
+  --focus: rgba(107, 191, 216, .45); --shadow: 0 24px 60px -18px rgba(0, 0, 0, .7);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.page { max-width: 1180px; margin: 0 auto; padding-block: 34px 60px; padding-left: 20px; padding-right: 20px; display: grid; gap: 34px; }
+h1 { font-family: var(--f-display); font-size: 27px; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-size: 17px; margin: 0; letter-spacing: -.005em; }
+.eyebrow { margin: 0 0 4px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.lede { margin: 10px 0 0; color: var(--muted); max-width: 64ch; }
+.state { display: grid; gap: 12px; }
+.state > figcaption { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: 13.5px; }
+.frame { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+
+/* ---- Dosyalar düzeni: kısayol sütunu + içerik ---- */
+.fs { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 430px; }
+.fs.with-preview { grid-template-columns: 208px minmax(0, 1fr) 268px; }
+.rail { border-right: 1px solid var(--line); background: var(--surface-2); padding: 14px 12px; display: grid; align-content: start; gap: 3px; }
+.rail .rt { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 6px 8px 4px; }
+.rl { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; width: 100%; }
+.rl:hover { background: var(--surface); }
+.rl.cur { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.rl .c { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rl.cur .c { color: var(--accent); }
+.disk { margin: 14px 8px 2px; }
+.disk .dl { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.bar { height: 7px; border-radius: 4px; background: var(--line); overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.seg-dl { background: var(--accent); } .seg-cop { background: var(--warn); } .seg-sys { background: var(--idle); }
+
+.main { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; }
+.bar-top { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--line); min-height: 56px; }
+.ib { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
+.ib:hover { background: var(--surface-2); color: var(--ink); }
+.ib svg { width: 16px; height: 16px; }
+.sep { width: 1px; align-self: stretch; margin: 8px 4px; background: var(--line); }
+.crumbs { list-style: none; display: flex; flex-wrap: wrap; align-items: center; margin: 0; padding: 0; flex: 1 1 10rem; min-width: 0; }
+.crumbs li { display: flex; align-items: center; }
+.crumbs li + li::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-top: 1.5px solid var(--muted); transform: rotate(45deg); margin: 0 8px 0 3px; opacity: .55; }
+.crumb { background: none; border: 0; padding: 5px 7px; border-radius: 6px; font-size: 15px; color: var(--muted); cursor: pointer; }
+.crumb.root { font-family: var(--f-mono); font-size: 13.5px; }
+.crumb.cur { color: var(--ink); font-weight: 600; }
+.search { display: flex; align-items: center; gap: 7px; background: var(--surface-2); border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; min-width: 190px; }
+.search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.search svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.search input { border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); width: 100%; outline: none; }
+.seg { display: flex; background: var(--surface-2); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; border-radius: 6px; padding: 5px 8px; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.seg button svg { width: 15px; height: 15px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.btn { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.btn svg { width: 15px; height: 15px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--danger); border-color: var(--danger-soft); }
+.meta { margin-left: auto; font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* seçim çubuğu: aynı yükseklik, farklı içerik */
+.bar-sel { background: var(--accent-soft); color: var(--accent); }
+.bar-sel .ib { color: var(--accent); }
+.bar-sel .ib:hover { background: rgba(255,255,255,.4); }
+.bar-sel .cnt { font-weight: 600; font-size: 14.5px; margin-right: 4px; }
+.bar-sel .btn { background: transparent; border-color: transparent; color: var(--accent); }
+.bar-sel .btn.danger { color: var(--danger); }
+
+.hintbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px; background: var(--warn-soft); color: var(--warn); font-size: 13px; border-bottom: 1px solid var(--line); }
+
+/* ---- liste ---- */
+.rows { overflow: auto; }
+.row { display: grid; grid-template-columns: 26px minmax(0, 1fr) 6.5rem 8rem 8.5rem; gap: 12px; align-items: center; padding: 9px 16px; }
+.row + .row { border-top: 1px solid var(--line); }
+.row.head { background: var(--surface-2); padding-block: 7px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.row.on { background: var(--accent-soft); }
+.row.drop { outline: 2px dashed var(--accent); outline-offset: -4px; }
+.name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ticon { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; flex: none; }
+.ticon svg { width: 16px; height: 16px; }
+.t-dir { background: var(--accent-soft); color: var(--accent); }
+.t-video { background: var(--video-soft); color: var(--video); }
+.t-text { background: var(--idle-soft); color: var(--idle); }
+.t-file { background: var(--surface-2); color: var(--muted); }
+.nm { min-width: 0; }
+.nm strong { display: block; font-weight: 600; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm small { color: var(--muted); font-size: 12.5px; }
+.c-size, .c-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.acts { display: flex; gap: 2px; justify-content: flex-end; }
+.chk { width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid var(--line); background: var(--surface); display: grid; place-items: center; cursor: pointer; }
+.chk.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chk svg { width: 11px; height: 11px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; background: var(--ok-soft); color: var(--ok); margin-left: 8px; vertical-align: 1px; }
+
+/* ---- ızgara ---- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); gap: 12px; padding: 16px; overflow: auto; align-content: start; }
+.tile { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; cursor: pointer; }
+.tile.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.thumb { aspect-ratio: 4 / 3; display: grid; place-items: center; background: var(--surface-2); position: relative; }
+.thumb svg { width: 34px; height: 34px; color: var(--muted); }
+.thumb.dir { background: var(--accent-soft); } .thumb.dir svg { color: var(--accent); }
+.thumb.video { background: var(--video-soft); } .thumb.video svg { color: var(--video); }
+.thumb .badge { position: absolute; left: 7px; bottom: 7px; background: rgba(0,0,0,.55); color: #fff; font-size: 10.5px; padding: 1px 6px; border-radius: 5px; letter-spacing: .03em; }
+.tile .cap { padding: 8px 10px; }
+.tile .cap strong { display: block; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .cap small { color: var(--muted); font-size: 12px; }
+
+/* ---- önizleme ---- */
+.prev { border-left: 1px solid var(--line); background: var(--surface-2); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.prev .ph { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+.prev .pb { padding: 14px; display: grid; gap: 12px; align-content: start; }
+.shot { aspect-ratio: 16 / 9; border-radius: 9px; background: linear-gradient(135deg, var(--video-soft), var(--accent-soft)); display: grid; place-items: center; color: var(--video); }
+.shot svg { width: 30px; height: 30px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.prev .pf { padding: 12px 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+
+/* ---- yükleme: hedef listenin kendisi, ilerleme satırın içinde ---- */
+.rows.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.droptip { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 14px 16px 2px; padding: 9px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 13.5px; }
+.droptip svg { width: 15px; height: 15px; }
+.droptip b { font-weight: 600; }
+.row.up { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.row.up .nm strong { font-weight: 600; }
+.row.up.wait { opacity: .7; }
+.row.fresh { background: color-mix(in srgb, var(--ok-soft) 55%, transparent); }
+.uprog { display: block; height: 4px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 5px; max-width: 320px; }
+.uprog i { display: block; height: 100%; background: var(--accent); }
+.upsum { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+.upsum svg { width: 14px; height: 14px; }
+.lnk { border: 0; background: none; padding: 0; color: inherit; font: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer; opacity: .8; }
+
+.specs { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.specs h2 { margin-bottom: 4px; }
+.specs ul { margin: 0; padding-left: 18px; color: var(--muted); }
+.specs li { margin: 3px 0; }
+.specs b { color: var(--ink); font-weight: 600; }
+kbd { font: 12px var(--f-mono); background: var(--surface-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--ink); }
+table.api { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.api th, table.api td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.api th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+table.api code { font-family: var(--f-mono); font-size: 12.5px; }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; }
+.tag.new { background: var(--warn-soft); color: var(--warn); }
+.tag.have { background: var(--ok-soft); color: var(--ok); }
+@media (max-width: 860px) {
+  .fs, .fs.with-preview { grid-template-columns: minmax(0, 1fr); }
+  .rail { border-right: 0; border-bottom: 1px solid var(--line); grid-auto-flow: column; overflow-x: auto; }
+  .rail .rt, .disk { display: none; }
+  .row { grid-template-columns: 26px minmax(0, 1fr) 5rem; }
+  .row .c-date, .row.head .c-date { display: none; }
+  .prev { border-left: 0; border-top: 1px solid var(--line); }
+}
+</style>
+
+<div class="page">
+
+  <header>
+    <p class="eyebrow">Konsol · tasarım taslağı v02</p>
+    <h1>Dosyalar — FileBrowser'ın yerine</h1>
+    <p class="lede">Aynı sayfa, aynı renkler; eksik olan üç şey ekleniyor: <b>yükleme</b>, <b>çoklu seçim</b> ve
+      <b>arama</b>. Kök artık kullanıcı alanı (<code>/srv</code>): indirmeler, kütüphane, paylaşımlar ve çöp aynı
+      ağacın altında. Bu üçü girince <code>filebrowser</code> konteyneri, hesabı, portu ve adı kaldırılabilir.</p>
+  </header>
+
+  <!-- 1 -->
+  <figure class="state" style="margin:0">
+    <figcaption><span class="num">1</span><h2>Liste görünümü</h2>
+      <span class="note">Solda kısayollar ve disk; üstte kırıntı yolu, arama, görünüm anahtarı.</span></figcaption>
+    <div class="frame">
+      <div class="fs">
+        <nav class="rail">
+          <p class="rt">Kullanıcı alanı</p>
+          <button class="rl cur" type="button"><span class="ticon t-dir" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span>Sunucu<span class="c">6</span></button>
+          <button class="rl" type="button"><span class="ticon t-file" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg></span>downloads<span class="c">18</span></button>
+          <button class="rl" type="button"><span class="ticon t-video" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></span>media<span class="c">2</span></button>
+          <p class="rt">Yönetim</p>
+          <button class="rl" type="button"><span class="ticon t-dir" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></span>Paylaşımlar<span class="c">3</span></button>
+          <button class="rl" type="button"><span class="ticon t-file" style="width:22px;height:22px;border-radius:6px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></span>Çöp<span class="c">4</span></button>
+          <div class="disk">
+            <div class="dl"><span>Disk</span><span>2,1 TB / 4 TB</span></div>
+            <div class="bar"><i class="seg-dl" style="width:42%"></i><i class="seg-cop" style="width:4%"></i><i class="seg-sys" style="width:6%"></i></div>
+            <div class="dl" style="margin:6px 0 0"><span>1,9 TB boş</span><span style="font-family:var(--f-mono)">/srv</span></div>
+          </div>
+        </nav>
+        <div class="main">
+          <div class="bar-top">
+            <button class="ib" type="button" title="Sunucu kökü"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2L9 3.5l6 4.7V14a.8.8 0 01-.8.8H3.8A.8.8 0 013 14z"/></svg></button>
+            <span class="sep"></span>
+            <ul class="crumbs"><li><button class="crumb root" type="button">/srv</button></li><li><button class="crumb" type="button">downloads</button></li><li><button class="crumb cur" type="button">series</button></li></ul>
+            <div class="search"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="4.5"/><path d="M11.5 11.5L15 15"/></svg><input placeholder="Bu klasörde ara" value=""></div>
+            <div class="seg">
+              <button type="button" aria-pressed="true" title="Liste"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 5h9M6 9h9M6 13h9M3 5h.01M3 9h.01M3 13h.01"/></svg></button>
+              <button type="button" aria-pressed="false" title="Izgara"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="10" y="3" width="5" height="5" rx="1"/><rect x="3" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/></svg></button>
+            </div>
+            <span class="sep"></span>
+            <button class="btn" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12V4M5.4 7.6L9 4l3.6 3.6M3.5 14.5h11"/></svg>Yükle</button>
+            <button class="ib" type="button" title="Yeni klasör"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/><path d="M9 8.6v3.2M7.4 10.2h3.2"/></svg></button>
+          </div>
+          <div class="rows">
+            <div class="row head"><span></span><span>Ad</span><span class="c-size">Boyut</span><span class="c-date">Değişim</span><span></span></div>
+            <div class="row">
+              <span class="chk" role="checkbox" aria-checked="false"></span>
+              <span class="name"><span class="ticon t-dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span>
+                <span class="nm"><strong>Severance S02<span class="chip">paylaşımda</span></strong><small>9 öge</small></span></span>
+              <span class="c-size">41,2 GB</span><span class="c-date">2 gün önce</span>
+              <span class="acts"><button class="ib" title="Paylaş"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></button><button class="ib" title="Taşı"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 9h11M11 5.5L14.5 9 11 12.5"/></svg></button><button class="ib" title="Çöpe at"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></button></span>
+            </div>
+            <div class="row">
+              <span class="chk" role="checkbox" aria-checked="false"></span>
+              <span class="name"><span class="ticon t-video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></span>
+                <span class="nm"><strong>The Bear S03E01.mkv</strong><small>video</small></span></span>
+              <span class="c-size">3,4 GB</span><span class="c-date">dün 21:40</span>
+              <span class="acts"><button class="ib" title="Paylaş"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></button><button class="ib" title="İndir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg></button><button class="ib" title="Çöpe at"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></button></span>
+            </div>
+            <div class="row">
+              <span class="chk" role="checkbox" aria-checked="false"></span>
+              <span class="name"><span class="ticon t-text"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 3.5h6L13.5 6v8.5h-9z"/><path d="M6.5 8.5h5M6.5 11h5"/></svg></span>
+                <span class="nm"><strong>The Bear S03E01.tr.srt</strong><small>metin dosyası</small></span></span>
+              <span class="c-size">68 KB</span><span class="c-date">dün 21:41</span>
+              <span class="acts"><button class="ib" title="Paylaş"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></button><button class="ib" title="İndir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg></button><button class="ib" title="Çöpe at"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></button></span>
+            </div>
+            <div class="row">
+              <span class="chk" role="checkbox" aria-checked="false"></span>
+              <span class="name"><span class="ticon t-file"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 3.5h6L13.5 6v8.5h-9z"/></svg></span>
+                <span class="nm"><strong>kapak.jpg</strong><small>resim</small></span></span>
+              <span class="c-size">412 KB</span><span class="c-date">3 gün önce</span>
+              <span class="acts"><button class="ib" title="Paylaş"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></button><button class="ib" title="İndir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg></button><button class="ib" title="Çöpe at"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></button></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </figure>
+
+  <!-- 2 -->
+  <figure class="state" style="margin:0">
+    <figcaption><span class="num">2</span><h2>Seçim modu</h2>
+      <span class="note">Bir kutucuk işaretlenince üst çubuk eylem çubuğuna dönüşür — sayfa yeri değişmez.
+        (2–4 arası kısayol sütunu kısaltılmış çizildi; 1'deki hâliyle aynıdır.)</span></figcaption>
+    <div class="frame">
+      <div class="fs">
+        <nav class="rail">
+          <p class="rt">Kullanıcı alanı</p>
+          <button class="rl" type="button">Sunucu<span class="c">6</span></button>
+          <button class="rl cur" type="button">downloads<span class="c">18</span></button>
+          <button class="rl" type="button">media<span class="c">2</span></button>
+          <p class="rt">Yönetim</p>
+          <button class="rl" type="button">Paylaşımlar<span class="c">3</span></button>
+          <button class="rl" type="button">Çöp<span class="c">4</span></button>
+        </nav>
+        <div class="main">
+          <div class="bar-top bar-sel">
+            <button class="ib" type="button" title="Seçimi bırak"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l8 8M13 5l-8 8"/></svg></button>
+            <span class="cnt">3 öge seçildi · 7,2 GB</span>
+            <span class="sep"></span>
+            <button class="btn" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg>İndir</button>
+            <button class="btn" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.5 9h11M11 5.5L14.5 9 11 12.5"/></svg>Taşı</button>
+            <button class="btn" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg>Paylaş</button>
+            <button class="btn danger" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg>Çöpe at</button>
+            <span class="meta">18 ögenin 3'ü</span>
+          </div>
+          <div class="hintbar"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="width:15px;height:15px"><path d="M9 6v4M9 12.5h.01"/><circle cx="9" cy="9" r="6.5"/></svg>
+            <span><b>incomplete</b> klasörüne qBittorrent yazıyor; seçime girmez, paylaşılamaz.</span></div>
+          <div class="rows">
+            <div class="row on">
+              <span class="chk on" role="checkbox" aria-checked="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.4l3.2 3.1L14 5.6"/></svg></span>
+              <span class="name"><span class="ticon t-video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></span>
+                <span class="nm"><strong>Dune.Part.Two.2160p.mkv</strong><small>video</small></span></span>
+              <span class="c-size">4,1 GB</span><span class="c-date">bugün 09:12</span><span class="acts"></span>
+            </div>
+            <div class="row on">
+              <span class="chk on" role="checkbox" aria-checked="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.4l3.2 3.1L14 5.6"/></svg></span>
+              <span class="name"><span class="ticon t-video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></span>
+                <span class="nm"><strong>Poor.Things.1080p.mkv</strong><small>video</small></span></span>
+              <span class="c-size">2,8 GB</span><span class="c-date">dün 23:02</span><span class="acts"></span>
+            </div>
+            <div class="row on">
+              <span class="chk on" role="checkbox" aria-checked="true"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.4l3.2 3.1L14 5.6"/></svg></span>
+              <span class="name"><span class="ticon t-text"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 3.5h6L13.5 6v8.5h-9z"/><path d="M6.5 8.5h5M6.5 11h5"/></svg></span>
+                <span class="nm"><strong>Dune.Part.Two.tr.srt</strong><small>metin dosyası</small></span></span>
+              <span class="c-size">96 KB</span><span class="c-date">bugün 09:12</span><span class="acts"></span>
+            </div>
+            <div class="row">
+              <span class="chk" role="checkbox" aria-checked="false"></span>
+              <span class="name"><span class="ticon t-dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span>
+                <span class="nm"><strong>incomplete</strong><small>qBittorrent yazıyor</small></span></span>
+              <span class="c-size">12,6 GB</span><span class="c-date">az önce</span><span class="acts"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </figure>
+
+  <!-- 3 -->
+  <figure class="state" style="margin:0">
+    <figcaption><span class="num">3</span><h2>Izgara + önizleme</h2>
+      <span class="note">Izgarada tür rengi ve süre rozeti; sağ panelde seçili ögenin künyesi ve eylemleri.</span></figcaption>
+    <div class="frame">
+      <div class="fs with-preview">
+        <nav class="rail">
+          <p class="rt">Kullanıcı alanı</p>
+          <button class="rl" type="button">Sunucu<span class="c">6</span></button>
+          <button class="rl" type="button">downloads<span class="c">18</span></button>
+          <button class="rl cur" type="button">media<span class="c">2</span></button>
+          <p class="rt">Yönetim</p>
+          <button class="rl" type="button">Paylaşımlar<span class="c">3</span></button>
+          <button class="rl" type="button">Çöp<span class="c">4</span></button>
+        </nav>
+        <div class="main">
+          <div class="bar-top">
+            <button class="ib" type="button" title="Sunucu kökü"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2L9 3.5l6 4.7V14a.8.8 0 01-.8.8H3.8A.8.8 0 013 14z"/></svg></button>
+            <span class="sep"></span>
+            <ul class="crumbs"><li><button class="crumb root" type="button">/srv</button></li><li><button class="crumb" type="button">media</button></li><li><button class="crumb cur" type="button">movies</button></li></ul>
+            <div class="search"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="4.5"/><path d="M11.5 11.5L15 15"/></svg><input placeholder="Bu klasörde ara" value="dune"></div>
+            <div class="seg">
+              <button type="button" aria-pressed="false" title="Liste"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 5h9M6 9h9M6 13h9M3 5h.01M3 9h.01M3 13h.01"/></svg></button>
+              <button type="button" aria-pressed="true" title="Izgara"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="10" y="3" width="5" height="5" rx="1"/><rect x="3" y="10" width="5" height="5" rx="1"/><rect x="10" y="10" width="5" height="5" rx="1"/></svg></button>
+            </div>
+            <span class="meta">2 sonuç</span>
+          </div>
+          <div class="grid">
+            <div class="tile on"><div class="thumb video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg><span class="badge">2 sa 46 dk</span></div>
+              <div class="cap"><strong>Dune.Part.Two.2160p</strong><small>4,1 GB</small></div></div>
+            <div class="tile"><div class="thumb video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg><span class="badge">2 sa 35 dk</span></div>
+              <div class="cap"><strong>Dune.2021.1080p</strong><small>3,2 GB</small></div></div>
+            <div class="tile"><div class="thumb dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></div>
+              <div class="cap"><strong>altyazılar</strong><small>6 öge</small></div></div>
+          </div>
+        </div>
+        <aside class="prev">
+          <div class="ph"><span class="ticon t-video"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></span><strong style="font-size:14px">Dune.Part.Two.2160p.mkv</strong></div>
+          <div class="pb">
+            <div class="shot"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="4.5" width="13" height="9" rx="1.5"/><path d="M7.5 7.5l4 1.9-4 1.9z"/></svg></div>
+            <dl class="kv"><dt>Boyut</dt><dd>4,1 GB</dd><dt>Değişim</dt><dd>bugün 09:12</dd><dt>Yol</dt><dd style="font-family:var(--f-mono);font-size:12px">media/movies</dd><dt>Paylaşım</dt><dd>yok</dd></dl>
+          </div>
+          <div class="pf">
+            <button class="btn primary" type="button" style="justify-content:center"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg>Paylaş</button>
+            <button class="btn" type="button" style="justify-content:center"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg>İndir</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </figure>
+
+  <!-- 4 -->
+  <figure class="state" style="margin:0">
+    <figcaption><span class="num">4</span><h2>Yükleme — listenin içine bırakarak</h2>
+      <span class="note">Ayrı bir yükleme alanı yok: hedef listenin kendisi, ilerleme de satırın içinde.<br>
+        <b>Aşağıdaki kesikli çerçeve kalıcı değildir</b> — yalnız dosya sürüklenirken belirir, bırakınca ya da
+        sürükleme listeden çıkınca kaybolur. Duran hâli 1–3. durumlardaki sade listedir.</span></figcaption>
+    <div class="frame">
+      <div class="fs">
+        <nav class="rail">
+          <p class="rt">Kullanıcı alanı</p>
+          <button class="rl" type="button">Sunucu<span class="c">6</span></button>
+          <button class="rl cur" type="button">downloads<span class="c">18</span></button>
+          <button class="rl" type="button">media<span class="c">2</span></button>
+        </nav>
+        <div class="main">
+          <div class="bar-top">
+            <button class="ib" type="button" title="Sunucu kökü"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2L9 3.5l6 4.7V14a.8.8 0 01-.8.8H3.8A.8.8 0 013 14z"/></svg></button>
+            <span class="sep"></span>
+            <ul class="crumbs"><li><button class="crumb root" type="button">/srv</button></li><li><button class="crumb cur" type="button">downloads</button></li></ul>
+            <button class="btn" type="button"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12V4M5.4 7.6L9 4l3.6 3.6M3.5 14.5h11"/></svg>Yükle</button>
+            <span class="meta">18 öge · 612 GB</span>
+          </div>
+          <div class="rows dragging">
+            <div class="droptip"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12V4M5.4 7.6L9 4l3.6 3.6M3.5 14.5h11"/></svg>
+              <span>Bırakın — <b>/srv/downloads</b> içine yüklenir</span></div>
+            <div class="row head"><span></span><span>Ad</span><span class="c-size">Boyut</span><span class="c-date">Değişim</span><span></span></div>
+            <div class="row"><span class="chk"></span><span class="name"><span class="ticon t-dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span><span class="nm"><strong>series</strong><small>7 öge</small></span></span><span class="c-size">—</span><span class="c-date">dün</span><span class="acts"></span></div>
+            <div class="row"><span class="chk"></span><span class="name"><span class="ticon t-dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span><span class="nm"><strong>incomplete</strong><small>qBittorrent yazıyor</small></span></span><span class="c-size">12,6 GB</span><span class="c-date">az önce</span><span class="acts"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption style="margin-top:2px"><span class="note"><b>Bırakıldıktan sonra:</b> yüklenen dosyalar listenin başına satır olarak girer;
+      biten satır olağan satıra dönüşür, yeri değişmez.</span></figcaption>
+    <div class="frame">
+      <div class="fs">
+        <nav class="rail">
+          <p class="rt">Kullanıcı alanı</p>
+          <button class="rl" type="button">Sunucu<span class="c">6</span></button>
+          <button class="rl cur" type="button">downloads<span class="c">18</span></button>
+          <button class="rl" type="button">media<span class="c">2</span></button>
+        </nav>
+        <div class="main">
+          <div class="bar-top">
+            <button class="ib" type="button" title="Sunucu kökü"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2L9 3.5l6 4.7V14a.8.8 0 01-.8.8H3.8A.8.8 0 013 14z"/></svg></button>
+            <span class="sep"></span>
+            <ul class="crumbs"><li><button class="crumb root" type="button">/srv</button></li><li><button class="crumb cur" type="button">downloads</button></li></ul>
+            <span class="upsum"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 12V4M5.4 7.6L9 4l3.6 3.6M3.5 14.5h11"/></svg>2/3 yükleniyor<button class="lnk" type="button">durdur</button></span>
+            <span class="meta">21 öge · 614 GB</span>
+          </div>
+          <div class="rows">
+            <div class="row head"><span></span><span>Ad</span><span class="c-size">Boyut</span><span class="c-date">Değişim</span><span></span></div>
+            <div class="row up">
+              <span class="chk" aria-hidden="true" style="opacity:.35"></span>
+              <span class="name"><span class="ticon t-file"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 12V4M5.4 7.6L9 4l3.6 3.6M3.5 14.5h11"/></svg></span>
+                <span class="nm"><strong>arşiv.tar.gz</strong><span class="uprog"><i style="width:64%"></i></span></span></span>
+              <span class="c-size">4,2 GB</span><span class="c-date">%64 · 18 MB/sn</span>
+              <span class="acts"><button class="ib" title="İptal"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l8 8M13 5l-8 8"/></svg></button></span>
+            </div>
+            <div class="row up wait">
+              <span class="chk" aria-hidden="true" style="opacity:.35"></span>
+              <span class="name"><span class="ticon t-text"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 3.5h6L13.5 6v8.5h-9z"/><path d="M6.5 8.5h5M6.5 11h5"/></svg></span>
+                <span class="nm"><strong>notlar.md</strong><span class="uprog"><i style="width:0"></i></span></span></span>
+              <span class="c-size">18 KB</span><span class="c-date">sırada</span>
+              <span class="acts"><button class="ib" title="İptal"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l8 8M13 5l-8 8"/></svg></button></span>
+            </div>
+            <div class="row fresh">
+              <span class="chk"></span>
+              <span class="name"><span class="ticon t-file"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 3.5h6L13.5 6v8.5h-9z"/></svg></span>
+                <span class="nm"><strong>tatil-2026.zip<span class="chip">yüklendi</span></strong><small>arşiv</small></span></span>
+              <span class="c-size">812 MB</span><span class="c-date">az önce</span>
+              <span class="acts"><button class="ib" title="Paylaş"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M11 4.5a2.2 2.2 0 103.1 3.1l-6.2 6.2a2.2 2.2 0 11-3.1-3.1z"/></svg></button><button class="ib" title="İndir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 3v9M5.2 8.2L9 12l3.8-3.8M3.5 14.5h11"/></svg></button><button class="ib" title="Çöpe at"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 5.5h10M7.5 5.5V4h3v1.5M5.5 5.5l.7 8.2h5.6l.7-8.2"/></svg></button></span>
+            </div>
+            <div class="row"><span class="chk"></span><span class="name"><span class="ticon t-dir"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2.5 5.2A1.2 1.2 0 013.7 4h3l1.6 1.8h5A1.2 1.2 0 0114.5 7v6.2a1.2 1.2 0 01-1.2 1.2H3.7a1.2 1.2 0 01-1.2-1.2z"/></svg></span><span class="nm"><strong>series</strong><small>7 öge</small></span></span><span class="c-size">—</span><span class="c-date">dün</span><span class="acts"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </figure>
+
+  <section class="specs">
+    <h2>Davranış notları</h2>
+    <ul>
+      <li><b>Kök</b> kullanıcı alanıdır (<code>/srv</code>); kısayollar yalnız gezinme kısayolu, ayrı sayfa değil.</li>
+      <li><b>Seçim</b> satır kutucuğuyla başlar; <kbd>Shift</kbd> aralık, <kbd>⌘/Ctrl</kbd> tek tek ekler. Seçim varken üst çubuk eylem çubuğudur.</li>
+      <li><b>Klavye:</b> <kbd>Enter</kbd> aç · <kbd>Backspace</kbd> üst klasör · <kbd>Space</kbd> seç · <kbd>Del</kbd> çöpe at · <kbd>/</kbd> arama.</li>
+      <li><b>Arama</b> bulunulan klasörde çalışır (sunucu tarafında, alt klasörlere inmeden); sonuç sayısı sağ üstte.</li>
+      <li><b>incomplete</b> klasörü seçilemez, paylaşılamaz ve uyarı çubuğuyla işaretlenir — qBittorrent oraya yazıyor.</li>
+      <li><b>Yükleme</b> ayrı bir alan değildir: dosyalar listenin üstüne bırakılır, satır olarak girer ve ilerleme satırın içinde ilerler. Kesikli hedef çerçevesi yalnız <code>dragover</code> sırasında çizilir (<code>dragleave</code>, <code>drop</code> ve <kbd>Esc</kbd> onu kaldırır); sürüklenen şey dosya değilse hiç görünmez. Sunucuya geçici ada yazılır, bitince atomik olarak yerine taşınır; yarım kalan dosya listede kalmaz. Üst çubuktaki özet rozetiyle hepsi durdurulabilir.</li>
+      <li><b>Izgara</b> küçük resim üretmez (ffmpeg yok): tür rengi + süre/boyut rozeti gösterir.</li>
+      <li><b>Çöp</b> ve <b>Paylaşımlar</b> bugünkü kartların aynısı; yalnız kısayol sütununa taşınır.</li>
+    </ul>
+    <h2 style="margin-top:8px">Arka uç karşılığı</h2>
+    <table class="api">
+      <tr><th>Uç nokta</th><th>Durum</th><th>Not</th></tr>
+      <tr><td><code>GET /api/list</code></td><td><span class="tag have">var</span></td><td>sıralama ve <code>q=</code> arama parametresi eklenir</td></tr>
+      <tr><td><code>POST /api/upload</code></td><td><span class="tag new">yeni</span></td><td>tek dosya, <code>Content-Length</code> sınırlı, geçici ada yazıp <code>rename</code></td></tr>
+      <tr><td><code>POST /api/mkdir</code>, <code>/api/rename</code>, <code>/api/move</code></td><td><span class="tag have">var</span></td><td>toplu işlem için liste kabul edecek</td></tr>
+      <tr><td><code>POST /api/trash</code></td><td><span class="tag have">var</span></td><td>liste kabul edecek (çoklu seçim)</td></tr>
+      <tr><td><code>POST /api/paylas</code></td><td><span class="tag have">var</span></td><td>çoklu seçimde tek tek çağrılır</td></tr>
+      <tr><td><code>GET /api/text</code></td><td><span class="tag have">var</span></td><td>önizleme paneli; düzenleme kapsam dışı</td></tr>
+    </table>
+    <p class="note" style="margin:6px 0 0">Bu üç ekleme (<b>yükleme</b>, <b>çoklu seçim</b>, <b>arama</b>) tamamlandığında
+      <code>filebrowser</code> konteyneri, <code>FILEBROWSER_USER/PASS</code> hesabı, 61007 portu ve
+      <code>file.&lt;domain&gt;</code> adı kaldırılabilir.</p>
+  </section>
+</div>

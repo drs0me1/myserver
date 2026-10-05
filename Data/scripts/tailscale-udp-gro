@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Varsayılan rota arayüz(ler)inde rx-udp-gro-forwarding on, rx-gro-list off.
+# Boot'ta oneshot unit ile yeniden uygulanır (ethtool kalıcı değildir).
+set -Eeuo pipefail
+
+IP_BIN="$(command -v ip)" || { echo "HATA: ip yok" >&2; exit 1; }
+AWK_BIN="$(command -v awk)" || { echo "HATA: awk yok" >&2; exit 1; }
+ETHTOOL_BIN="$(command -v ethtool)" || { echo "HATA: ethtool yok" >&2; exit 1; }
+
+declare -A SEEN=()
+NETDEVS=()
+APPLY_FAILED=0
+
+add_default_netdev() {
+    local family="$1" probe="$2" dev=""
+    # shellcheck disable=SC2016 # awk owns $i and $(i+1)
+    dev="$(
+        "$IP_BIN" "$family" -o route get "$probe" 2>/dev/null |
+            "$AWK_BIN" '{for (i=1; i<=NF; i++) if ($i=="dev") {print $(i+1); exit}}'
+    )" || true
+    if [[ -n "$dev" && -z "${SEEN[$dev]:-}" ]]; then
+        SEEN["$dev"]=1
+        NETDEVS+=("$dev")
+    fi
+}
+
+add_default_netdev -4 8.8.8.8
+add_default_netdev -6 2001:4860:4860::8888
+
+if [[ "${#NETDEVS[@]}" -eq 0 ]]; then
+    echo "UYARI: Varsayılan internet arayüzü yok; UDP GRO atlandı." >&2
+    exit 0
+fi
+
+for netdev in "${NETDEVS[@]}"; do
+    echo "UDP GRO: $netdev"
+    features="$($ETHTOOL_BIN -k "$netdev" 2>/dev/null || true)"
+    if grep -q '^rx-udp-gro-forwarding: on' <<<"$features" &&
+        grep -q '^rx-gro-list: off' <<<"$features"; then
+        echo "$netdev zaten önerilen GRO değerlerinde."
+        continue
+    fi
+    if ! grep -q '^rx-udp-gro-forwarding:' <<<"$features" ||
+        ! grep -q '^rx-gro-list:' <<<"$features"; then
+        echo "UYARI: $netdev gerekli GRO özelliklerini bildirmiyor." >&2
+        continue
+    fi
+    if grep -E '^rx-udp-gro-forwarding:.*\[fixed\]|^rx-gro-list:.*\[fixed\]' \
+        <<<"$features" >/dev/null; then
+        echo "UYARI: $netdev GRO özellikleri sürücüde sabit." >&2
+        continue
+    fi
+    if ! "$ETHTOOL_BIN" -K "$netdev" rx-udp-gro-forwarding on rx-gro-list off; then
+        echo "UYARI: $netdev GRO uygulanamadı." >&2
+        APPLY_FAILED=1
+        continue
+    fi
+    updated="$($ETHTOOL_BIN -k "$netdev" 2>/dev/null || true)"
+    if ! grep -q '^rx-udp-gro-forwarding: on' <<<"$updated" ||
+        ! grep -q '^rx-gro-list: off' <<<"$updated"; then
+        echo "UYARI: $netdev GRO doğrulanamadı." >&2
+        APPLY_FAILED=1
+    fi
+done
+
+exit "$APPLY_FAILED"

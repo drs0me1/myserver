@@ -1,0 +1,1769 @@
+<title>nrm Sunucu Paneli</title>
+<style>
+:root {
+  color-scheme: light;
+  --ground: #F0F2EF; --surface: #FBFCFA; --surface-2: #E6EAE4; --ink: #191C19; --muted: #5E655E; --line: #D6DBD3;
+  --accent: #0E5A73; --accent-hover: #0A485C; --accent-ink: #FFFFFF; --accent-soft: #DCEAEE;
+  --ok: #2B7A4B; --ok-soft: #DCEFE2; --warn: #93600F; --warn-soft: #F4E6CC;
+  --idle: #6F776F; --idle-soft: #E3E7E1; --danger: #B3261E; --danger-soft: #F7E0DC;
+  --video: #6A4C93; --video-soft: #ECE6F4;
+  --tint: #E2EDF0; --tint-line: #BCD3DA;
+  --lever-net: #C08552; --lever-peer: #2F6A46;
+  --focus: rgba(14, 90, 115, .38); --shadow: 0 24px 60px -18px rgba(18, 28, 22, .32);
+  --f-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0F1211; --surface: #161A18; --surface-2: #1F2522; --ink: #E5E9E4; --muted: #9AA29B; --line: #2A312D;
+    --accent: #6BBFD8; --accent-hover: #8CD0E4; --accent-ink: #0A1A20; --accent-soft: #15313A;
+    --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14;
+    --idle: #8E968F; --idle-soft: #242A27; --danger: #F08A80; --danger-soft: #3A1B18;
+    --video: #B79BE0; --video-soft: #2A2238;
+    --tint: #13232A; --tint-line: #264650;
+    --lever-net: #A9743F; --lever-peer: #2C6443;
+    --focus: rgba(107, 191, 216, .45); --shadow: 0 24px 60px -18px rgba(0, 0, 0, .7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0F1211; --surface: #161A18; --surface-2: #1F2522; --ink: #E5E9E4; --muted: #9AA29B; --line: #2A312D;
+  --accent: #6BBFD8; --accent-hover: #8CD0E4; --accent-ink: #0A1A20; --accent-soft: #15313A;
+  --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14;
+  --idle: #8E968F; --idle-soft: #242A27; --danger: #F08A80; --danger-soft: #3A1B18;
+  --video: #B79BE0; --video-soft: #2A2238;
+  --tint: #13232A; --tint-line: #264650;
+  --lever-net: #A9743F; --lever-peer: #2C6443;
+  --focus: rgba(107, 191, 216, .45); --shadow: 0 24px 60px -18px rgba(0, 0, 0, .7);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); border-radius: 6px; }
+svg { flex: none; }
+.mono { font-family: var(--f-mono); font-size: .88em; letter-spacing: -.01em; }
+.num { font-variant-numeric: tabular-nums; }
+a { color: inherit; }
+
+/* ---- kabuk ---- */
+.shell { display: grid; grid-template-columns: 236px minmax(0, 1fr); min-height: 100vh; }
+.side {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--surface);
+  border-right: 1px solid var(--line); padding: 20px 16px; display: flex; flex-direction: column; gap: 20px;
+}
+.brand { display: grid; gap: 2px; padding-inline: 8px; }
+.wordmark { font: 700 30px/1 var(--f-display); letter-spacing: -.035em; }
+.wordmark .dot { color: var(--accent); }
+.brand small { font-size: 12.5px; color: var(--muted); }
+.dotmark { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.live .dotmark { animation: pulse 2.4s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+.nav { display: grid; gap: 2px; }
+.nav a {
+  display: flex; align-items: center; gap: 11px; padding: 8px 10px; border-radius: 8px;
+  color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14.5px;
+}
+.nav a svg { width: 18px; height: 18px; }
+.nav a:hover { background: var(--surface-2); color: var(--ink); }
+.nav a[aria-current="page"] { background: var(--accent-soft); color: var(--ink); }
+.nav a[aria-current="page"] svg { color: var(--accent); }
+.nav .count {
+  margin-left: auto; font-size: 12px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2);
+  color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.nav a[aria-current="page"] .count { background: var(--surface); color: var(--accent); }
+.nav .count.ok { background: var(--ok-soft); color: var(--ok); }
+.side-group { display: grid; gap: 2px; }
+.side-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 0 10px 4px; }
+.side-group button {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 8px; border: 0; background: none;
+  color: var(--muted); font-size: 14px; cursor: pointer; text-align: left;
+}
+.side-group button:hover { background: var(--surface-2); color: var(--ink); }
+.side-group button svg { width: 15px; height: 15px; }
+.side-group button .ext { margin-left: auto; width: 13px; height: 13px; opacity: .6; }
+.side-foot { margin-top: auto; padding: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); display: grid; gap: 3px; }
+.side-foot .mono { color: var(--ink); }
+
+.main { padding: 22px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
+.content { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+.demo { justify-self: start; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); font-weight: 500; }
+.topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; }
+.eyebrow { margin: 0 0 3px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+h1 { margin: 0; font: 700 28px/1.1 var(--f-display); letter-spacing: -.025em; text-wrap: balance; }
+.top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mobile-brand { display: none; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 15px; border-radius: 7px;
+  border: 1px solid transparent; font-weight: 500; font-size: 14.5px; cursor: pointer; white-space: nowrap;
+  transition: background-color .15s, border-color .15s;
+}
+.btn svg { width: 16px; height: 16px; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-quiet { background: transparent; border-color: var(--line); }
+.btn-quiet:hover { background: var(--surface-2); }
+.btn-sm { padding: 6px 10px; font-size: 13px; border-radius: 6px; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 500; font-size: 13.5px; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+.linkbtn:hover { color: var(--accent-hover); text-decoration: underline; }
+.linkbtn svg { width: 14px; height: 14px; }
+
+/* ---- genel bakış ---- */
+.summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-block: 1px solid var(--line); margin: 0; }
+.summary > div { padding: 14px 18px 14px 0; display: grid; gap: 2px; }
+.summary > div + div { padding-left: 18px; border-left: 1px solid var(--line); }
+.summary dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.summary dd { margin: 0; font: 600 22px/1.25 var(--f-display); letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+.summary dd small { font: 400 13px var(--f-body); color: var(--muted); letter-spacing: 0; margin-left: 4px; }
+
+.grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.span-7 { grid-column: span 7; }
+.span-5 { grid-column: span 5; }
+.span-12 { grid-column: 1 / -1; }
+/* kullanımdaki portlar: erişilebildiği yere göre dört grup */
+.portgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.pgroup { display: grid; gap: 4px; align-content: start; padding: 10px 12px 6px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.pg-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pg-head strong { font-weight: 600; font-size: 14px; }
+.pg-head .pg-n { margin-left: auto; font: 12px var(--f-mono); color: var(--muted); }
+.pg-desc { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.pdot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.pdot.wan { background: var(--warn); }
+.pdot.ts { background: var(--accent); }
+.pdot.wg { background: var(--video); }
+.pdot.lo { background: var(--idle); }
+.prow { display: grid; grid-template-columns: 4.3rem minmax(0, 1fr); gap: 1px 10px; align-items: baseline; padding: 6px 0; }
+.prow + .prow { border-top: 1px solid var(--line); }
+.prow .pnum { font: 600 14px var(--f-mono); font-variant-numeric: tabular-nums; }
+.prow .pname { font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+.prow .pproto { font: 500 10.5px var(--f-mono); color: var(--muted); margin-left: 4px; }
+.prow small { grid-column: 2; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.prow.off .pnum, .prow.off .pname { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 12px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+/* kart başlığındaki özet rozetleri (genel bakış) */
+.head-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.hm {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 12.5px; font-weight: 500; background: var(--surface-2); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.hm.ok { background: var(--ok-soft); color: var(--ok); }
+.hm.warn { background: var(--warn-soft); color: var(--warn); }
+.hm.accent { background: var(--accent-soft); color: var(--accent); }
+.card h2 { margin: 0; font-size: 15px; font-weight: 600; display: flex; gap: 9px; align-items: center; }
+.card h2 svg { width: 17px; height: 17px; color: var(--accent); }
+.card-foot { display: flex; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; align-items: center; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+
+.status {
+  display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px 3px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; justify-self: start;
+}
+.status.ok { background: var(--ok-soft); color: var(--ok); }
+.status.idle { background: var(--warn-soft); color: var(--warn); }
+.status.never { background: var(--idle-soft); color: var(--idle); }
+.status.bad { background: var(--danger-soft); color: var(--danger); }
+.status.off { background: var(--idle-soft); color: var(--idle); }
+/* açma-kapama mandalı: peer için yatay (koyu yeşil), ağ için dikey (mat turuncu);
+   kapalıyken zemin kartın rengine döner */
+.sw, .vsw {
+  position: relative; padding: 0; flex: none; cursor: pointer; border: 1px solid var(--line); border-radius: 7px;
+  background: transparent; box-shadow: inset 0 1px 2px rgba(0, 0, 0, .14); transition: background-color .15s, border-color .15s;
+}
+.sw::after, .vsw::after {
+  content: ""; position: absolute; border: 1px solid var(--line); border-radius: 5px; background-color: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .22);
+}
+.sw { width: 46px; height: 24px; }
+.sw::after {
+  top: 2px; bottom: 2px; left: 2px; width: 20px; transition: left .15s;
+  background-image: linear-gradient(var(--muted), var(--muted)); background-size: 1.5px 9px; background-position: center; background-repeat: no-repeat;
+}
+.sw[aria-checked="true"] { background: var(--lever-peer); border-color: var(--lever-peer); }
+.sw[aria-checked="true"]::after { left: calc(100% - 22px); border-color: transparent; background-image: linear-gradient(var(--lever-peer), var(--lever-peer)); }
+.sw:disabled { opacity: .4; cursor: not-allowed; }
+.status.ok .dotmark { animation: pulse 2.4s ease-out infinite; }
+
+.peers-mini { display: grid; }
+.pm { display: grid; grid-template-columns: 5.6rem minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 0; }
+.pm + .pm { border-top: 1px solid var(--line); }
+.pm .who { display: grid; min-width: 0; }
+.pm .who strong { font-weight: 600; overflow-wrap: anywhere; }
+.pm .who small { font-size: 12.5px; color: var(--muted); }
+.tag { font: 500 11.5px var(--f-mono); padding: 1px 6px; border-radius: 5px; background: var(--surface-2); color: var(--muted); margin-left: 6px; }
+.rate { display: grid; justify-items: end; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rate span { display: flex; gap: 5px; }
+.rate i { font-style: normal; color: var(--muted); }
+
+.stack { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: var(--surface-2); }
+.stack span { display: block; height: 100%; }
+.seg-dl { background: var(--accent); }
+.seg-cop { background: var(--warn); }
+.seg-sys { background: var(--idle); opacity: .55; }
+.legend { display: grid; gap: 6px; margin: 0; }
+.legend div { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.legend dt { display: contents; }
+.legend .swatch { width: 10px; height: 10px; border-radius: 3px; }
+.legend dd { margin: 0; font-family: var(--f-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.legend .act { grid-column: 2 / -1; font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+.bigfree { font: 600 26px/1 var(--f-display); letter-spacing: -.02em; }
+.bigfree small { font: 400 13px var(--f-body); color: var(--muted); margin-left: 4px; }
+
+
+.feed { display: grid; }
+.ev { display: grid; grid-template-columns: 3.4rem 28px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 0; }
+.ev + .ev { border-top: 1px solid var(--line); }
+.ev time { font: 12px var(--f-mono); color: var(--muted); padding-top: 5px; font-variant-numeric: tabular-nums; }
+.ev .ico { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; }
+.ev .ico svg { width: 15px; height: 15px; }
+.ico.wg { background: var(--accent-soft); color: var(--accent); }
+.ico.fs { background: var(--video-soft); color: var(--video); }
+.ico.sec { background: var(--danger-soft); color: var(--danger); }
+.ev p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.ev p small { display: block; font-size: 12px; color: var(--muted); }
+
+.ticon { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; }
+.ticon svg { width: 17px; height: 17px; }
+.t-dir { background: var(--accent-soft); color: var(--accent); }
+.t-video { background: var(--video-soft); color: var(--video); }
+.t-text, .t-file { background: var(--idle-soft); color: var(--idle); }
+
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 16px; margin: 0; font-size: 13.5px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+/* geniş sunucu kartı: bilgiler yan yana sütunlarda */
+.facts.wide { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 1.2fr); gap: 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.gval { font: 600 17px/1.2 var(--f-display); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.gval small { font: 400 12.5px var(--f-body); color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+.spark { position: relative; height: 46px; margin: 6px 6px 0 0; }
+.spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.spark .gl { stroke: var(--line); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.spark .base { stroke: var(--line); vector-effect: non-scaling-stroke; }
+.spark .line { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.spark .area { fill: var(--accent); fill-opacity: .14; }
+.spark.ram .line { stroke: var(--video); }
+.spark.ram .area { fill: var(--video); }
+.enddot { position: absolute; right: -3.5px; width: 7px; height: 7px; margin-top: -3.5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--surface); }
+.spark.ram .enddot { background: var(--video); }
+.gsub { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin: 3px 6px 0 0; }
+.facts.wide .fact { display: grid; gap: 3px; align-content: start; min-width: 0; padding: 0 16px; }
+.facts.wide .fact:first-child { padding-left: 0; }
+.facts.wide .fact + .fact { border-left: 1px solid var(--line); }
+.facts.wide dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
+.facts.wide dd { font-size: 14.5px; }
+.facts.wide dd.mono { font-size: 13.5px; }
+.card.eq { align-self: stretch; grid-template-rows: auto 1fr auto; }
+.card.eq > .peers-mini, .card.eq > .feed { align-content: start; }
+/* sunucu kartında disk: kısa doluluk çubuğu */
+.dbox { height: 46px; margin: 6px 6px 0 0; display: grid; align-content: center; gap: 9px; }
+.dbar { display: flex; height: 12px; border-radius: 99px; overflow: hidden; background: var(--surface-2); }
+.dbar span { display: block; height: 100%; }
+.dleg { display: flex; gap: 4px 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.dleg span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dleg i { width: 8px; height: 8px; border-radius: 2px; }
+.facts.wide .fact.info { grid-template-columns: max-content minmax(0, 1fr); gap: 7px 12px; align-content: center; }
+.facts.wide .fact.info dt { font-size: 11px; padding-top: 2px; }
+.facts.wide .fact.info dd { font-size: 13.5px; }
+.facts.wide .fact.info dd.mono { font-size: 12.5px; }
+.meter { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 4px; max-width: 12rem; }
+.meter i { display: block; height: 100%; background: var(--accent); }
+
+/* ---- bölüm sayfaları ---- */
+.tabs-bar { display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px 11px; margin-bottom: -1px; border: 0;
+  border-bottom: 2px solid transparent; background: none; cursor: pointer; color: var(--muted); white-space: nowrap;
+  font-size: 14.5px; border-radius: 6px 6px 0 0;
+}
+.tab:hover { color: var(--ink); background: var(--surface-2); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); background: transparent; }
+.tab .tif { font: 500 12.5px var(--f-mono); }
+.tab[aria-selected="true"] .tif { color: var(--accent); }
+.tab .tcount { font-size: 12px; background: var(--surface-2); color: var(--muted); padding: 1px 7px; border-radius: 999px; }
+.tab svg { width: 15px; height: 15px; }
+.tab-spacer { flex: 1 0 12px; }
+
+.table { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tr { display: grid; gap: 14px; align-items: center; padding: 11px 16px; }
+.tr + .tr { border-top: 1px solid var(--line); }
+.tr.head { background: var(--surface-2); padding-block: 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.wg-t .tr { grid-template-columns: 3rem 6.5rem minmax(7rem, .9fr) minmax(11rem, 1.1fr) 7rem 6.5rem 6.6rem; }
+.wg-t strong { font-weight: 600; }
+.who2 { display: grid; min-width: 0; }
+.who2 strong { overflow-wrap: anywhere; }
+.who2 small { font-size: 12px; color: var(--muted); }
+.ib.del:hover { background: var(--danger-soft); color: var(--danger); }
+.ib[aria-expanded="true"] { background: var(--surface-2); color: var(--ink); }
+/* satır menüsü (…) */
+.popmenu {
+  position: fixed; z-index: 30; width: 210px; padding: 5px; display: grid; gap: 2px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.popmenu button {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 1px 10px; align-items: center; padding: 8px 10px;
+  border: 0; border-radius: 7px; background: none; cursor: pointer; text-align: left; color: var(--ink); font-size: 14px;
+}
+.popmenu button:hover, .popmenu button:focus-visible { background: var(--surface-2); box-shadow: none; }
+.popmenu svg { width: 16px; height: 16px; color: var(--accent); grid-row: 1 / span 2; }
+.popmenu small { font-size: 12px; color: var(--muted); }
+/* düzenle penceresi */
+dialog#pe { width: min(560px, calc(100vw - 32px)); }
+.field { display: grid; gap: 6px; }
+.field > label { font-size: 13px; font-weight: 500; }
+.field input[type="text"], .field input[type="number"] {
+  padding: 9px 11px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); font: 14px var(--f-mono); min-width: 0;
+}
+.field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); outline: none; }
+.field input[aria-invalid="true"] { border-color: var(--danger); }
+.hint-s { font-size: 12.5px; color: var(--muted); }
+.err-s { font-size: 12.5px; color: var(--danger); }
+.sugg { display: grid; gap: 2px; max-height: 16rem; overflow-y: auto; padding: 4px; border: 1px solid var(--line); border-radius: 9px; }
+.sug {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; padding: 8px 10px;
+  border: 0; border-radius: 7px; background: none; cursor: pointer; text-align: left; color: var(--ink);
+}
+.sug:hover, .sug:focus-visible { background: var(--surface-2); box-shadow: none; }
+.sug.on { background: var(--accent-soft); }
+.sug strong { font-weight: 600; font-size: 14px; }
+.sug .badge { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+.sug .tagline { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.sug .ips { grid-column: 1 / -1; font: 12px var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
+.sug-empty { padding: 10px; font-size: 13px; color: var(--muted); }
+.sug.custom { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0; cursor: default; }
+.sug.custom:hover { background: none; }
+.sug.custom.on { background: var(--accent-soft); }
+.sug-head {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 7px; background: none; cursor: pointer; text-align: left; color: var(--ink);
+}
+.sug.custom:not(.on) .sug-head:hover { background: var(--surface-2); }
+.sug-head strong { font-weight: 600; font-size: 14px; }
+.sug-head .tagline { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.cwrap { display: grid; gap: 4px; padding: 0 10px 10px; }
+.cwrap input { padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); font: 14px var(--f-mono); min-width: 0; }
+.cwrap input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); outline: none; }
+.cwrap input[aria-invalid="true"] { border-color: var(--danger); }
+.ka-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ka-row input { width: 7rem; }
+.chips-s { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips-s button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.chips-s button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.infoline-s { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--muted); background: var(--surface-2); padding: 9px 11px; border-radius: 8px; }
+.infoline-s svg { width: 16px; height: 16px; margin-top: 2px; color: var(--accent); }
+.addr { display: grid; }
+.addr .v6 { color: var(--muted); font-size: .78em; }
+.acts { display: flex; gap: 2px; justify-content: flex-end; }
+.ib { background: none; border: 0; padding: 7px; border-radius: 6px; color: var(--muted); cursor: pointer; line-height: 0; }
+.ib:hover { background: var(--surface-2); color: var(--ink); }
+.ib svg { width: 16px; height: 16px; }
+.traffic { display: grid; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* ağ sekmeleri: kutu biçiminde; seçili sekme ve altındaki sayfa aynı tonda birleşir */
+.netwrap { display: grid; }
+.nettabs { display: flex; gap: 8px; align-items: flex-end; overflow-x: auto; padding-top: 2px; }
+.nettab {
+  position: relative; min-width: 20rem; background: var(--surface); border: 1px solid var(--line); border-bottom: 0;
+  border-radius: 12px 12px 0 0; margin-bottom: -1px; transition: background-color .15s;
+}
+.nettab:hover { background: var(--surface-2); }
+.nettab.sel { z-index: 2; background: var(--tint); border-color: var(--tint-line); }
+.nt-main {
+  display: grid; gap: 5px; width: 100%; padding: 12px 16px 13px; text-align: left; cursor: pointer; color: var(--ink);
+  background: none; border: 0; border-radius: 12px 12px 0 0;
+}
+.nettab.sel .nt-main { cursor: default; }
+.nt-main .nt-top { padding-right: 124px; }
+.nt-actions { position: absolute; top: 8px; right: 10px; display: flex; align-items: center; gap: 2px; }
+.nt-act {
+  width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.nt-act svg { width: 16px; height: 16px; }
+.nt-act:hover { background: var(--surface-2); color: var(--ink); }
+.nettab.sel .nt-act:hover { background: var(--surface); }
+.nt-act.del:hover { background: var(--danger-soft); color: var(--danger); }
+.nt-actions .vsw { margin-left: 8px; }
+.vsw { width: 24px; height: 50px; }
+.vsw::after {
+  left: 2px; right: 2px; top: calc(100% - 22px); height: 20px; transition: top .15s;
+  background-image: linear-gradient(var(--muted), var(--muted)); background-size: 9px 1.5px; background-position: center; background-repeat: no-repeat;
+}
+.vsw[aria-checked="true"] { background: var(--lever-net); border-color: var(--lever-net); }
+.vsw[aria-checked="true"]::after { top: 2px; border-color: transparent; background-image: linear-gradient(var(--lever-net), var(--lever-net)); }
+.sw:hover:not(:disabled), .vsw:hover { border-color: var(--muted); }
+.nettab.off .nt-if, .nettab.off .nt-lab { color: var(--muted); }
+.nt-main > .nt-cnt { justify-self: start; margin-left: 0; }
+.nt-top { display: flex; align-items: center; gap: 10px; }
+.nt-if { font: 700 22px/1 var(--f-display); letter-spacing: -.01em; color: var(--muted); }
+.nettab.sel .nt-if { color: var(--accent); }
+.nt-lab { font-weight: 600; font-size: 14.5px; }
+.nt-cnt {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 8px;
+  border-radius: 999px; background: var(--idle-soft); color: var(--idle); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.nt-cnt.on { background: var(--ok-soft); color: var(--ok); }
+.nettab small { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+.nettab small .mono { color: var(--ink); }
+.nettab.add { display: grid; gap: 5px; padding: 12px 16px 13px; text-align: left; cursor: pointer; border: 1px dashed var(--line); border-radius: 12px; margin-bottom: 8px; background: transparent; color: var(--accent); min-width: 12rem; }
+.nettab.add:hover { border-color: var(--accent); background: var(--accent-soft); }
+.nettab.add svg { width: 18px; height: 18px; }
+.netpanel { background: var(--tint); border: 1px solid var(--tint-line); border-radius: 12px; padding: 18px; display: grid; gap: 16px; }
+.netpanel.first { border-top-left-radius: 0; }
+/* dosya kartları: WireGuard ağ kartlarıyla aynı kalıp, klasör bilgisiyle */
+.nettab.fs .nt-top { padding-right: 44px; }
+.nt-title { font: 700 18px/1.15 var(--f-display); letter-spacing: -.015em; }
+.fs-ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; }
+.fs-ico svg { width: 17px; height: 17px; }
+.t-warn { background: var(--warn-soft); color: var(--warn); }
+.nt-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.nt-cnt.warn { background: var(--warn-soft); color: var(--warn); }
+.nt-meter { display: block; height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 2px; }
+.nt-meter i { display: block; height: 100%; background: var(--accent); }
+.nt-act:disabled { opacity: .35; cursor: not-allowed; }
+.nt-act:disabled:hover { background: none; color: var(--muted); }
+.pathfield {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap; min-height: 46px; padding: 4px 12px 4px 4px;
+  background: var(--surface); border: 1px solid var(--tint-line); border-radius: 10px;
+}
+.pf-btn { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
+.pf-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.pf-btn:disabled { opacity: .35; cursor: default; }
+.pf-btn svg { width: 16px; height: 16px; }
+.pf-sep { width: 1px; align-self: stretch; margin: 7px 6px; background: var(--line); }
+.pf-crumbs { flex: 1 1 14rem; min-width: 0; }
+.pf-meta { margin-left: auto; padding-left: 10px; font-size: 12.5px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.trash-t .tr { grid-template-columns: minmax(0, 1fr) 6.5rem 8rem 11rem; padding-block: 8px; }
+.nettab.trashcard { min-width: 0; margin-left: auto; }
+.trashcard .nt-main { justify-items: center; gap: 7px; padding: 12px 20px 13px; text-align: center; }
+.trashcard .fs-ico { width: 38px; height: 38px; border-radius: 10px; }
+.trashcard .fs-ico svg { width: 20px; height: 20px; }
+.trashcard .tsize { font: 600 13.5px/1 var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.netpanel.last { border-top-right-radius: 0; }
+.nettab.trashcard + .nettab.trashcard { margin-left: 0; }
+/* paylaşım */
+.t-share { background: var(--accent-soft); color: var(--accent); }
+.shchip {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
+  font-size: 11.5px; font-weight: 500; background: var(--accent-soft); color: var(--accent); white-space: nowrap;
+}
+.shchip svg { width: 12px; height: 12px; }
+.ib.shared { color: var(--accent); }
+.table.share-t .tr { grid-template-columns: minmax(0, 1fr) 8rem 9rem 9.5rem; padding-block: 8px; }
+.share-t .c-user { font-size: 13px; color: var(--muted); }
+.share-t .c-exp { font-size: 13px; color: var(--muted); }
+dialog#sh { width: min(560px, calc(100vw - 32px)); }
+.okhead { display: flex; gap: 12px; align-items: center; }
+.okico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; background: var(--ok-soft); color: var(--ok); }
+.okico.plain { background: var(--accent-soft); color: var(--accent); }
+.okico svg { width: 18px; height: 18px; }
+.cred { display: grid; gap: 6px; }
+.cred.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cred.row3 .cred-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; padding: 8px 8px 8px 12px; }
+.cred.row3 .k { grid-column: 1 / -1; }
+.cred-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border: 1px solid var(--line); border-radius: 9px; min-height: 46px; }
+.cred-row .k { font-size: 12px; color: var(--muted); }
+.cred-row .v { font: 14px var(--f-mono); overflow-wrap: anywhere; }
+.cred-row .v.plain { font-family: var(--f-body); }
+.cred-acts { display: flex; gap: 2px; }
+.btn-quiet.danger-text { color: var(--danger); margin-right: auto; }
+.btn-quiet.danger-text:hover { background: var(--danger-soft); border-color: var(--danger); }
+.addrow.danger .plus { background: var(--danger); color: var(--surface); }
+.netpanel .addrow.danger:hover, .addrow.danger:hover { border-color: var(--danger); background: var(--danger-soft); }
+.empty-row { display: grid; gap: 4px; justify-items: center; padding: 28px 16px; color: var(--muted); text-align: center; }
+.empty-row strong { color: var(--ink); }
+.netpanel.off .summary, .netpanel.off .table { opacity: .6; }
+.offbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap;
+  padding: 10px 12px 10px 14px; border-radius: 9px; background: var(--surface); border: 1px solid var(--tint-line); font-size: 14px;
+}
+.offbar strong { font-weight: 600; }
+.offbar span { color: var(--muted); }
+.tr.p-off > :not(.c-sw) { opacity: .5; }
+.netpanel .summary { border-color: var(--tint-line); }
+.netpanel .summary > div + div { border-left-color: var(--tint-line); }
+.netwrap > .note { margin-top: 16px; }
+.addrow {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; border: 1px dashed var(--line);
+  border-radius: 10px; background: transparent; cursor: pointer; text-align: left; color: var(--ink);
+  transition: border-color .15s, background-color .15s;
+}
+.addrow:hover { border-color: var(--accent); background: var(--surface); }
+.netpanel .addrow { border-color: var(--tint-line); }
+.addrow .plus { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); flex: none; }
+.addrow .plus svg { width: 16px; height: 16px; }
+.addrow strong { font-weight: 600; }
+.addrow small { display: block; color: var(--muted); font-size: 12.5px; }
+.traffic i { font-style: normal; color: var(--muted); }
+
+.pathbar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.crumbs { list-style: none; display: flex; flex-wrap: wrap; align-items: center; margin: 0; padding: 0; }
+.crumbs li { display: flex; align-items: center; }
+.crumbs li + li::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-top: 1.5px solid var(--muted); transform: rotate(45deg); margin: 0 8px 0 3px; opacity: .55; }
+.crumb { background: none; border: 0; padding: 5px 7px; border-radius: 6px; font-size: 15.5px; color: var(--muted); cursor: pointer; }
+.crumb:hover { background: var(--surface-2); color: var(--ink); }
+.crumb.cur { color: var(--ink); font-weight: 600; cursor: default; background: none; }
+.crumb.root { font-family: var(--f-mono); font-size: 14px; }
+.fs-t .tr { grid-template-columns: minmax(0, 1fr) 6.5rem 9rem 7rem; padding-block: 8px; }
+.fname { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: center; background: none; border: 0; padding: 2px 0; text-align: left; cursor: pointer; }
+.fname:hover strong { color: var(--accent); }
+.fname strong { font-weight: 500; overflow-wrap: anywhere; }
+.fname small { display: block; font-size: 12px; color: var(--muted); }
+.c-size { font: 13px var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.c-date { font-size: 13px; color: var(--muted); }
+.note { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--muted); background: var(--surface-2); padding: 9px 11px; border-radius: 8px; }
+.note svg { width: 16px; height: 16px; margin-top: 2px; color: var(--accent); }
+
+
+.chipset { display: flex; gap: 6px; flex-wrap: wrap; }
+.fchip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; font-size: 13px; cursor: pointer; color: var(--muted); }
+.fchip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.log-t .ev { padding: 10px 16px; grid-template-columns: 6.8rem 28px minmax(0, 1fr) auto; }
+.log-t .who { font: 12px var(--f-mono); color: var(--muted); padding-top: 5px; white-space: nowrap; }
+
+dialog {
+  border: 1px solid var(--line); border-radius: 12px; padding: 0; color: var(--ink); background: var(--surface);
+  box-shadow: var(--shadow); width: min(500px, calc(100vw - 32px));
+}
+dialog::backdrop { background: rgba(10, 14, 12, .5); }
+.dlg { display: grid; gap: 14px; padding: 20px 22px 22px; }
+.dlg-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.dlg-head h3 { margin: 0; font-size: 19px; font-weight: 600; text-wrap: balance; }
+.dlg-head p { margin: 3px 0 0; font-size: 13.5px; color: var(--muted); }
+.dlg-x { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 4px; border-radius: 6px; line-height: 0; }
+.dlg-x:hover { color: var(--ink); background: var(--surface-2); }
+.dlg-x svg { width: 18px; height: 18px; }
+.conseq { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; }
+.conseq li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; padding: 9px 12px; font-size: 14px; }
+.conseq li + li { border-top: 1px solid var(--line); }
+.conseq svg { width: 16px; height: 16px; color: var(--danger); margin-top: 2px; }
+.conseq.calm svg { color: var(--accent); }
+.confirm-row { display: grid; gap: 6px; }
+.confirm-row label { font-size: 13px; color: var(--muted); }
+.confirm-row input { padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); font-family: var(--f-mono); }
+.confirm-row input:focus { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); outline: none; }
+.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.btn-danger { background: var(--danger); color: var(--surface); }
+.btn-danger:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
+
+.toast-act { background: none; border: 0; padding: 2px 4px; color: var(--accent-soft); font-weight: 600; cursor: pointer; border-radius: 5px; white-space: nowrap; }
+.toast {
+  display: flex; gap: 14px; align-items: center;
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 20; background: var(--ink); color: var(--surface);
+  padding: 10px 16px; border-radius: 8px; font-size: 14px; box-shadow: var(--shadow); width: max-content; max-width: calc(100vw - 32px);
+}
+.bottomnav { display: none; }
+
+/* arayüz ekle: ayrı sayfa */
+.addpage { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.addform { display: grid; gap: 16px; }
+.addside .card { position: sticky; top: 20px; }
+.card-head .hint-s { text-align: right; }
+.ident-row {
+  display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; padding: 12px 14px;
+  border-radius: 10px; background: var(--tint); border: 1px solid var(--tint-line);
+}
+.ident-row .big { font: 700 30px/1 var(--f-display); letter-spacing: -.02em; color: var(--accent); }
+.ident-row .mono { font-size: 13px; color: var(--muted); }
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 10px; transition: background-color .15s, border-color .15s;
+}
+.toggle-row.on { border-color: var(--accent); background: var(--accent-soft); }
+.toggle-row .tr-text { display: grid; gap: 2px; min-width: 0; }
+.toggle-row strong { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.toggle-row strong svg { width: 17px; height: 17px; color: var(--accent); }
+.toggle-row small { font-size: 12.5px; color: var(--muted); }
+.addform .sugg { max-height: none; }
+.nettab.preview { min-width: 0; margin: 0; border-bottom: 1px solid var(--tint-line); border-radius: 12px; }
+.nettab.preview .nt-main { cursor: default; }
+.nettab.preview .nt-top { padding-right: 0; }
+.will { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.will li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; font-size: 13.5px; }
+.will svg { width: 16px; height: 16px; color: var(--ok); margin-top: 2px; }
+
+@media (max-width: 1060px) {
+  .facts.wide { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+  .facts.wide .fact:nth-child(3n+1) { padding-left: 0; border-left: 0; }
+  .portgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .addpage { grid-template-columns: minmax(0, 1fr); }
+  .addside .card { position: static; }
+  .span-7, .span-5 { grid-column: 1 / -1; }
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary > div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .summary > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .wg-t .tr { grid-template-columns: 3rem 6.5rem minmax(0, 1fr) 7rem 6.6rem; }
+  .wg-t .c-addr, .wg-t .c-traffic { display: none; }
+}
+@media (max-width: 760px) {
+  .facts.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts.wide .fact:nth-child(n) { padding-left: 16px; border-left: 1px solid var(--line); }
+  .facts.wide .fact:nth-child(2n+1) { padding-left: 0; border-left: 0; }
+  .portgrid { grid-template-columns: minmax(0, 1fr); }
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .side { display: none; }
+  .main { padding-bottom: 96px; }
+  .mobile-brand { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .mobile-brand .wordmark { font-size: 26px; }
+  .bottomnav {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: var(--surface); border-top: 1px solid var(--line); padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  .bottomnav a { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border-radius: 8px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  .bottomnav a svg { width: 20px; height: 20px; }
+  .bottomnav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+  .toast { bottom: 84px; }
+  .fs-t .tr, .trash-t .tr { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .table.share-t .tr { grid-template-columns: minmax(0, 1fr) auto; }
+  .share-t .c-user, .share-t .c-exp, .share-t .tr.head { display: none; }
+  .cred.row3 { grid-template-columns: minmax(0, 1fr); }
+  .cred-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cred-row .k { grid-column: 1 / -1; }
+  .fs-t .c-date, .fs-t .head { display: none; }
+  .log-t .ev { grid-template-columns: 3.6rem 28px minmax(0, 1fr); }
+  .log-t .who { display: none; }
+  .wg-t .tr { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .wg-t .c-hs, .wg-t .tr.head, .wg-t .tr > .status { display: none; }
+  h1 { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="shell">
+  <aside class="side" aria-label="Sunucu paneli">
+    <div class="brand"><span class="wordmark">nrm<span class="dot">.</span></span><small>Sunucu paneli · panel.ayc</small></div>
+    <nav class="nav" aria-label="Bölümler">
+      <a href="#/genel" data-route="genel" data-icon="gauge">Genel bakış</a>
+      <a href="#/wireguard" data-route="wireguard" data-icon="shield">WireGuard <span class="count" id="nav-wg">3 bağlı</span></a>
+      <a href="#/dosyalar" data-route="dosyalar" data-icon="folder">Dosyalar <span class="count">%64</span></a>
+      <a href="#/gunluk" data-route="gunluk" data-icon="list">Günlük</a>
+    </nav>
+    <div class="side-group">
+      <span class="side-label">Diğer arayüzler</span>
+      <button type="button" data-ext="dozzle.ayc" data-icon="terminal">Dozzle <svg class="ext" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 3.5H3.5v11h11V11M10 3.5h4.5V8M14.5 3.5L8 10"/></svg></button>
+      <button type="button" data-ext="torrent.ayc" data-icon="download">qBittorrent <svg class="ext" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 3.5H3.5v11h11V11M10 3.5h4.5V8M14.5 3.5L8 10"/></svg></button>
+      <button type="button" data-ext="file.ayc" data-icon="folder">FileBrowser <svg class="ext" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M7 3.5H3.5v11h11V11M10 3.5h4.5V8M14.5 3.5L8 10"/></svg></button>
+    </div>
+    <div class="side-foot">
+      <span>Sürüm <span class="mono">2026.08.06-v2-105</span></span>
+      <span>Tailscale <span class="mono">100.64.12.7</span></span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="content">
+      <div class="mobile-brand"><span class="wordmark">nrm<span class="dot">.</span></span></div>
+      <span class="demo">Tasarım örneği: örnek verilerle çalışır, sunucuya bağlı değil</span>
+      <header class="topbar">
+        <div><p class="eyebrow" id="eyebrow">nrm · Debian 13</p><h1 id="title">Genel bakış</h1></div>
+        <div class="top-actions" id="top-actions"></div>
+      </header>
+
+      <!-- GENEL BAKIŞ -->
+      <section data-view="genel">
+        <div style="display:grid;gap:16px">
+          <div class="grid">
+            <article class="card span-12">
+              <div class="card-head"><h2 data-icon="server">Sunucu</h2><div class="head-right"><span class="hm ok">12 gün 4 sa açık</span></div></div>
+              <dl class="facts wide">
+                <div class="fact"><dt>İşlemci · 4 çekirdek</dt><dd>
+                  <span class="gval" id="cpu-val">%23<small>şu an</small></span>
+                  <div class="spark" id="cpu-spark" role="img" aria-label="Son 2 dakikanın işlemci kullanımı"><svg viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true"><line class="gl" x1="0" y1="20" x2="120" y2="20"/><line class="base" x1="0" y1="40" x2="120" y2="40"/><path class="area"/><path class="line"/></svg><span class="enddot"></span></div>
+                  <span class="gsub"><span>2 dk önce</span><span>kesikli çizgi %50</span><span>şimdi</span></span>
+                </dd></div>
+                <div class="fact"><dt>Bellek · 8 GB</dt><dd>
+                  <span class="gval" id="ram-val">2,1 GB<small>%26</small></span>
+                  <div class="spark ram" id="ram-spark" role="img" aria-label="Son 2 dakikanın bellek kullanımı"><svg viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true"><line class="gl" x1="0" y1="20" x2="120" y2="20"/><line class="base" x1="0" y1="40" x2="120" y2="40"/><path class="area"/><path class="line"/></svg><span class="enddot"></span></div>
+                  <span class="gsub"><span>2 dk önce</span><span>kesikli çizgi %50</span><span>şimdi</span></span>
+                </dd></div>
+                <div class="fact"><dt>Disk · 2 TB</dt><dd>
+                  <span class="gval">1,28 TB<small>%64 dolu</small></span>
+                  <div class="dbox">
+                    <div class="dbar" role="img" aria-label="Disk yüzde 64 dolu: indirilenler 1,22 TB, çöp 3,2 GB, sistem 58 GB"><span class="seg-dl" style="width:61%"></span><span class="seg-cop" style="width:.6%"></span><span class="seg-sys" style="width:3%"></span></div>
+                    <div class="dleg"><span><i class="seg-dl"></i>İndirilenler 1,22 TB</span><span><i class="seg-cop"></i>Çöp 3,2 GB</span><span><i class="seg-sys"></i>Sistem 58 GB</span></div>
+                  </div>
+                  <span class="gsub"><span>712 GB boş</span><span>/downloads</span></span>
+                </dd></div>
+                <div class="fact info">
+                  <dt>Sistem</dt><dd>Debian 13.1 · çekirdek 6.12</dd>
+                  <dt>WAN</dt><dd class="mono">203.0.113.7<br>2001:db8::7</dd>
+                  <dt>Kurulum</dt><dd class="mono">2026.08.06-v2-105</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="card span-7 eq">
+              <div class="card-head"><h2 data-icon="shield">WireGuard cihazları</h2><div class="head-right"><span class="hm ok" id="sum-wg"></span><button class="linkbtn" type="button" data-go="#/wireguard">Tümü <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 4.5l4.5 4.5L7 13.5"/></svg></button></div></div>
+              <div class="peers-mini" id="peers-mini"></div>
+              <div class="card-foot"><span>2 ağ · wg0 UDP 61001, wg1 UDP 61020</span></div>
+            </article>
+
+            <article class="card span-5 eq">
+              <div class="card-head"><h2 data-icon="list">Son işlemler</h2><div class="head-right"><span class="hm">son 24 saatte 5</span><button class="linkbtn" type="button" data-go="#/gunluk">Günlük <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 4.5l4.5 4.5L7 13.5"/></svg></button></div></div>
+              <div class="feed" id="feed-mini"></div>
+            </article>
+
+            <article class="card span-12">
+              <div class="card-head"><h2 data-icon="lock">Kullanımdaki portlar</h2><div class="head-right"><span class="hm warn" id="ports-sum"></span></div></div>
+              <div class="portgrid" id="ports"></div>
+              <div class="card-foot"><span id="ports-foot"></span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- WIREGUARD -->
+      <section data-view="wireguard" hidden>
+        <div class="netwrap">
+          <nav class="nettabs" id="wg-tabs" role="tablist" aria-label="WireGuard ağları"></nav>
+          <div class="netpanel first" id="wg-panel" role="tabpanel">
+            <div class="offbar" id="wg-offbar" hidden></div>
+            <dl class="summary" id="wg-summary"></dl>
+            <div class="table wg-t" id="wg-table"></div>
+            <button type="button" class="addrow" id="wg-add"></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ARAYÜZ EKLE (ayrı sayfa) -->
+      <section data-view="wgadd" hidden>
+        <div class="addpage">
+          <div class="addform">
+            <article class="card">
+              <div class="card-head"><h2 data-icon="shield">Ağ</h2><span class="hint-s">Sıradaki boş ağ kendiliğinden seçildi</span></div>
+              <div class="ident-row" id="na-ident"></div>
+              <div class="field">
+                <label for="na-label">Etiket</label>
+                <input type="text" id="na-label" maxlength="24" autocomplete="off" placeholder="ör. Misafir, İş, Çocuklar">
+                <small class="hint-s">Yalnız panelde görünür; boş bırakılabilir.</small>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2 data-icon="lock">Erişim</h2><span class="hint-s">İnternet erişimi her zaman açık</span></div>
+              <div class="toggle-row" id="na-local-row">
+                <div class="tr-text"><strong><span data-icon="server"></span>Local erişim</strong><small id="na-local-desc"></small></div>
+                <button type="button" class="vsw" id="na-local" role="switch" aria-checked="false" aria-describedby="na-local-desc" aria-label="Local erişim"></button>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2 data-icon="stack">Port</h2><span class="hint-s">Sunucunun internete açtığı UDP portu</span></div>
+              <div class="field">
+                <label for="na-port">UDP portu</label>
+                <input type="number" id="na-port" min="1024" max="65535">
+                <small class="err-s" id="na-port-err" hidden></small>
+                <small class="hint-s" id="na-port-hint">1024–65535 arasında, kullanılmayan bir UDP portu. Kullanılan port reddedilir; sistem 61020'den başlayarak sıradaki boş portu yazar.</small>
+              </div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2 data-icon="server">Varsayılan DNS</h2><span class="hint-s">Bu ağa eklenen cihazlara önerilir</span></div>
+              <div class="sugg" id="na-sugg" role="radiogroup" aria-label="Varsayılan DNS"></div>
+            </article>
+          </div>
+          <aside class="addside">
+            <article class="card">
+              <div class="card-head"><h2>Oluşturulacak ağ</h2></div>
+              <div id="na-preview"></div>
+              <ul class="will" id="na-will"></ul>
+              <div class="infoline-s" data-icon="info"><span>Ağlar birbirini görmez: bu ağdaki cihazlar diğer ağlara, tailnet'e ve SSH'a ulaşamaz.</span></div>
+              <div class="dlg-foot">
+                <button class="btn btn-quiet" type="button" data-go="#/wireguard">Vazgeç</button>
+                <button class="btn btn-primary" type="button" id="na-create" disabled>Arayüzü oluştur</button>
+              </div>
+            </article>
+          </aside>
+        </div>
+      </section>
+
+      <!-- DOSYALAR -->
+      <section data-view="dosyalar" hidden>
+        <div class="netwrap">
+          <nav class="nettabs" id="fs-tabs" role="tablist" aria-label="Klasörler"></nav>
+          <div class="netpanel first" id="fs-panel" role="tabpanel"><div id="fs-body" style="display:grid;gap:14px"></div></div>
+        </div>
+      </section>
+
+
+      <!-- GÜNLÜK -->
+      <section data-view="gunluk" hidden>
+        <div style="display:grid;gap:14px">
+          <div class="chipset" id="log-filter" role="group" aria-label="Süzgeç"></div>
+          <div class="table log-t" id="log-table"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<nav class="bottomnav" aria-label="Bölümler">
+  <a href="#/genel" data-route="genel" data-icon="gauge">Genel</a>
+  <a href="#/wireguard" data-route="wireguard" data-icon="shield">WireGuard</a>
+  <a href="#/dosyalar" data-route="dosyalar" data-icon="folder">Dosyalar</a>
+  <a href="#/gunluk" data-route="gunluk" data-icon="list">Günlük</a>
+</nav>
+
+<dialog id="sh" aria-labelledby="sh-title"><div class="dlg" id="sh-body"></div></dialog>
+
+<dialog id="pe" aria-labelledby="pe-title">
+  <form class="dlg" id="pe-form" novalidate>
+    <div class="dlg-head">
+      <div><h3 id="pe-title">Düzenle</h3><p id="pe-sub"></p></div>
+      <button class="dlg-x" type="button" id="pe-x" aria-label="Kapat"></button>
+    </div>
+    <div class="field">
+      <span class="lbl" id="pe-dns-lbl" style="font-size:13px;font-weight:500">DNS sunucuları</span>
+      <div class="sugg" id="pe-sugg" role="radiogroup" aria-labelledby="pe-dns-lbl"></div>
+    </div>
+    <div class="field">
+      <label for="pe-ka">PersistentKeepalive (saniye)</label>
+      <div class="ka-row"><input type="number" id="pe-ka" min="0" max="65535"><div class="chips-s" id="pe-ka-chips"></div></div>
+      <small class="hint-s">Cihaz boştayken bağlantıyı açık tutmak için kaç saniyede bir paket yollasın. 0 = kapalı; mobil ağlarda 21 önerilir.</small>
+    </div>
+    <div class="infoline-s" data-icon="info"><span>Anahtar ve adres değişmez. Kaydedince cihazda yeni QR'ı okutun: eski tüneli silip yenisini ekleyin.</span></div>
+    <div class="dlg-foot">
+      <button class="btn btn-quiet" type="button" id="pe-cancel">Vazgeç</button>
+      <button class="btn btn-primary" type="submit" id="pe-save" disabled>Kaydet</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="cf" aria-labelledby="cf-title">
+  <form class="dlg" id="cf-form" novalidate>
+    <div class="dlg-head">
+      <div><h3 id="cf-title">Onay</h3><p id="cf-sub"></p></div>
+      <button class="dlg-x" type="button" id="cf-x" aria-label="Kapat"></button>
+    </div>
+    <ul class="conseq" id="cf-list"></ul>
+    <div class="confirm-row" id="cf-word-row">
+      <label for="cf-word">Onay için <strong>onayla</strong> yazın</label>
+      <input type="text" id="cf-word" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="dlg-foot">
+      <button class="btn btn-quiet" type="button" id="cf-cancel">Vazgeç</button>
+      <button class="btn btn-danger" type="submit" id="cf-go" disabled>Tamam</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const ICON = {
+    gauge: '<path d="M2.8 12.6a6.4 6.4 0 1 1 12.4 0"/><path d="M9 11.2l3-3.6"/><circle cx="9" cy="11.6" r="1.1"/>',
+    shield: '<path d="M9 2.2l5.6 2v4.4c0 3.4-2.4 5.9-5.6 7.2-3.2-1.3-5.6-3.8-5.6-7.2V4.2z"/>',
+    folder: '<path d="M2.2 5.2c0-.9.7-1.6 1.6-1.6h3.1l1.7 1.9h5.6c.9 0 1.6.7 1.6 1.6v6.1c0 .9-.7 1.6-1.6 1.6H3.8c-.9 0-1.6-.7-1.6-1.6z"/>',
+    stack: '<rect x="2.6" y="2.8" width="12.8" height="4.4" rx="1.2"/><rect x="2.6" y="10.8" width="12.8" height="4.4" rx="1.2"/><path d="M5.2 5h.1M5.2 13h.1"/>',
+    list: '<path d="M6.6 4.6h8.4M6.6 9h8.4M6.6 13.4h8.4"/><circle cx="3.3" cy="4.6" r=".95" fill="currentColor" stroke="none"/><circle cx="3.3" cy="9" r=".95" fill="currentColor" stroke="none"/><circle cx="3.3" cy="13.4" r=".95" fill="currentColor" stroke="none"/>',
+    terminal: '<rect x="2.2" y="3.2" width="13.6" height="11.6" rx="1.8"/><path d="M5.2 7l2.2 2-2.2 2M9.4 11.4h3.2"/>',
+    download: '<path d="M9 2.8v8.4M5.6 7.9L9 11.3l3.4-3.4M3.2 14.6h11.6"/>',
+    disk: '<ellipse cx="9" cy="4.6" rx="6" ry="2.2"/><path d="M3 4.6v8.8c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V4.6M3 9c0 1.2 2.7 2.2 6 2.2S15 10.2 15 9"/>',
+    server: '<rect x="2.6" y="2.6" width="12.8" height="12.8" rx="2"/><path d="M5.6 6.2h6.8M5.6 9h6.8M5.6 11.8h3.6"/>',
+    plus: '<path d="M9 3.5v11M3.5 9h11"/>',
+    trash: '<path d="M3.2 5h11.6M7.2 5V3.4h3.6V5M4.6 5l.8 9.6h7.2l.8-9.6"/><path d="M7.6 8v4M10.4 8v4"/>',
+    info: '<circle cx="9" cy="9" r="6.8"/><path d="M9 8.2v4.2M9 5.6v.1"/>',
+    video: '<rect x="2.2" y="3.6" width="13.6" height="10.8" rx="1.8"/><path d="M7.4 6.7v4.6l3.9-2.3z"/>',
+    text: '<path d="M4.6 2.4h5.8l3 3v10.2H4.6z"/><path d="M10.2 2.4v3.2h3.2M6.8 9h4.4M6.8 11.6h4.4"/>',
+    qr: '<rect x="2.6" y="2.6" width="5" height="5" rx=".8"/><rect x="10.4" y="2.6" width="5" height="5" rx=".8"/><rect x="2.6" y="10.4" width="5" height="5" rx=".8"/><path d="M10.4 10.4h2v2M15.4 10.4v5h-5"/>',
+    more: '<circle cx="4.2" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/><circle cx="13.8" cy="9" r="1" fill="currentColor" stroke="none"/>',
+    lock: '<rect x="3.6" y="8" width="10.8" height="7.4" rx="1.6"/><path d="M6 8V5.8a3 3 0 0 1 6 0V8"/>',
+    move: '<path d="M2.2 5.2c0-.9.7-1.6 1.6-1.6h3.1l1.7 1.9h5.6c.9 0 1.6.7 1.6 1.6v6.1c0 .9-.7 1.6-1.6 1.6H3.8c-.9 0-1.6-.7-1.6-1.6z"/><path d="M6.4 10.1h4.8M9.4 8.2l1.9 1.9-1.9 1.9"/>',
+    refresh: '<path d="M14.4 9a5.4 5.4 0 1 1-1.6-3.9"/><path d="M14.6 2.6v3.2h-3.2"/>',
+    ext: '<path d="M7 3.5H3.5v11h11V11M10 3.5h4.5V8M14.5 3.5L8 10"/>',
+    back: '<path d="M11 4.5L6.5 9l4.5 4.5"/>',
+    share: '<circle cx="4.8" cy="9" r="2"/><circle cx="13.2" cy="4.6" r="2"/><circle cx="13.2" cy="13.4" r="2"/><path d="M6.6 8.1l4.8-2.6M6.6 9.9l4.8 2.6"/>',
+    copy: '<rect x="6.2" y="6.2" width="8.8" height="8.8" rx="1.6"/><path d="M11.8 6.2V4.6c0-.9-.7-1.6-1.6-1.6H4.6C3.7 3 3 3.7 3 4.6v5.6c0 .9.7 1.6 1.6 1.6h1.6"/>',
+    eye: '<path d="M1.8 9S4.4 4.2 9 4.2 16.2 9 16.2 9 13.6 13.8 9 13.8 1.8 9 1.8 9z"/><circle cx="9" cy="9" r="2.2"/>',
+    check: '<path d="M3.8 9.4l3.2 3.2 7.2-7.4"/>',
+    globe: '<circle cx="9" cy="9" r="6.6"/><path d="M2.4 9h13.2M9 2.4c1.8 1.9 2.7 4.1 2.7 6.6S10.8 13.7 9 15.6C7.2 13.7 6.3 11.5 6.3 9S7.2 4.3 9 2.4z"/>',
+    pencil: '<path d="M11.8 3.2l3 3-8.4 8.4H3.4v-3z"/><path d="M10.2 4.8l3 3"/>',
+    up: '<path d="M9 14.4V3.8M4.8 8L9 3.8 13.2 8"/>',
+    home: '<path d="M2.8 8.6L9 3.2l6.2 5.4"/><path d="M4.6 7.2v7.4h8.8V7.2"/>',
+    restore: '<path d="M3.6 8.8a5.4 5.4 0 1 0 1.6-3.9"/><path d="M3.4 2.6v3.2h3.2"/>',
+  };
+  const svg = (name) => {
+    const t = document.createElement("template");
+    t.innerHTML = '<svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[name] + "</svg>";
+    return t.content.firstChild;
+  };
+  const $ = (id) => document.getElementById(id);
+  function h(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k.startsWith("aria-")) { e.setAttribute(k, String(v)); continue; }
+      if (v == null || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of kids.flat()) {
+      if (c == null || c === false) continue;
+      e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    }
+    return e;
+  }
+  document.querySelectorAll("[data-icon]").forEach((el) => el.prepend(svg(el.dataset.icon)));
+
+  let toastTimer;
+  function toast(msg, action) {
+    const t = $("toast");
+    t.textContent = "";
+    t.append(document.createTextNode(msg));
+    if (action) t.append(h("button", { type: "button", class: "toast-act", onclick: () => { t.hidden = true; action.fn(); } }, action.label));
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, action ? 6500 : 4200);
+  }
+  document.addEventListener("click", (e) => {
+    const go = e.target.closest("[data-go]");
+    if (go) { location.hash = go.dataset.go; return; }
+    const tb = e.target.closest("[data-toast]");
+    if (tb) { toast(`Tasarım örneği: ${tb.dataset.toast}`); return; }
+    const ext = e.target.closest("[data-ext]");
+    if (ext) toast(`Tasarım örneği: http://${ext.dataset.ext} yeni sekmede açılır (kendi girişiyle).`);
+  });
+
+  // ---- örnek veriler ----
+  const PEERS = [
+    { name: "iphone", on: true, net: "wg0", ka: 21, v4: "10.8.0.2", v6: "fdcc:ad94:bacf:61a4::2", dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1001", st: "ok", seen: "şimdi", down: 2.4, up: 0.18, rx: "18,4 GB", tx: "1,2 GB" },
+    { name: "macbook", on: true, net: "wg0", ka: 21, v4: "10.8.0.3", v6: "fdcc:ad94:bacf:61a4::3", dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1001", st: "ok", seen: "şimdi", down: 0.6, up: 0.09, rx: "42,1 GB", tx: "3,8 GB" },
+    { name: "tv-salon", on: true, net: "wg0", ka: 21, v4: "10.8.0.4", v6: "fdcc:ad94:bacf:61a4::4", dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1001", st: "idle", seen: "4 dk önce", down: 0, up: 0, rx: "96,0 GB", tx: "2,1 GB" },
+    { name: "ipad-cocuk", on: true, net: "wg1", ka: 25, v4: "10.8.1.2", v6: "fdcc:ad94:bacf:61a4::1:2", dns: "9.9.9.9, 149.112.112.112, 2620:fe::fe", st: "ok", seen: "şimdi", down: 1.1, up: 0.04, rx: "7,3 GB", tx: "310 MB" },
+    { name: "misafir-tel", on: false, net: "wg1", ka: 25, v4: "10.8.1.3", v6: "fdcc:ad94:bacf:61a4::1:3", dns: "9.9.9.9, 149.112.112.112, 2620:fe::fe", st: "never", seen: "hiç", down: 0, up: 0, rx: "0 B", tx: "0 B" },
+  ];
+  const NETS = [{ id: "wg0", on: true, label: "Ana ağ", port: 61001, subnet: "10.8.0.0/24", scope: "İnternet + local", dns: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1001" },
+    { id: "wg1", on: true, label: "Misafir", port: 61020, subnet: "10.8.1.0/24", scope: "Yalnız internet", dns: "9.9.9.9, 149.112.112.112, 2620:fe::fe" }];
+  // DNS önerileri: düzenle penceresinde kendiliğinden listelenir, yazdıkça süzülür.
+  const DNS_PRESETS = [
+    { name: "Cloudflare", tag: "Hızlı; kurulumun varsayılanı", ips: "1.1.1.1, 1.0.0.1, 2606:4700:4700::1001" },
+    { name: "Cloudflare Aile", tag: "Zararlı ve yetişkin içerik engelli", ips: "1.1.1.3, 1.0.0.3, 2606:4700:4700::1113" },
+    { name: "Quad9", tag: "Zararlı site engelli", ips: "9.9.9.9, 149.112.112.112, 2620:fe::fe" },
+    { name: "AdGuard", tag: "Reklam ve izleyici engelli", ips: "94.140.14.14, 94.140.15.15, 2a10:50c0::ad1:ff" },
+    { name: "Google", tag: "", ips: "8.8.8.8, 8.8.4.4, 2001:4860:4860::8888" },
+  ];
+  const providerOf = (ips) => (DNS_PRESETS.find((d) => d.ips === ips) || { name: "Custom" }).name;
+  function normDns(v) {
+    const parts = v.split(",").map((t) => t.replace(/\s+/g, "")).filter(Boolean);
+    if (!parts.length) return null;
+    for (const t of parts) {
+      if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(t) && !/^[0-9a-f]*:[0-9a-f:]*$/i.test(t)) return null;
+    }
+    return parts.join(", ");
+  }
+  const kaText = (ka) => (ka ? `${ka} sn` : "kapalı");
+  const STLABEL = { ok: "Bağlı", idle: "Boşta", never: "Görülmedi", off: "Kapalı", netoff: "Ağ kapalı" };
+  const ORDER = ["ok", "idle", "never", "off", "netoff"];
+  const netOf = (id) => NETS.find((n) => n.id === id);
+  // Kapatılan peer ya da ağ: yapılandırmada durur ama arayüze yüklenmez, trafik hemen kesilir.
+  function effState(p) {
+    const n = netOf(p.net);
+    if (!n || !n.on) return "netoff";
+    return p.on ? p.st : "off";
+  }
+  const stClass = (st) => (st === "off" || st === "netoff" ? "off" : st);
+  const EVENTS = [
+    { t: "21:42", k: "fs", text: "“Kuzey Işıkları (2023) 1080p” taşındı → Filmler", who: "admin", ip: "100.103.124.125" },
+    { t: "21:37", k: "wg", text: "wg1 ağına “misafir-tel” eklendi", who: "admin", ip: "100.103.124.125" },
+    { t: "21:30", k: "fs", text: "2 öge çöpe taşındı (Diziler/Sessiz Liman S01)", who: "admin", ip: "100.103.124.125" },
+    { t: "20:58", k: "sec", text: "Hatalı giriş denemesi (3 kez)", who: "—", ip: "100.71.8.40" },
+    { t: "19:12", k: "wg", text: "“tv-salon” için DNS değişti → Cloudflare", who: "admin", ip: "100.103.124.125" },
+    { t: "Dün", k: "fs", text: "Çöp boşaltıldı · 18,6 GB boşaldı", who: "admin", ip: "100.103.124.125" },
+    { t: "Dün", k: "wg", text: "wg1 ağı oluşturuldu (Misafir, yalnız internet)", who: "admin", ip: "100.103.124.125" },
+  ];
+  const EVICON = { wg: "shield", fs: "folder", sec: "lock" };
+  const EVLABEL = { wg: "WireGuard", fs: "Dosyalar", sec: "Giriş" };
+
+  const fmtRate = (mb) => (mb >= 1 ? `${mb.toFixed(1).replace(".", ",")} MB/sn` : `${Math.round(mb * 1024)} KB/sn`);
+
+  function renderPeersMini() {
+    const box = $("peers-mini");
+    box.textContent = "";
+    [...PEERS].sort((a, b) => ORDER.indexOf(effState(a)) - ORDER.indexOf(effState(b))).slice(0, 5).forEach((p) => {
+      const st = effState(p);
+      box.append(h("div", { class: "pm" },
+        h("span", { class: `status ${stClass(st)}` }, h("span", { class: "dotmark" }), STLABEL[st]),
+        h("div", { class: "who" }, h("strong", null, p.name, h("span", { class: "tag" }, p.net)), h("small", null, st === "off" || st === "netoff" ? `${p.v4} · bağlantı kapatıldı` : `${p.v4} · son görülme ${p.seen}`)),
+        st === "ok"
+          ? h("div", { class: "rate" }, h("span", null, h("i", null, "↓"), fmtRate(p.down)), h("span", null, h("i", null, "↑"), fmtRate(p.up)))
+          : h("div", { class: "rate" }, h("span", null, h("i", null, "toplam"), p.rx))));
+    });
+    const online = PEERS.filter((p) => effState(p) === "ok").length;
+    $("sum-wg").replaceChildren(h("span", { class: "dotmark" }), `${online}/${PEERS.length} bağlı`);
+    $("nav-wg").textContent = `${online} bağlı`;
+  }
+
+  function evRow(e, full) {
+    return h("div", { class: "ev" }, h("time", null, e.t), h("span", { class: `ico ${e.k}` }, svg(EVICON[e.k])),
+      h("p", null, e.text, h("small", null, full ? EVLABEL[e.k] : `${EVLABEL[e.k]} · ${e.who}`)),
+      full ? h("span", { class: "who" }, `${e.who} · ${e.ip}`) : null);
+  }
+  function renderFeedMini() {
+    $("feed-mini").replaceChildren(...EVENTS.slice(0, 5).map((e) => evRow(e, false)));
+  }
+
+  // ---- WireGuard bölümü ----
+  let wgNet = "wg0";
+  function renderWg() {
+    if (!netOf(wgNet)) wgNet = "wg0";
+    const tabs = $("wg-tabs");
+    tabs.textContent = "";
+    NETS.forEach((n) => {
+      const mine = PEERS.filter((p) => p.net === n.id), online = mine.filter((p) => effState(p) === "ok").length;
+      const sel = wgNet === n.id, base = n.id === "wg0";
+      tabs.append(h("div", { class: "nettab" + (sel ? " sel" : "") + (n.on ? "" : " off") },
+        h("button", { type: "button", class: "nt-main", role: "tab", "aria-selected": sel, onclick: () => { wgNet = n.id; renderWg(); } },
+          h("span", { class: "nt-top" }, h("span", { class: "nt-if" }, n.id), h("span", { class: "nt-lab" }, n.label)),
+          h("small", null, "UDP ", h("span", { class: "mono" }, n.port), ` · ${n.subnet} · ${n.scope}`),
+          h("span", { class: "nt-cnt" + (n.on && online ? " on" : "") }, h("span", { class: "dotmark" }), n.on ? `${online}/${mine.length} bağlı` : "Kapalı")),
+        h("span", { class: "nt-actions" },
+          h("button", { type: "button", class: "nt-act", title: `${n.id} yeniden üret`, "aria-label": `${n.id} arayüzünü yeniden üret`, onclick: () => askRegen(n) }, svg("refresh")),
+          // wg0 kurulumun ana ağıdır: kaldırılamaz; kapatılıp açılabilir ve yeniden üretilebilir.
+          base ? null : h("button", { type: "button", class: "nt-act del", title: `${n.id} arayüzünü kaldır`, "aria-label": `${n.id} arayüzünü kaldır`, onclick: () => askDelete(n) }, svg("trash")),
+          h("button", { type: "button", class: "vsw", role: "switch", "aria-checked": n.on, title: n.on ? "Arayüzü kapat" : "Arayüzü aç",
+            "aria-label": `${n.id} arayüzü`, onclick: () => toggleNet(n) }))));
+    });
+    const nextId = nextNetId();
+    tabs.append(h("button", { type: "button", class: "nettab add", "data-go": nextId ? "#/wireguard/ekle" : null, disabled: !nextId },
+      h("span", { class: "nt-top" }, svg("plus"), h("span", { class: "nt-lab" }, "Arayüz ekle")),
+      h("small", null, nextId ? `wg${nextId} · ayrı anahtar, port ve alt ağ` : "En çok 9 ek ağ oluşturulabilir")));
+
+    const net = netOf(wgNet), list = PEERS.filter((p) => p.net === wgNet);
+    const online = list.filter((p) => effState(p) === "ok").length, offCount = list.filter((p) => !p.on).length;
+    const panel = $("wg-panel");
+    panel.classList.toggle("first", wgNet === NETS[0].id);
+    panel.classList.toggle("off", !net.on);
+    const bar = $("wg-offbar");
+    bar.hidden = net.on;
+    bar.replaceChildren(h("div", null, h("strong", null, `${net.id} kapalı. `), h("span", null, `UDP ${net.port} kapalı, cihazlar bağlanamaz. Anahtarlar, cihazlar ve profiller duruyor; açınca kendiliğinden bağlanırlar.`)),
+      h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: () => toggleNet(net) }, "Arayüzü aç"));
+    $("wg-summary").replaceChildren(
+      h("div", null, h("dt", null, "Bağlı"), h("dd", null, net.on ? `${online} ` : "Kapalı ", h("small", null, net.on ? `/ ${list.length} cihaz${offCount ? ` · ${offCount} kapalı` : ""}` : `${list.length} cihaz bekliyor`))),
+      h("div", null, h("dt", null, "Port"), h("dd", null, `${net.port} `, h("small", null, net.on ? "UDP açık" : "UDP kapalı"))),
+      h("div", null, h("dt", null, "Erişim"), h("dd", null, h("small", { style: "margin:0;font-size:15px;color:var(--ink)" }, net.scope))),
+      h("div", null, h("dt", null, "Adres"), h("dd", null, h("small", { class: "mono", style: "margin:0;font-size:14px;color:var(--ink)" }, net.subnet.replace(".0/24", ".1/24")))));
+    $("wg-table").replaceChildren(
+      h("div", { class: "tr head" }, h("span", { class: "c-sw" }, "Açık"), h("span", null, "Durum"), h("span", null, "Cihaz"), h("span", { class: "c-addr" }, "Adres"), h("span", { class: "c-hs" }, "Son görülme"), h("span", { class: "c-traffic" }, "Trafik"), h("span", { class: "c-dns" }, "")),
+      ...list.map((p) => {
+        const st = effState(p), cut = st === "off" || st === "netoff";
+        return h("div", { class: "tr" + (cut ? " p-off" : "") },
+          h("span", { class: "c-sw" }, h("button", { type: "button", class: "sw", role: "switch", "aria-checked": p.on, disabled: !net.on,
+            title: !net.on ? "Önce arayüzü açın" : p.on ? "Bağlantıyı kapat" : "Bağlantıyı aç", "aria-label": `${p.name} bağlantısı`, onclick: () => togglePeer(p) })),
+          h("span", { class: `status ${stClass(st)}` }, h("span", { class: "dotmark" }), STLABEL[st]),
+          h("span", { class: "who2" }, h("strong", null, p.name), h("small", null, `DNS ${providerOf(p.dns)} · keepalive ${kaText(p.ka)}`)),
+          h("span", { class: "addr c-addr" }, h("span", { class: "mono" }, p.v4), h("span", { class: "mono v6" }, p.v6)),
+          h("span", { class: "c-hs" }, cut ? "—" : p.seen),
+          h("span", { class: "traffic c-traffic" }, h("span", null, h("i", null, "↓ "), p.rx), h("span", null, h("i", null, "↑ "), p.tx)),
+          h("span", { class: "acts c-dns" },
+            h("button", { type: "button", class: "ib", title: "QR ve profil", "aria-label": `${p.name} QR ve profil`, "data-toast": `“${p.name}” için QR penceresi açılır.` }, svg("qr")),
+            h("button", { type: "button", class: "ib del", title: "Sil", "aria-label": `${p.name} sil`, onclick: () => askPeerDelete(p) }, svg("trash")),
+            h("button", { type: "button", class: "ib more-btn", title: "Diğer", "aria-label": `${p.name} için diğer işlemler`, "aria-haspopup": "menu", "aria-expanded": false,
+              onclick: (e) => openRowMenu(e.currentTarget, p) }, svg("more"))));
+      }));
+    if (!list.length) {
+      $("wg-table").append(h("div", { class: "empty-row" }, h("strong", null, "Bu ağda henüz cihaz yok"), h("span", null, "Aşağıdaki Peer ekle ile ilk cihazı ekleyin; QR hemen hazır olur.")));
+    }
+    const add = $("wg-add");
+    add.dataset.toast = `${net.id} · ${net.label} için Peer ekle penceresi açılır.`;
+    add.replaceChildren(h("span", { class: "plus" }, svg("plus")),
+      h("span", null, h("strong", null, "Peer ekle"), h("small", null, `${net.id} · ${net.label} ağına yeni cihaz; anahtarlar sunucuda üretilir, QR hemen hazır olur`)));
+  }
+  const refreshWg = () => { renderWg(); renderPeersMini(); renderPorts(); };
+
+  // ---- kullanımdaki portlar (yalnız genel bakış) ----
+  // Kaynak: kurulumun port ayarları ve ağ kaydı; erişilebildiği yer güvenlik duvarı kurallarına göre.
+  function renderPorts() {
+    const local = NETS.filter((n) => n.scope === "İnternet + local" && n.on);
+    const localAddrs = local.map((n) => `${n.subnet.replace(".0/24", ".1")} (${n.id})`).join(", ");
+    const groups = [
+      { key: "wan", title: "İnternet", desc: "Dışarıdan erişilebilir", items: [
+        ...NETS.map((n) => ({ port: n.port, proto: "UDP", name: `WireGuard ${n.id}`, note: n.on ? n.label : `${n.label} · arayüz kapalı, port kapalı`, off: !n.on })),
+        { port: 61005, proto: "TCP+UDP", name: "qBittorrent", note: "torrent eşleri" },
+        { port: 41641, proto: "UDP", name: "Tailscale", note: "doğrudan bağlantı" },
+        { port: 22, proto: "TCP", name: "SSH", note: "sunucu yönetimi" },
+      ] },
+      { key: "ts", title: "Tailscale", desc: "Yalnız tailnet'teki cihazlar", items: [
+        { port: 80, proto: "TCP", name: "Caddy", note: "panel.ayc · paylas.ayc · dozzle · torrent · file · webdav" },
+        { port: 53, proto: "UDP+TCP", name: "DNS", note: "yalnız .ayc adları" },
+        { port: 61003, proto: "TCP", name: "WebDAV", note: "Infuse: 100.64.12.7:61003" },
+      ] },
+      { key: "wg", title: "WireGuard", desc: local.length ? "Local erişimi açık ağların sunucu adresinden" : "Local erişimi açık ağ yok", items: local.length ? [
+        { port: 61002, proto: "TCP", name: "Dozzle", note: localAddrs },
+        { port: 61006, proto: "TCP", name: "qBittorrent", note: localAddrs },
+        { port: 61007, proto: "TCP", name: "FileBrowser", note: localAddrs },
+      ] : [] },
+      { key: "lo", title: "Yalnız sunucu içi", desc: "127.0.0.1; dışarıdan erişilemez", items: [
+        { port: 61002, proto: "TCP", name: "Dozzle", note: "Caddy arkasında" },
+        { port: 61003, proto: "TCP", name: "WebDAV", note: "Caddy arkasında" },
+        { port: 61006, proto: "TCP", name: "qBittorrent arayüzü", note: "Caddy arkasında" },
+        { port: 61007, proto: "TCP", name: "FileBrowser", note: "Caddy arkasında" },
+        { port: 61008, proto: "TCP", name: "WireGuard arka ucu", note: "panel, root" },
+        { port: 61009, proto: "TCP", name: "Dosya arka ucu", note: "panel, indirme klasörü sahibi" },
+        { port: 61010, proto: "TCP", name: "Paylaşım WebDAV", note: "Caddy arkasında · salt okunur" },
+      ] },
+    ];
+    $("ports").replaceChildren(...groups.map((g) => h("section", { class: "pgroup", "aria-label": g.title },
+      h("div", { class: "pg-head" }, h("span", { class: `pdot ${g.key}` }), h("strong", null, g.title), h("span", { class: "pg-n" }, g.items.filter((it) => !it.off).length)),
+      h("div", { class: "pg-desc" }, g.desc),
+      ...g.items.map((it) => h("div", { class: "prow" + (it.off ? " off" : "") },
+        h("span", { class: "pnum" }, it.port), h("span", { class: "pname" }, it.name, h("span", { class: "pproto" }, it.proto)),
+        h("small", null, it.note))))));
+    const wanOpen = groups[0].items.filter((it) => !it.off).length;
+    $("ports-sum").textContent = `internete açık ${wanOpen} port`;
+    $("ports-foot").textContent = `İnternete yalnız ${wanOpen} port açık. Web arayüzleri internete kapalı; Tailscale'den ya da local erişimi açık WireGuard ağlarından açılır.`;
+  }
+
+  function togglePeer(p) {
+    p.on = !p.on;
+    refreshWg();
+    const undo = { label: "Geri al", fn: () => { p.on = !p.on; refreshWg(); } };
+    toast(p.on ? `${p.name} açıldı: cihaz birkaç saniye içinde kendiliğinden bağlanır.` : `${p.name} kapatıldı: bağlantısı kesildi, profili ve adresi duruyor.`, undo);
+  }
+
+  function toggleNet(n) {
+    const mine = PEERS.filter((p) => p.net === n.id), online = mine.filter((p) => effState(p) === "ok").length;
+    if (!n.on) {
+      n.on = true;
+      refreshWg();
+      toast(`${n.id} açıldı: UDP ${n.port} açık, cihazlar birkaç saniye içinde bağlanır.`);
+      return;
+    }
+    ask({
+      title: `${n.id} · ${n.label} kapatılsın mı?`, sub: `UDP ${n.port} · ${n.subnet} · ${n.scope}`, calm: true,
+      items: [
+        ["shield", online ? `${online} bağlı cihazın bağlantısı hemen kesilir; ${mine.length} cihazın hiçbiri bağlanamaz.` : `Bu ağdaki ${mine.length} cihaz bağlanamaz.`],
+        ["lock", `UDP ${n.port} kapanır; arayüzü açınca yeniden açılır.`],
+        ["refresh", n.id === "wg0" ? "Anahtar, cihazlar ve profiller silinmez. Sunucu yeniden başlasa da kapalı kalır; kurulum yeniden çalışınca wg0 yeniden açılır." : "Anahtar, cihazlar ve profiller silinmez. Sunucu yeniden başlasa da kapalı kalır."],
+      ],
+      go: "Arayüzü kapat",
+      onOk: () => { n.on = false; refreshWg(); toast(`${n.id} kapatıldı: ${mine.length} cihazın bağlantısı kesildi.`); },
+    });
+  }
+
+  function askRegen(n) {
+    const mine = PEERS.filter((p) => p.net === n.id);
+    ask({
+      title: `${n.id} · ${n.label} yeniden üretilsin mi?`, sub: `UDP ${n.port} · ${n.subnet} · ${n.scope}`, word: true, danger: true,
+      items: [
+        ["refresh", "Yeni sunucu anahtarı üretilir; port, adresler ve erişim aynı kalır."],
+        ["shield", mine.length ? `${mine.length} cihazın profili ve QR kodu silinir (${mine.map((p) => p.name).join(", ")}); eski profillerle bağlanılamaz.` : "Bu ağda cihaz yok."],
+        ["plus", "Cihazları Peer ekle ile yeniden eklemek gerekir. Geri alınamaz."],
+      ],
+      go: "Yeniden üret",
+      onOk: () => {
+        for (let i = PEERS.length - 1; i >= 0; i--) if (PEERS[i].net === n.id) PEERS.splice(i, 1);
+        refreshWg();
+        toast(`${n.id} yeniden üretildi: ${mine.length} cihaz silindi, yeni sunucu anahtarı etkin.`);
+      },
+    });
+  }
+
+  function askDelete(n) {
+    const mine = PEERS.filter((p) => p.net === n.id);
+    ask({
+      title: `${n.id} · ${n.label} kaldırılsın mı?`, sub: `UDP ${n.port} · ${n.subnet} · ${n.scope}`, word: true, danger: true,
+      items: [
+        ["shield", mine.length ? `${mine.length} cihazın bağlantısı kesilir; profilleri ve QR kodları silinir (${mine.map((p) => p.name).join(", ")}).` : "Bu ağda cihaz yok."],
+        ["lock", `UDP ${n.port} kapanır; bu ağın güvenlik duvarı kuralları kaldırılır.`],
+        ["trash", "Sunucu anahtarı silinir. Geri alınamaz; aynı ağ yeniden eklenirse cihazlara yeni profil gerekir."],
+      ],
+      go: "Arayüzü kaldır",
+      onOk: () => {
+        NETS.splice(NETS.indexOf(n), 1);
+        for (let i = PEERS.length - 1; i >= 0; i--) if (PEERS[i].net === n.id) PEERS.splice(i, 1);
+        if (wgNet === n.id) wgNet = "wg0";
+        refreshWg();
+        toast(`${n.id} kaldırıldı: ${mine.length} cihaz silindi, UDP ${n.port} kapandı.`);
+      },
+    });
+  }
+
+  // ---- peer silme ----
+  function askPeerDelete(p) {
+    ask({
+      title: `“${p.name}” silinsin mi?`, sub: `${p.net} · ${p.v4} · ${p.v6}`, danger: true,
+      items: [
+        ["shield", "Bağlantısı hemen kesilir."],
+        ["qr", "Profili ve QR kodu silinir; bu cihazı yeniden bağlamak için yeniden eklemek gerekir."],
+        ["refresh", `${p.v4} adresi boşa çıkar ve yeni cihazlara verilebilir.`],
+      ],
+      go: "Peer'ı sil",
+      onOk: () => { PEERS.splice(PEERS.indexOf(p), 1); refreshWg(); toast(`“${p.name}” silindi.`); },
+    });
+  }
+
+  // ---- satır menüsü (…) ----
+  const rowMenu = h("div", { class: "popmenu", id: "rowmenu", role: "menu", hidden: true });
+  document.body.append(rowMenu);
+  let menuBtn = null;
+  function closeRowMenu() {
+    if (rowMenu.hidden) return;
+    rowMenu.hidden = true;
+    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
+    menuBtn = null;
+  }
+  function openRowMenu(btn, p) {
+    if (menuBtn === btn) { closeRowMenu(); return; }
+    closeRowMenu();
+    menuBtn = btn;
+    btn.setAttribute("aria-expanded", "true");
+    rowMenu.replaceChildren(h("button", { type: "button", role: "menuitem", onclick: () => { closeRowMenu(); openEdit(p); } },
+      svg("pencil"), h("span", null, "Düzenle"), h("small", null, "DNS ve keepalive")));
+    rowMenu.hidden = false;
+    const r = btn.getBoundingClientRect();
+    rowMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - 218, r.right - 210))}px`;
+    rowMenu.style.top = `${Math.min(window.innerHeight - 70, r.bottom + 6)}px`;
+    rowMenu.querySelector("button").focus();
+  }
+  document.addEventListener("click", (e) => { if (!e.target.closest("#rowmenu") && !e.target.closest(".more-btn")) closeRowMenu(); }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeRowMenu(); });
+  window.addEventListener("resize", closeRowMenu);
+  window.addEventListener("scroll", closeRowMenu, true);
+
+  // ---- DNS seçici: öneri kartları + en altta Custom (düzenle penceresi ve arayüz ekle sayfası) ----
+  function makeDnsPicker(box, idp, opts) {
+    const st = { choice: DNS_PRESETS[0].ips, custom: "" };
+    const value = () => (st.choice === "custom" ? normDns(st.custom) : st.choice);
+    function check() {
+      const bad = st.choice === "custom" && st.custom.trim() !== "" && !value();
+      const err = $(`${idp}-err`), inp = $(`${idp}-custom`);
+      if (err) err.hidden = !bad;
+      if (inp) inp.setAttribute("aria-invalid", String(bad));
+      return !bad;
+    }
+    function render() {
+      box.replaceChildren(...DNS_PRESETS.map((d) => {
+        const sel = st.choice === d.ips;
+        return h("button", { type: "button", class: "sug" + (sel ? " on" : ""), role: "radio", "aria-checked": sel,
+          onclick: () => { st.choice = d.ips; render(); opts.onChange(); } },
+          h("strong", null, d.name), h("span", { class: "badge" }, opts.badge(d.ips)), d.tag ? h("span", { class: "tagline" }, d.tag) : null, h("span", { class: "ips" }, d.ips));
+      }));
+      const isCustom = st.choice === "custom";
+      const custom = h("div", { class: "sug custom" + (isCustom ? " on" : "") },
+        h("button", { type: "button", class: "sug-head", role: "radio", "aria-checked": isCustom,
+          onclick: () => { if (!isCustom) { st.choice = "custom"; render(); opts.onChange(); } $(`${idp}-custom`).focus(); } },
+          h("strong", null, "Custom"), h("span", { class: "badge" }, opts.badge(null)),
+          h("span", { class: "tagline" }, "Kendi DNS adreslerinizi yazın; birden çoksa virgülle ayırın")));
+      if (isCustom) {
+        custom.append(h("div", { class: "cwrap" },
+          h("input", { type: "text", id: `${idp}-custom`, value: st.custom, placeholder: "ör. 192.168.1.10, fd00::53", autocomplete: "off", spellcheck: "false",
+            "aria-label": "Custom DNS adresleri", oninput: (e) => { st.custom = e.target.value; opts.onChange(); } }),
+          h("small", { class: "err-s", id: `${idp}-err`, hidden: true }, "Geçerli IPv4 ya da IPv6 adreslerini virgülle ayırarak yazın.")));
+      }
+      box.append(custom);
+    }
+    function set(ips) {
+      const preset = DNS_PRESETS.find((d) => d.ips === ips);
+      st.choice = preset ? preset.ips : "custom";
+      st.custom = preset ? "" : ips || "";
+      render();
+    }
+    return { set, value, check, render };
+  }
+
+  // ---- düzenle penceresi: DNS ve keepalive ----
+  let editing = null;
+  const peDns = makeDnsPicker($("pe-sugg"), "pe-dns", {
+    badge: (ips) => {
+      if (!editing) return "";
+      const isPreset = DNS_PRESETS.some((d) => d.ips === editing.dns), net = netOf(editing.net);
+      if (ips === null) return isPreset ? "" : "şu an";
+      return ips === editing.dns ? "şu an" : net && ips === net.dns ? "ağın varsayılanı" : "";
+    },
+    onChange: () => validateEdit(),
+  });
+  function openEdit(p) {
+    editing = p;
+    $("pe-title").textContent = `${p.name} · düzenle`;
+    $("pe-sub").textContent = `${p.net} · ${p.v4} · şu an DNS ${providerOf(p.dns)}, keepalive ${kaText(p.ka)}`;
+    $("pe-ka").value = String(p.ka);
+    peDns.set(p.dns);
+    validateEdit();
+    $("pe").showModal();
+    const on = $("pe-sugg").querySelector('[aria-checked="true"]');
+    if (on) on.focus();
+  }
+  function renderKaChips() {
+    const v = $("pe-ka").value.trim();
+    $("pe-ka-chips").replaceChildren(...[["0", "Kapalı"], ["21", "21 sn · önerilen"], ["25", "25 sn"]].map(([val, label]) =>
+      h("button", { type: "button", "aria-pressed": v === val, onclick: () => { $("pe-ka").value = val; validateEdit(); } }, label)));
+  }
+  function validateEdit() {
+    const p = editing;
+    if (!p) return;
+    const dnsOk = peDns.check(), dns = peDns.value();
+    const kaRaw = $("pe-ka").value.trim(), ka = /^\d+$/.test(kaRaw) ? Number(kaRaw) : NaN, kaOk = ka >= 0 && ka <= 65535;
+    $("pe-ka").setAttribute("aria-invalid", String(!kaOk));
+    $("pe-save").disabled = !dnsOk || !dns || !kaOk || (dns === p.dns && ka === p.ka);
+    renderKaChips();
+  }
+  $("pe-x").append(svg("plus"));
+  $("pe-x").firstChild.style.transform = "rotate(45deg)";
+  $("pe-ka").addEventListener("input", validateEdit);
+  const closeEdit = () => { $("pe").close(); editing = null; };
+  $("pe-x").addEventListener("click", closeEdit);
+  $("pe-cancel").addEventListener("click", closeEdit);
+  $("pe-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if ($("pe-save").disabled || !editing) return;
+    const p = editing;
+    p.dns = peDns.value();
+    p.ka = Number($("pe-ka").value.trim());
+    closeEdit();
+    refreshWg();
+    toast(`${p.name} güncellendi: DNS ${providerOf(p.dns)}, keepalive ${kaText(p.ka)}. Cihazda yeni QR'ı okutun.`,
+      { label: "QR'ı göster", fn: () => toast(`Tasarım örneği: “${p.name}” için QR penceresi açılır.`) });
+  });
+
+  // ---- arayüz ekle: ayrı sayfa (#/wireguard/ekle) ----
+  const RESERVED_PORTS = [[22, "SSH"], [53, "DNS"], [80, "HTTP"], [41641, "Tailscale"], [61002, "Dozzle"], [61003, "WebDAV"],
+    [61005, "qBittorrent peer"], [61006, "qBittorrent"], [61007, "FileBrowser"], [61008, "WireGuard paneli"], [61009, "Dosya paneli"], [61010, "Paylaşım WebDAV"]];
+  function nextNetId() {
+    for (let i = 1; i <= 9; i++) if (!netOf(`wg${i}`)) return i;
+    return null;
+  }
+  function portOwner(port) {
+    const n = NETS.find((x) => x.port === port);
+    if (n) return n.id;
+    const r = RESERVED_PORTS.find(([p]) => p === port);
+    return r ? r[1] : null;
+  }
+  // Ek ağ portu: 61020'den başlayarak sıradaki boş port yazılır; kullanıcı değiştirebilir, kullanılan port reddedilir.
+  const PORT_START = 61020;
+  function suggestPort() {
+    let port = PORT_START;
+    while (portOwner(port)) port++;
+    return port;
+  }
+  const NA = { i: null, local: false };
+  const naDns = makeDnsPicker($("na-sugg"), "na-dns", { badge: (ips) => (ips === DNS_PRESETS[0].ips ? "önerilen" : ""), onChange: () => updateAddNet() });
+  function renderAddNet() {
+    const i = nextNetId();
+    if (i == null) { location.hash = "#/wireguard"; toast("En çok 9 ek ağ oluşturulabilir."); return; }
+    NA.i = i;
+    NA.local = false;
+    $("na-label").value = "";
+    $("na-port").value = String(suggestPort());
+    $("na-ident").replaceChildren(h("span", { class: "big" }, `wg${i}`),
+      h("span", { class: "mono" }, `10.8.${i}.0/24 · fdcc:ad94:bacf:61a4::${i}:0/112`),
+      h("span", { class: "mono" }, `sunucu 10.8.${i}.1`));
+    naDns.set(DNS_PRESETS[0].ips);
+    updateAddNet();
+    $("na-label").focus();
+  }
+  function addNetDraft() {
+    const i = NA.i, label = $("na-label").value.trim();
+    const raw = $("na-port").value.trim(), port = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    let portErr = "";
+    if (!(port >= 1024 && port <= 65535)) portErr = "1024 ile 65535 arasında bir port yazın.";
+    else if (portOwner(port)) portErr = `UDP ${port} kullanımda (${portOwner(port)}); bu port reddedildi, başka bir port yazın.`;
+    return { i, id: `wg${i}`, label, port, portErr, scopeKey: NA.local ? "ui" : "inet", scope: NA.local ? "İnternet + local" : "Yalnız internet",
+      subnet: `10.8.${i}.0/24`, dns: naDns.value(), dnsOk: naDns.check() };
+  }
+  function updateAddNet() {
+    const d = addNetDraft();
+    $("na-local").setAttribute("aria-checked", String(NA.local));
+    $("na-local-row").classList.toggle("on", NA.local);
+    $("na-local-desc").textContent = NA.local
+      ? `Açık: internet + Dozzle, qBittorrent ve FileBrowser bu ağın sunucu adresinden (10.8.${d.i}.1) açılır.`
+      : "Kapalı: cihazlar yalnız internete çıkar; sunucudaki arayüzler bu ağa kapalı.";
+    $("na-port-err").textContent = d.portErr;
+    $("na-port-err").hidden = !d.portErr;
+    $("na-port").setAttribute("aria-invalid", String(!!d.portErr));
+    $("na-preview").replaceChildren(h("div", { class: "nettab sel preview" },
+      h("div", { class: "nt-main" },
+        h("span", { class: "nt-top" }, h("span", { class: "nt-if" }, d.id), h("span", { class: "nt-lab" }, d.label || "Etiketsiz")),
+        h("small", null, "UDP ", h("span", { class: "mono" }, Number.isNaN(d.port) ? "—" : d.port), ` · ${d.subnet} · ${d.scope}`),
+        h("span", { class: "nt-cnt" }, h("span", { class: "dotmark" }), "0/0 bağlı"))));
+    const will = [
+      "Yeni sunucu anahtarı üretilir.",
+      `UDP ${Number.isNaN(d.port) ? "…" : d.port} internete açılır; güvenlik duvarı kuralları kurulur.`,
+      d.scopeKey === "ui" ? `Dozzle, qBittorrent ve FileBrowser 10.8.${d.i}.1 adresinde açılır.` : "Sunucudaki arayüzler bu ağa kapalı kalır.",
+      `Yeni cihazlara ${d.dns ? providerOf(d.dns) : "seçilen"} DNS önerilir.`,
+    ];
+    $("na-will").replaceChildren(...will.map((text) => h("li", null, svg("check"), h("span", null, text))));
+    $("na-create").disabled = !!d.portErr || !d.dns || !d.dnsOk;
+  }
+  $("na-label").addEventListener("input", updateAddNet);
+  $("na-local").addEventListener("click", () => { NA.local = !NA.local; updateAddNet(); });
+  $("na-port").addEventListener("input", updateAddNet);
+  $("na-create").addEventListener("click", () => {
+    const d = addNetDraft();
+    if (d.portErr || !d.dns || !d.dnsOk) return;
+    NETS.push({ id: d.id, on: true, label: d.label || "Etiketsiz", port: d.port, subnet: d.subnet, scope: d.scope, dns: d.dns });
+    NETS.sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
+    wgNet = d.id;
+    location.hash = "#/wireguard";
+    toast(`${d.id} oluşturuldu: UDP ${d.port} açık. Şimdi Peer ekle ile cihaz ekleyin.`);
+  });
+
+  // ---- onay penceresi (kalıcı işlemler "onayla" ister) ----
+  let askOk = null;
+  function ask(o) {
+    askOk = o.onOk;
+    $("cf-title").textContent = o.title;
+    $("cf-sub").textContent = o.sub || "";
+    $("cf-list").replaceChildren(...o.items.map(([ic, text]) => h("li", null, svg(ic), h("span", null, text))));
+    $("cf-list").classList.toggle("calm", !!o.calm);
+    $("cf-word-row").hidden = !o.word;
+    $("cf-word").value = "";
+    const go = $("cf-go");
+    go.textContent = o.go;
+    go.className = "btn " + (o.danger ? "btn-danger" : "btn-primary");
+    go.disabled = !!o.word;
+    $("cf").showModal();
+    (o.word ? $("cf-word") : $("cf-cancel")).focus();
+  }
+  $("cf-x").append(svg("plus"));
+  $("cf-x").firstChild.style.transform = "rotate(45deg)";
+  $("cf-word").addEventListener("input", (e) => { $("cf-go").disabled = e.target.value.trim().toLocaleLowerCase("tr") !== "onayla"; });
+  const closeAsk = () => { $("cf").close(); askOk = null; };
+  $("cf-x").addEventListener("click", closeAsk);
+  $("cf-cancel").addEventListener("click", closeAsk);
+  $("cf-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if ($("cf-go").disabled) return;
+    const fn = askOk;
+    closeAsk();
+    if (fn) fn();
+  });
+
+  // ---- Dosyalar bölümü ----
+  const TREE = { name: "/downloads", dirs: {
+    Filmler: { size: "22,3 GB", when: "20 dk önce", dirs: { "Kuzey Işıkları (2023) 1080p": { size: "9,9 GB", when: "20 dk önce", files: [["Kuzey Işıkları (2023) 1080p.mkv", "9,8 GB", "video"], ["Kuzey Işıkları (2023).tr.srt", "84 KB", "text"]] }, "Son Tren (2019) 2160p": { size: "12,4 GB", when: "dün", files: [["Son Tren (2019) 2160p.mkv", "12,4 GB", "video"]] } } },
+    Diziler: { size: "19,9 GB", when: "3 sa önce", dirs: { "Deniz Feneri S01": { size: "11,2 GB", when: "3 sa önce", files: [["Deniz Feneri S01E01 1080p.mkv", "1,4 GB", "video"], ["Deniz Feneri S01E02 1080p.mkv", "1,4 GB", "video"]] } } },
+    incomplete: { size: "14,2 GB", when: "şimdi", files: [["Sessiz Liman S02E07 1080p.mkv", "1,37 GB", "video"]] },
+  }, files: [["Anadolu Yolculuğu (2021) 720p.mkv", "3,4 GB", "video"], ["notlar.txt", "2 KB", "text"]] };
+  TREE.size = "1,21 TB";
+  const TRASH = [
+    { name: "Eski Deneme (2018) 480p.avi", size: "2,7 GB", mb: 2740, when: "2 gün önce", from: "/downloads/Filmler", kind: "video" },
+    { name: "deneme-klasörü", size: "560 MB", mb: 560, when: "5 gün önce", from: "/downloads", kind: "dir" },
+    { name: "Sessiz Liman S01E01.tr.srt", size: "41 KB", mb: 0.04, when: "3 sa önce", from: "/downloads/Diziler/Sessiz Liman S01", kind: "text" },
+  ];
+  const fmtMB = (mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1).replace(".", ",")} GB` : mb >= 1 ? `${Math.round(mb)} MB` : `${Math.round(mb * 1024)} KB`);
+  const fsCount = (node) => Object.keys(node.dirs || {}).length + (node.files || []).length;
+  // Paylaşımlar: paylaşılan klasör ve dosyalar tek bir salt okunur WebDAV kökünde toplanır; adres, kullanıcı ve parola hepsinde aynıdır.
+  const SHARE_HOST = "http://paylas.ayc";
+  const SHARE_USER = "paylasim";
+  const SHARE_PASS = "Vn7kQp2mZx9L";
+  const SHARES = [
+    { path: "Diziler/Deniz Feneri S01", name: "Deniz Feneri S01", kind: "dir", size: "11,2 GB", added: "12 Eylül", days: 30, left: "27 gün kaldı", until: "13 Ekim 2026" },
+    { path: "Anadolu Yolculuğu (2021) 720p.mkv", name: "Anadolu Yolculuğu (2021) 720p.mkv", kind: "video", size: "3,4 GB", added: "14 Eylül", days: 0, left: "süresiz", until: "" },
+  ];
+  const shareOf = (path) => SHARES.find((x) => x.path === path);
+  let fsPath = [], fsView = "files";
+
+  function fsCard(o) {
+    return h("div", { class: "nettab fs" + (o.sel ? " sel" : "") },
+      h("button", { type: "button", class: "nt-main", role: "tab", "aria-selected": o.sel, onclick: o.onSelect },
+        h("span", { class: "nt-top" }, h("span", { class: `fs-ico ${o.tone}` }, svg(o.icon)), h("span", { class: "nt-title" }, o.title)),
+        h("small", null, h("span", { class: "mono" }, o.path), ` · ${o.detail}`),
+        h("span", { class: "nt-pills" }, ...o.pills.map(([text, cls]) => h("span", { class: "nt-cnt" + (cls ? ` ${cls}` : "") }, text))),
+        o.meter != null ? h("span", { class: "nt-meter", title: `Disk %${o.meter} dolu` }, h("i", { style: `width:${o.meter}%` })) : null),
+      h("span", { class: "nt-actions" }, o.action));
+  }
+  function miniCard(o) {
+    return h("div", { class: "nettab trashcard" + (o.sel ? " sel" : "") },
+      h("button", { type: "button", class: "nt-main", role: "tab", "aria-selected": o.sel, title: o.title, "aria-label": `${o.title}, ${o.value}`, onclick: o.onSelect },
+        h("span", { class: `fs-ico ${o.tone}` }, svg(o.icon)), h("span", { class: "tsize" }, o.value)));
+  }
+
+  function renderFs() {
+    const trashMB = TRASH.reduce((sum, t) => sum + t.mb, 0);
+    const view = (v) => () => { fsView = v; renderFs(); };
+    $("fs-tabs").replaceChildren(
+      fsCard({ sel: fsView === "files", icon: "folder", tone: "t-dir", title: "İndirilenler", path: "/downloads", detail: "ext4 · 2 TB disk",
+        pills: [[`${TREE.size} · ${fsCount(TREE)} öge`], ["712 GB boş", "on"]], meter: 64, onSelect: view("files"),
+        action: h("button", { type: "button", class: "nt-act", title: "Listeyi yenile", "aria-label": "Listeyi yenile", "data-toast": "Klasör listesi yenilendi." }, svg("refresh")) }),
+      miniCard({ sel: fsView === "shares", icon: "share", tone: "t-share", title: "Paylaşımlar", value: SHARES.length ? `${SHARES.length} aktif` : "yok", onSelect: view("shares") }),
+      miniCard({ sel: fsView === "trash", icon: "trash", tone: "t-warn", title: "Çöp", value: TRASH.length ? fmtMB(trashMB) : "boş", onSelect: view("trash") }));
+    $("fs-panel").classList.toggle("first", fsView === "files");
+    $("fs-panel").classList.toggle("last", fsView === "trash");
+    const body = $("fs-body");
+    body.textContent = "";
+    if (fsView === "trash") { renderTrashList(body); return; }
+    if (fsView === "shares") { renderShareList(body); return; }
+
+    let node = TREE;
+    fsPath.forEach((part) => { node = node.dirs[part]; });
+    const go = (path) => () => { fsPath = path; renderFs(); };
+    const here = ["/downloads", ...fsPath].join("/");
+    const crumbs = h("ol", { class: "crumbs" },
+      h("li", null, h("button", { type: "button", class: "crumb root" + (fsPath.length ? "" : " cur"), onclick: go([]) }, "/downloads")),
+      ...fsPath.map((part, i) => h("li", null, h("button", { type: "button", class: "crumb" + (i === fsPath.length - 1 ? " cur" : ""), onclick: go(fsPath.slice(0, i + 1)) }, part))));
+    body.append(h("div", { class: "pathfield" },
+      h("button", { type: "button", class: "pf-btn", title: "Üst klasör", "aria-label": "Üst klasör", disabled: !fsPath.length, onclick: go(fsPath.slice(0, -1)) }, svg("up")),
+      h("button", { type: "button", class: "pf-btn", title: "İndirilenler kökü", "aria-label": "İndirilenler kökü", disabled: !fsPath.length, onclick: go([]) }, svg("home")),
+      h("span", { class: "pf-sep" }),
+      h("nav", { class: "pf-crumbs", "aria-label": "Konum" }, crumbs),
+      h("span", { class: "pf-meta" }, `${fsCount(node)} öge · ${node.size}`)));
+    if (fsPath[0] === "incomplete") {
+      body.append(h("div", { class: "offbar" }, h("div", null, h("strong", null, "qBittorrent bu klasöre yazıyor. "), h("span", null, "Buradaki dosyaları taşımak ya da silmek süren indirmeyi bozar."))));
+    }
+    const shareBtn = (item) => {
+      const sh = shareOf(item.path);
+      return h("button", { type: "button", class: "ib" + (sh ? " shared" : ""), title: sh ? "Paylaşım bilgileri" : "WebDAV ile paylaş",
+        "aria-label": sh ? `${item.name} paylaşım bilgileri` : `${item.name} ögesini paylaş`, onclick: () => (sh ? openShareInfo(sh, false) : openShareCreate(item)) }, svg("share"));
+    };
+    const chip = (path) => {
+      const sh = shareOf(path);
+      return sh ? h("span", { class: "shchip", title: `Paylaşımda · ${SHARE_HOST}` }, svg("share"), sh.days ? sh.left : "süresiz") : null;
+    };
+    const rows = [];
+    Object.entries(node.dirs || {}).forEach(([n, d]) => {
+      const item = { path: [...fsPath, n].join("/"), name: n, kind: "dir", size: d.size, count: fsCount(d) };
+      rows.push(h("div", { class: "tr" },
+        h("button", { type: "button", class: "fname", onclick: go(fsPath.concat(n)) }, h("span", { class: "ticon t-dir" }, svg("folder")),
+          h("span", null, h("strong", null, n, chip(item.path)), h("small", null, n === "incomplete" ? "qBittorrent yarım indirmeleri" : `${fsCount(d)} öge`))),
+        h("span", { class: "c-size" }, d.size), h("span", { class: "c-date" }, d.when),
+        h("span", { class: "acts" }, n === "incomplete" ? null : shareBtn(item),
+          h("button", { type: "button", class: "ib", "aria-label": "Taşı", title: "Taşı", "data-toast": "Taşıma penceresi açılır." }, svg("move")),
+          h("button", { type: "button", class: "ib", "aria-label": "Çöpe taşı", title: "Çöpe taşı", "data-toast": "Çöpe taşıma onayı açılır." }, svg("trash")))));
+    });
+    (node.files || []).forEach(([n, size, k]) => {
+      const item = { path: [...fsPath, n].join("/"), name: n, kind: k, size };
+      rows.push(h("div", { class: "tr" },
+        h("button", { type: "button", class: "fname", "data-toast": k === "text" ? `“${n}” metin görüntüleyicide açılır.` : `“${n}” seçilir.` }, h("span", { class: `ticon t-${k}` }, svg(k)),
+          h("span", null, h("strong", null, n, chip(item.path)))),
+        h("span", { class: "c-size" }, size), h("span", { class: "c-date" }, "—"),
+        h("span", { class: "acts" }, fsPath[0] === "incomplete" ? null : shareBtn(item),
+          h("button", { type: "button", class: "ib", "aria-label": "İndir", title: "İndir", "data-toast": "İndirme başlar." }, svg("download")),
+          h("button", { type: "button", class: "ib", "aria-label": "Çöpe taşı", title: "Çöpe taşı", "data-toast": "Çöpe taşıma onayı açılır." }, svg("trash")))));
+    });
+    body.append(h("div", { class: "table fs-t" }, h("div", { class: "tr head" }, h("span", null, "Ad"), h("span", { class: "c-size" }, "Boyut"), h("span", { class: "c-date" }, "Değiştirilme"), h("span", null, "")), rows));
+    body.append(h("button", { type: "button", class: "addrow", "data-toast": `${here} içinde yeni klasör satırı açılır.` },
+      h("span", { class: "plus" }, svg("plus")), h("span", null, h("strong", null, "Yeni klasör"), h("small", null, `${here} içine; adını yazıp Enter`))));
+  }
+
+  // ---- paylaşım listesi ve pencereleri ----
+  function renderShareList(body) {
+    body.append(h("div", { class: "offbar" }, h("div", null, h("strong", null, "Tek adres, tek hesap. "),
+      h("span", null, "Paylaşılan her klasör ve dosya aşağıdaki adreste yan yana görünür · yalnız Tailscale'deki cihazlardan · salt okunur"))));
+    body.append(credBlock(() => renderFs(), "row3"));
+    if (!SHARES.length) {
+      body.append(h("div", { class: "table" }, h("div", { class: "empty-row" }, h("strong", null, "Paylaşım yok"),
+        h("span", null, "İndirilenler listesinde bir klasörün ya da dosyanın yanındaki paylaş simgesine basın."))));
+      return;
+    }
+    body.append(h("div", { class: "table fs-t share-t" },
+      h("div", { class: "tr head" }, h("span", null, "Paylaşılan"), h("span", { class: "c-user" }, "Eklendi"), h("span", { class: "c-exp" }, "Süre"), h("span", null, "")),
+      ...SHARES.map((sh) => h("div", { class: "tr" },
+        h("span", { class: "fname", style: "cursor:default" }, h("span", { class: `ticon t-${sh.kind}` }, svg(sh.kind === "dir" ? "folder" : sh.kind)),
+          h("span", null, h("strong", null, sh.name), h("small", null, `/downloads/${sh.path} · ${sh.size}`))),
+        h("span", { class: "c-user" }, sh.added),
+        h("span", { class: "c-exp" }, sh.days ? `${sh.left}` : "süresiz"),
+        h("span", { class: "acts" },
+          h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openShareInfo(sh, false) }, svg("eye"), "Bilgiler"),
+          h("button", { type: "button", class: "ib del", title: "Paylaşımdan çıkar", "aria-label": `${sh.name} ögesini paylaşımdan çıkar`, onclick: () => askUnshare(sh) }, svg("trash")))))));
+  }
+
+  const DURATIONS = [[1, "1 gün"], [7, "7 gün"], [30, "30 gün"], [0, "Süresiz"]];
+  const untilText = (days) => new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(Date.now() + days * 864e5));
+  const xButton = () => { const b = h("button", { type: "button", class: "dlg-x", "aria-label": "Kapat", onclick: () => $("sh").close() }, svg("plus")); b.firstChild.style.transform = "rotate(45deg)"; return b; };
+
+  let SH = null;
+  function openShareCreate(item) {
+    SH = { item, days: 7 };
+    renderShareCreate();
+    $("sh").showModal();
+  }
+  function renderShareCreate() {
+    const it = SH.item;
+    $("sh-body").replaceChildren(
+      h("div", { class: "dlg-head" }, h("div", { class: "okhead" }, h("span", { class: "okico plain" }, svg("share")),
+        h("div", null, h("h3", { id: "sh-title" }, `“${it.name}” paylaş`), h("p", null, `/downloads/${it.path} · ${it.size}${it.count != null ? ` · ${it.count} öge` : ""}`))), xButton()),
+      h("ul", { class: "conseq calm" },
+        h("li", null, svg("share"), h("span", null, `${SHARE_HOST} adresine eklenir; paylaşımdaki diğer ${SHARES.length} ögeyle aynı kullanıcı ve parolayla açılır.`)),
+        h("li", null, svg("folder"), h("span", null, it.kind === "dir" ? "Yalnız bu klasör ve alt klasörleri görünür; üst klasörler ve paylaşılmayan indirmeler görünmez. Sonradan içine eklenen dosyalar kendiliğinden görünür." : "Yalnız bu dosya görünür; bulunduğu klasörün geri kalanı görünmez.")),
+        h("li", null, svg("lock"), h("span", null, "Salt okunur: izlenir ve indirilir; silme, taşıma ya da yükleme yapılamaz.")),
+        h("li", null, svg("globe"), h("span", null, "Yalnız Tailscale'e bağlı cihazlar açabilir; Infuse, VLC ya da Finder WebDAV olarak bağlanır."))),
+      h("div", { class: "field" }, h("span", { class: "lbl", style: "font-size:13px;font-weight:500" }, "Süre"),
+        h("div", { class: "chips-s" }, ...DURATIONS.map(([d, label]) => h("button", { type: "button", "aria-pressed": SH.days === d, onclick: () => { SH.days = d; renderShareCreate(); } }, label))),
+        h("small", { class: "hint-s" }, SH.days ? `${untilText(SH.days)} tarihinde kendiliğinden kapanır.` : "Siz kapatana kadar açık kalır.")),
+      h("div", { class: "dlg-foot" },
+        h("button", { type: "button", class: "btn btn-quiet", onclick: () => $("sh").close() }, "Vazgeç"),
+        h("button", { type: "button", class: "btn btn-primary", onclick: createShare }, svg("share"), "Paylaşıma ekle")));
+  }
+  function createShare() {
+    const it = SH.item;
+    const sh = { path: it.path, name: it.name, kind: it.kind, size: it.size, added: "az önce",
+      days: SH.days, left: SH.days ? `${SH.days} gün kaldı` : "süresiz", until: SH.days ? untilText(SH.days) : "" };
+    SHARES.push(sh);
+    renderFs();
+    openShareInfo(sh, true);
+  }
+  function openShareInfo(sh, fresh) {
+    SH = { share: sh, reveal: false, fresh };
+    renderShareInfo();
+    if (!$("sh").open) $("sh").showModal();
+  }
+  function copyButton(text, label) {
+    const b = h("button", { type: "button", class: "ib", title: `${label} kopyala`, "aria-label": `${label} kopyala`, onclick: async () => {
+      try { await navigator.clipboard.writeText(text); } catch (e) { /* tasarım örneğinde pano izni olmayabilir */ }
+      b.replaceChildren(svg("check"));
+      setTimeout(() => b.replaceChildren(svg("copy")), 1200);
+    } }, svg("copy"));
+    return b;
+  }
+  const credRow = (k, v, acts, plain) => h("div", { class: "cred-row" }, h("span", { class: "k" }, k), h("span", { class: "v" + (plain ? " plain" : "") }, v), h("span", { class: "cred-acts" }, acts));
+  let SHOW_PASS = false;
+  function credBlock(rerender, cls) {
+    return h("div", { class: "cred" + (cls ? ` ${cls}` : "") },
+      credRow("Adres", SHARE_HOST, [copyButton(SHARE_HOST, "Adres")]),
+      credRow("Kullanıcı", SHARE_USER, [copyButton(SHARE_USER, "Kullanıcı")]),
+      credRow("Parola", SHOW_PASS ? SHARE_PASS : "•".repeat(12), [
+        h("button", { type: "button", class: "ib", title: SHOW_PASS ? "Gizle" : "Göster", "aria-label": SHOW_PASS ? "Parolayı gizle" : "Parolayı göster", onclick: () => { SHOW_PASS = !SHOW_PASS; rerender(); } }, svg("eye")),
+        copyButton(SHARE_PASS, "Parola")]));
+  }
+  function renderShareInfo() {
+    const sh = SH.share;
+    $("sh-body").replaceChildren(
+      h("div", { class: "dlg-head" }, h("div", { class: "okhead" }, h("span", { class: "okico" + (SH.fresh ? "" : " plain") }, svg(SH.fresh ? "check" : "share")),
+        h("div", null, h("h3", { id: "sh-title" }, SH.fresh ? "Paylaşıma eklendi" : `“${sh.name}” paylaşımda`), h("p", null, `/downloads/${sh.path} · ${sh.size}`))), xButton()),
+      h("div", { class: "cred" },
+        credRow("Süre", sh.days ? `${sh.left} · ${sh.until}` : "Süresiz; siz kapatana kadar", [], true)),
+      h("div", { class: "field" }, h("span", { class: "lbl", style: "font-size:13px;font-weight:500" }, `Bağlantı bilgileri · ${SHARES.length} paylaşımın hepsinde aynı`),
+        credBlock(renderShareInfo)),
+      h("div", { class: "infoline-s" }, svg("info"), h("span", null, "Infuse: Ekle › Paylaşım › WebDAV; adresi, kullanıcıyı ve parolayı yazın. Bu hesabı bir kez ekleyen kişi sonraki paylaşımları da aynı yerde görür.")),
+      h("div", { class: "dlg-foot" },
+        h("button", { type: "button", class: "btn btn-quiet danger-text", onclick: () => askUnshare(sh) }, "Paylaşımdan çıkar"),
+        h("button", { type: "button", class: "btn btn-primary", onclick: () => $("sh").close() }, "Tamam")));
+  }
+  function askUnshare(sh) {
+    if ($("sh").open) $("sh").close();
+    ask({
+      title: `“${sh.name}” paylaşımdan çıkarılsın mı?`, sub: `/downloads/${sh.path} · ${sh.size}`, danger: true,
+      items: [
+        ["share", "Paylaşım adresinden kalkar; bağlı cihazlar bunu artık göremez."],
+        ["lock", "Kullanıcı ve parola değişmez; diğer paylaşımlar açık kalır."],
+        ["folder", "Dosyalar silinmez; yalnız paylaşımdan çıkar."],
+      ],
+      go: "Paylaşımdan çıkar",
+      onOk: () => { SHARES.splice(SHARES.indexOf(sh), 1); renderFs(); toast(`“${sh.name}” paylaşımdan çıkarıldı.`); },
+    });
+  }
+
+  function renderTrashList(body) {
+    if (!TRASH.length) {
+      body.append(h("div", { class: "table" }, h("div", { class: "empty-row" }, h("strong", null, "Çöp boş"), h("span", null, "Silinen dosyalar burada görünür ve geri yüklenebilir."))));
+      return;
+    }
+    body.append(h("div", { class: "table fs-t trash-t" },
+      h("div", { class: "tr head" }, h("span", null, "Ad"), h("span", { class: "c-size" }, "Boyut"), h("span", { class: "c-date" }, "Silinme"), h("span", null, "")),
+      ...TRASH.map((t) => h("div", { class: "tr" },
+        h("span", { class: "fname", style: "cursor:default" }, h("span", { class: `ticon t-${t.kind}` }, svg(t.kind === "dir" ? "folder" : t.kind)),
+          h("span", null, h("strong", null, t.name), h("small", null, `Nereden: ${t.from}`))),
+        h("span", { class: "c-size" }, t.size), h("span", { class: "c-date" }, t.when),
+        h("span", { class: "acts" },
+          h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => { TRASH.splice(TRASH.indexOf(t), 1); renderFs(); toast(`Geri yüklendi: ${t.from}/${t.name}`); } }, svg("restore"), "Geri yükle"),
+          h("button", { type: "button", class: "ib", title: "Kalıcı sil", "aria-label": "Kalıcı sil", onclick: () => askPurge(t) }, svg("trash")))))));
+    const total = fmtMB(TRASH.reduce((sum, t) => sum + t.mb, 0));
+    body.append(h("button", { type: "button", class: "addrow danger", onclick: askEmptyTrash },
+      h("span", { class: "plus" }, svg("trash")),
+      h("span", null, h("strong", null, "Çöpü boşalt"), h("small", null, `${TRASH.length} öge · ${total} kalıcı silinir; geri alınamaz`))));
+  }
+
+  function askEmptyTrash() {
+    const total = fmtMB(TRASH.reduce((sum, t) => sum + t.mb, 0));
+    ask({
+      title: "Çöp boşaltılsın mı?", sub: `${TRASH.length} öge · ${total}`, word: true, danger: true,
+      items: [
+        ["trash", `${TRASH.length} öge kalıcı silinir (${TRASH.map((t) => t.name).join(", ")}).`],
+        ["disk", `${total} disk alanı boşalır.`],
+        ["lock", "Geri alınamaz."],
+      ],
+      go: "Çöpü boşalt",
+      onOk: () => { const n = TRASH.length; TRASH.length = 0; renderFs(); toast(`${n} öge kalıcı silindi; ${total} boşaldı.`); },
+    });
+  }
+
+  function askPurge(t) {
+    ask({
+      title: `“${t.name}” kalıcı silinsin mi?`, sub: `Nereden: ${t.from} · ${t.size}`, danger: true,
+      items: [["disk", `${t.size} disk alanı boşalır.`], ["lock", "Geri alınamaz."]],
+      go: "Kalıcı sil",
+      onOk: () => { TRASH.splice(TRASH.indexOf(t), 1); renderFs(); toast(`“${t.name}” kalıcı silindi.`); },
+    });
+  }
+
+  // ---- Günlük bölümü ----
+  let logFilter = "all";
+  function renderLog() {
+    const f = $("log-filter");
+    f.replaceChildren(...[["all", "Tümü"], ["wg", "WireGuard"], ["fs", "Dosyalar"], ["sec", "Giriş"]].map(([k, l]) =>
+      h("button", { type: "button", class: "fchip", "aria-pressed": logFilter === k, onclick: () => { logFilter = k; renderLog(); } }, l)));
+    const list = EVENTS.filter((e) => logFilter === "all" || e.k === logFilter);
+    $("log-table").replaceChildren(...list.map((e) => evRow(e, true)));
+  }
+
+  // ---- yönlendirme ----
+  const ROUTES = {
+    genel: { title: "Genel bakış", eyebrow: "nrm · Debian 13", actions: () => [h("button", { type: "button", class: "btn btn-quiet", "data-toast": "Durum yenilendi." }, svg("refresh"), "Yenile")] },
+    wireguard: { title: "WireGuard", eyebrow: "Cihazlar ve ağlar", actions: () => [], render: renderWg },
+    dosyalar: { title: "Dosyalar", eyebrow: "İndirilenler ve çöp", actions: () => [], render: renderFs },
+    gunluk: { title: "Günlük", eyebrow: "Panelden yapılan işlemler", actions: () => [], render: renderLog },
+  };
+  const ADD_ROUTE = { title: "Arayüz ekle", eyebrow: "WireGuard · yeni ağ",
+    actions: () => [h("button", { type: "button", class: "btn btn-quiet", "data-go": "#/wireguard" }, svg("back"), "WireGuard")], render: renderAddNet };
+  function route() {
+    const raw = location.hash.replace(/^#\/?/, "").split("/");
+    const key = ROUTES[raw[0]] ? raw[0] : "genel";
+    if (key === "dosyalar") fsView = raw[1] === "cop" ? "trash" : raw[1] === "paylasim" ? "shares" : "files";
+    const view = key === "wireguard" && raw[1] === "ekle" ? "wgadd" : key;
+    const r = view === "wgadd" ? ADD_ROUTE : ROUTES[key];
+    document.querySelectorAll("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== view; });
+    document.querySelectorAll("[data-route]").forEach((a) => {
+      if (a.dataset.route === key) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+    $("title").textContent = r.title;
+    $("eyebrow").textContent = r.eyebrow;
+    $("top-actions").replaceChildren(...r.actions());
+    if (r.render) r.render();
+    window.scrollTo({ top: 0 });
+  }
+  window.addEventListener("hashchange", route);
+
+  // ---- sunucu grafikleri: son 2 dakika, 2 sn'de bir örnek (sunucuda /proc/stat ve /proc/meminfo) ----
+  const SAMPLES = 60, RAM_GB = 8;
+  const CPU = Array.from({ length: SAMPLES }, (_, i) => 20 + 9 * Math.sin(i / 5) + Math.random() * 7);
+  const RAM = Array.from({ length: SAMPLES }, (_, i) => 25.5 + Math.sin(i / 14) + Math.random() * 0.6);
+  function drawSpark(id, data) {
+    const box = $(id), w = 120, hgt = 40;
+    const pts = data.map((v, i) => [(i * w) / (data.length - 1), hgt - (Math.min(100, Math.max(0, v)) / 100) * hgt]);
+    const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("");
+    box.querySelector(".line").setAttribute("d", line);
+    box.querySelector(".area").setAttribute("d", `${line}L${w},${hgt}L0,${hgt}Z`);
+    box.querySelector(".enddot").style.top = `${100 - Math.min(100, Math.max(0, data[data.length - 1]))}%`;
+  }
+  function renderServer() {
+    const cpu = CPU[CPU.length - 1], ram = RAM[RAM.length - 1];
+    drawSpark("cpu-spark", CPU);
+    drawSpark("ram-spark", RAM);
+    $("cpu-val").replaceChildren(`%${Math.round(cpu)}`, h("small", null, "şu an"));
+    $("ram-val").replaceChildren(`${((ram / 100) * RAM_GB).toFixed(1).replace(".", ",")} GB`, h("small", null, `%${Math.round(ram)}`));
+  }
+
+  // ---- canlı görünüm: bağlı cihazların aktarım hızı ve sunucu grafikleri ----
+  setInterval(() => {
+    CPU.push(Math.min(96, Math.max(3, CPU[CPU.length - 1] + (Math.random() - 0.5) * 14 + (Math.random() < 0.08 ? 25 : 0))));
+    CPU.shift();
+    RAM.push(Math.min(40, Math.max(22, RAM[RAM.length - 1] + (Math.random() - 0.5) * 0.8)));
+    RAM.shift();
+    renderServer();
+    PEERS.forEach((p) => {
+      if (effState(p) !== "ok") return;
+      p.down = Math.min(3.2, Math.max(0.05, p.down * (0.8 + Math.random() * 0.4)));
+      p.up = Math.min(0.4, Math.max(0.01, p.up * (0.8 + Math.random() * 0.4)));
+    });
+    renderPeersMini();
+  }, 2000);
+
+  renderPeersMini();
+  renderFeedMini();
+  renderPorts();
+  renderServer();
+  route();
+})();
+</script>

@@ -1,0 +1,60 @@
+[Unit]
+Description=Konsol file backend (master-stack, DD-139, DD-140)
+# Yalnız 127.0.0.1'i dinler; tailnet'e Caddy açar (panel.<alan>). Sayfaları Caddy verir;
+# bu servis yalnız /api/* yanıtlar ve indirme klasörünün sahibi olarak çalışır.
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=__SERVER_ROOT__
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# DOWNLOADS_UID/GID'nin adı (kurulum bulur ya da girişsiz sistem hesabı açar).
+User=__FILES_PANEL_USER__
+Group=__FILES_PANEL_GROUP__
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master-files-panel serve --listen 127.0.0.1:__FILES_PANEL_PORT__ --root __SERVER_ROOT__ --trash __FILES_PANEL_TRASH__ --share __SHARE_DIR__ --archive-dir=__FILES_ARCHIVE_DIR__ --domain=__LOCAL_DOMAIN__ --version=__V2_VERSION__ --protected="__PROTECTED_DIRS__" --downloads-dir=__DOWNLOADS_SUBDIR__
+# Paylaşım hesabı bu servise hiç açılmaz: Konsol onu root arka ucundan okur (DD-149).
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0002
+# Yazabildiği tek yer indirme klasörü; /etc, /root ve paketlerin anahtarları görünmez ya da salt okunur.
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=__SERVER_ROOT__
+# DD-225: paketlerin özel durumu görünmez; çöp, arşiv hazırlık alanı ve paylaşım adı bu servisindir.
+InaccessiblePaths=__PRIVATE_STATE_ROOT__
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+# DD-180: unrar yabancı RAR dosyasını bu serviste açar. Bir açık doğrudan dışarıya ve Caddy'nin
+# tailnet adresine bağlanamasın (yalnız loopback), başka süreçleri görmesin ve yalnız sıradan servis
+# sistem çağrılarını kullansın. Loopback'teki host hizmetleri (DNS) açık kalır; loopback'e yayımlanan
+# konteyner portları bu süzgeçle yanıt vermez (DD-180 notu, nrm'de ölçüldü).
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+ProtectProc=invisible
+PrivateIPC=true
+MemoryDenyWriteExecute=true
+MemoryMax=512M
+TasksMax=64
+CPUQuota=100%
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target

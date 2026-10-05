@@ -1,0 +1,98 @@
+{
+	# DD-180: yönetim arayüzü TCP'de değil; klasörü yalnız Caddy'ye açık bir sokette.
+	admin unix/__CADDY_ADMIN_SOCKET__
+	default_bind {$TAILSCALE_IPV4}
+	http_port __CADDY_HTTP_PORT__
+	auto_https disable_redirects
+	# DD-193: a media player closing a probe or stream mid-response is normal and
+	# was logged as a proxy WARN each time. Proxy messages keep ERROR and above;
+	# dial/5xx failures are logged by http.log.error in the default logger.
+	log default {
+		exclude http.handlers.reverse_proxy
+	}
+	log proxy {
+		include http.handlers.reverse_proxy
+		level ERROR
+	}
+	# DD-179: only the optional public DAV socket; tailnet streams are unchanged.
+	servers __WAN_IPV4__:__SHARE_PORT__ {
+		timeouts {
+			read_header 10s
+			idle 30s
+		}
+	}
+	servers __WAN_IPV4__:__SHARE_HTTPS_PORT__ {
+		protocols h1 h2
+		strict_sni_host on
+		timeouts {
+			read_header 10s
+			idle 30s
+		}
+	}
+}
+# Konsol (DD-140, DD-148, DD-200): /api/konsol/* ve /api/uygulama/* root arka uca (sistem,
+# modüller ve kurulu paketlerin API'leri; DD-180: Unix soketi), öbür /api/* dosya arka ucuna
+# gider. Sayfaları Caddy doğrudan sunar; kurulu bir paketin sayfa dosyaları CONSOLE_WEB_DIR
+# altında uygulama/<id>/ klasöründedir ve aynı oturum kapısından geçer. CSRF ve Host denetimi
+# arka uçlarda (DD-147), başlıklar burada.
+# DD-195: yollar tek parçada; Tailscale sitesi ve isteğe bağlı internet (HTTPS) sitesi aynı
+# korumayı içe aktarır. Arka uçlar Host olarak her zaman panel.<alan> görür. Hangi kapıdan
+# gelindiğini (X-Konsol-Kanal) yalnız Caddy yazar; istemcinin gönderdiği değer ezilir.
+(konsol) {
+	# DD-181: sayfa dosyaları ve API yanıtları sıkıştırılır (~270 KB → ~75 KB).
+	encode zstd gzip
+	# DD-194/DD-205: giriş sayfasının dosyaları ve giriş API'si açıktır. Geri kalan her istek
+	# (giriş sayfası dahil sayfalar, Dosyalar ve tüm API) önce root arka uca sorar: Tailscale
+	# sitesinde yanıt hep "geç"tir ve /giris.html Konsol'a yönlenir (cihazı Tailscale doğrular);
+	# internet sitesinde oturum yoksa sayfa /giris.html'e yönlenir, API 401 alır. Sunucunun
+	# içinden gelen istek yine reddedilir (DD-180).
+	@korumali not path /giris.js /giris.css /konsol.css /api/konsol/oturum /api/konsol/oturum/*
+	# Her site root arka uca en çok 16 bağlantı açar: internetten gelen istek seli arka
+	# ucun iş parçacıklarını ve dosya tanıtıcılarını tüketip Tailscale'i de kapatamaz.
+	forward_auth @korumali unix/__PANEL_SOCKET__ {
+		uri /oturum-denetle
+		header_up Host panel.__LOCAL_DOMAIN__
+		header_up X-Konsol-Kanal {args[0]}
+		transport http {
+			max_conns_per_host 16
+		}
+	}
+	@kok path /api/uygulama/* /api/konsol/*
+	handle @kok {
+		reverse_proxy unix/__PANEL_SOCKET__ {
+			header_up Host panel.__LOCAL_DOMAIN__
+			header_up X-Konsol-Kanal {args[0]}
+			# Tarayıcının gerçekten kullandığı ad; alan adı değişikliği onayı bunu ister.
+			header_up X-Forwarded-Host {host}
+			transport http {
+				max_conns_per_host 16
+			}
+		}
+	}
+	handle /api/* {
+		reverse_proxy 127.0.0.1:__FILES_PANEL_PORT__ {
+			header_up Host panel.__LOCAL_DOMAIN__
+		}
+	}
+	handle {
+		root * __CONSOLE_WEB_DIR__
+		header {
+			Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+			# DD-181: tarayıcı saklar ama her açılışta sorar; dosya değişmediyse 304 döner.
+			Cache-Control "no-cache"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "no-referrer"
+		}
+		file_server
+	}
+}
+# Tailnet adresi her zaman açıktır (yönetimin güvenli yolu). İnternet adresini Ayarlar → Caddy
+# yazar (moduller/panel-wan.caddy, DD-195).
+http://panel.__LOCAL_DOMAIN__ {
+	import konsol tailscale
+}
+# Modüllerin siteleri (DD-149): master-modul buraya <id>.caddy koyar ve kaldırır (ör. Paylaşım:
+# paylas. adı ve Infuse için Tailscale IP:port). Eşleşmeyen kalıp geçerlidir; nokta ile başlayan
+# geçici dosyalar okunmaz. Genel seçenek bloğundan sonra gelmeli.
+import __CADDY_MODULES_DIR__/*.caddy

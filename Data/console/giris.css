@@ -1,0 +1,18 @@
+/* Konsol girişi (DD-194). Renkler ve düğmeler konsol.css'ten gelir. */
+.login { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 18px; padding: 32px 16px; }
+.login .brand { text-align: center; justify-items: center; }
+.login-card { width: min(100%, 400px); padding: 22px; gap: 14px; }
+.login-card h1 { font-size: 24px; }
+.login-form { display: grid; gap: 8px; }
+.login-form[hidden] { display: none; }
+.login-form label { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.login-form input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; min-width: 0;
+}
+.login-form input:focus { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--accent); }
+.login-form .btn { margin-top: 8px; width: 100%; min-height: 44px; }
+.login-form .btn:disabled { opacity: .6; cursor: progress; }
+.login-foot { width: min(100%, 400px); text-align: center; overflow-wrap: anywhere; }
+.login .mono { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } }

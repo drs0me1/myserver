@@ -1,0 +1,1108 @@
+#!/usr/bin/env python3
+# Konsol'un dosya arka ucu (DD-139, DD-140, DD-141). Kullanıcı alanını tarayıcıdan yönetir:
+# gez, yeni klasör, yeniden adlandır, taşı, çöpe at / geri yükle / kalıcı sil, metin dosyasını
+# oku, indir, yükle ve arşivle. Sayfaları Caddy verir; /api/wg/* ve /api/konsol/* istekleri
+# root arka ucuna (master-panel) gider. Klasör paylaşım hesapları orada yönetilir.
+# Yalnız 127.0.0.1'i dinler; Caddy tailnet'e (http://panel.<alan>) ve isteğe bağlı genel HTTPS
+# adına (DD-195) açar. Konsol oturumunu
+# Caddy root arka uca sorar (DD-194); bu servis oturum görmez. Servis root değil, kullanıcı
+# alanının sahibi olarak çalışır. Yalnız Python standart kütüphanesi.
+#
+#   master-files-panel serve --listen 127.0.0.1:PORT --root DİZİN [--trash AD]
+#                            [--domain ALAN] [--version SÜRÜM] [--protected YOL=SAHİP;...] [--allow-host HOST]
+#   master-files-panel check --url URL --host HOST
+#
+# Güvenlik: kökten çıkılamaz (her yol adımı bir dizin tanıtıcısından O_NOFOLLOW ile
+# açılır, sembolik bağlantı izlenmez); hiçbir işlem üzerine yazmaz (renameat2
+# RENAME_NOREPLACE); silinen öge kökteki çöpe taşınır, kalıcı silme yalnız çöpten ve
+# çöpü boşaltmak "onayla" ister. CSRF (X-Konsol + aynı köken), Host denetimi, sıkı CSP ve
+# no-store öbür arka uçla aynıdır; parola olmadığı için asıl korumalar bunlardır.
+import argparse
+import ctypes
+import errno
+import http.server
+import json
+import os
+import re
+import secrets
+import socket
+import stat
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from master_archives import Archives, ArchiveError, job_source
+
+TRASH_RE = re.compile(r"^\.[a-z]{1,16}$")
+# DD-171: --share only reserves the retired hidden directory; never reads its marker.
+TOKEN_RE = re.compile(r"^[0-9]{13}-[0-9a-f]{8}$")
+CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+MAX_BODY = 262144
+# Yükleme (DD-145): gövde diske akıtılır, belleğe alınmaz. Sınır disk boşluğuyla değil
+# kabalıkla ilgili: bir istek en çok bu kadar sürebilir/olabilir.
+UPLOAD_MAX_BYTES = 64 * 1024 * 1024 * 1024
+UPLOAD_CHUNK = 1024 * 1024
+# DD-180: yükleme, dosya sistemi min(5 GB, %10) boş alanın altına inmeden durur; günlük,
+# apt ve durum dosyaları yer bulsun. Aynı sayılar master_webdav.py'de.
+DISK_RESERVE = 5 * 1024 ** 3
+DISK_RESERVE_DIVISOR = 10
+DISK_CHECK_EVERY = 64 * 1024 ** 2
+# Gövde okunmadan hata dönülürse bağlantı sıfırlanır ve Caddy bunu 502'ye çevirir; o yüzden
+# en çok bu kadarı okunup atılır, sonra anlamlı hata gider. Daha büyüğünde bağlantı kapanır.
+UPLOAD_DRAIN_MAX = 256 * 1024 * 1024
+MAX_NAMES = 1000
+MAX_DEPTH = 64
+TEXT_LIMIT = 1024 * 1024
+SNIFF_BYTES = 8192
+# Bir listelemede klasör boyutları için en çok bu kadar girdiye bakılır; aşılırsa boyut "—".
+WALK_BUDGET = 200000
+CONFIRM_WORD = "onayla"
+API_HEADER = "X-Konsol"
+# Günlükte işlemi yapan: hesap yok, istek Konsol'dan gelir (adres ayrıca yazılır).
+ACTOR = "konsol"
+# Disk kartındaki "indirilenler" toplamı: kök ağacının yürüyüşü pahalıdır, önbelleğe alınır.
+USAGE_CACHE_SECONDS = 300
+ENCODINGS = {"utf-8": "utf-8-sig", "cp1254": "cp1254", "cp437": "cp437"}
+CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; "
+       "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+O_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+O_FILE = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+RENAME_NOREPLACE = 1
+
+
+def fail(msg, code=1):
+    print("HATA: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+class PanelError(Exception):
+    def __init__(self, code, message):
+        Exception.__init__(self, message)
+        self.code = code
+        self.message = message
+
+
+def disk_room(fd, incoming=0):
+    """Yazmadan önce ve yazarken: dosya sistemi ayrılan boş alanın altına inmesin (DD-180)."""
+    st = os.fstatvfs(fd)
+    reserve = min(DISK_RESERVE, st.f_blocks * st.f_frsize // DISK_RESERVE_DIVISOR)
+    if st.f_bavail * st.f_frsize - incoming < reserve:
+        raise PanelError(507, "sunucuda yeterli boş alan yok (en az %.1f GB boş kalmalı)" % (reserve / 1024 ** 3))
+
+
+def cmd_check(args):
+    req = urllib.request.Request(args.url, headers={"Host": args.host, API_HEADER: "1"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as err:
+        fail("panel HTTP %d verdi" % err.code)
+    except (urllib.error.URLError, ValueError, OSError) as err:
+        fail("panel yanıt vermedi (%s)" % err)
+    if not isinstance(data, dict):
+        fail("panel yanıtı beklenen biçimde değil")
+    trash = data.get("trash")
+    if not isinstance(data.get("root"), str) or not isinstance(trash, dict) or not data.get("writable"):
+        fail("panel yanıtı beklenen biçimde değil ya da kök yazılamıyor")
+    print("kök %s, çöpte %d öge" % (data["root"], trash.get("count", 0)))
+
+
+# ------------------------------------------------------------ dosya sistemi
+class DirFd:
+    def __init__(self, fd):
+        self.fd = fd
+
+    def __enter__(self):
+        return self.fd
+
+    def __exit__(self, *exc):
+        os.close(self.fd)
+
+
+_renameat2 = None
+
+
+def rename_noreplace(src_fd, src, dst_fd, dst):
+    """src'yi dst'ye taşır; dst varsa FileExistsError. Dizin tanıtıcılarına göre, bağlantı izlemez."""
+    global _renameat2
+    if _renameat2 is None:
+        try:
+            fn = ctypes.CDLL(None, use_errno=True).renameat2
+            fn.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+            fn.restype = ctypes.c_int
+            _renameat2 = fn
+        except (OSError, AttributeError):
+            _renameat2 = False
+    if _renameat2:
+        if _renameat2(src_fd, os.fsencode(src), dst_fd, os.fsencode(dst), RENAME_NOREPLACE) == 0:
+            return
+        code = ctypes.get_errno()
+        if code not in (errno.EINVAL, errno.ENOSYS):
+            raise OSError(code, os.strerror(code))
+    # Yedek yol: dosya sistemi RENAME_NOREPLACE bilmiyorsa (ya da testlerdeki macOS'ta)
+    # önce hedefe bakılır. Aynı anda tek işlem yapıldığı için (panel kilidi) yeterli.
+    try:
+        os.stat(dst, dir_fd=dst_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        os.rename(src, dst, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
+        return
+    raise OSError(errno.EEXIST, os.strerror(errno.EEXIST))
+
+
+def valid_name(name):
+    if not isinstance(name, str) or name in ("", ".", "..") or "/" in name or "\x00" in name:
+        return False
+    try:
+        return len(name.encode("utf-8")) <= 255
+    except UnicodeEncodeError:
+        return False
+
+
+def numbered(name, i):
+    dot = name.rfind(".")
+    if dot > 0:
+        return "%s (%d)%s" % (name[:dot], i, name[dot:])
+    return "%s (%d)" % (name, i)
+
+
+def dir_size(parent_fd, name, budget):
+    fd = os.open(name, O_DIR, dir_fd=parent_fd)
+    total = 0
+    try:
+        with os.scandir(fd) as it:
+            for entry in it:
+                budget[0] -= 1
+                if budget[0] < 0:
+                    raise OverflowError("bütçe")
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if stat.S_ISDIR(st.st_mode):
+                    try:
+                        total += dir_size(fd, entry.name, budget)
+                    except (OSError, RecursionError):
+                        continue
+                elif stat.S_ISREG(st.st_mode):
+                    total += st.st_size
+    finally:
+        os.close(fd)
+    return total
+
+
+def rmtree_at(parent_fd, name):
+    try:
+        st = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISDIR(st.st_mode):
+        os.unlink(name, dir_fd=parent_fd)
+        return
+    fd = os.open(name, O_DIR, dir_fd=parent_fd)
+    try:
+        with os.scandir(fd) as it:
+            names = [e.name for e in it]
+        for child in names:
+            rmtree_at(fd, child)
+    finally:
+        os.close(fd)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def read_json_at(dir_fd, name):
+    try:
+        fd = os.open(name, O_FILE, dir_fd=dir_fd)
+    except OSError:
+        return None
+    with os.fdopen(fd, "rb") as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+            return None
+        raw = fh.read(65537)
+    try:
+        data = json.loads(raw.decode("utf-8")) if len(raw) <= 65536 else None
+    except (ValueError, UnicodeDecodeError, RecursionError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_json_at(dir_fd, name, obj):
+    tmp = ".%s.%s.tmp" % (name, secrets.token_hex(4))
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0),
+                 0o600, dir_fd=dir_fd)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(obj, fh, ensure_ascii=False)
+        os.rename(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    except BaseException:
+        try:
+            os.unlink(tmp, dir_fd=dir_fd)
+        except OSError:
+            pass
+        raise
+
+
+def guess_encoding(data, name, truncated):
+    try:
+        data.decode("utf-8")
+        valid = True
+    except UnicodeDecodeError as err:
+        # Kesilen dosyanın sonunda yarım kalmış çok baytlı karakter UTF-8'i bozmaz.
+        valid = truncated and err.start >= len(data) - 3 and "end of data" in err.reason
+    nfo = name.lower().endswith(".nfo")
+    if valid and not (nfo and data.isascii()):
+        return "utf-8"
+    return "cp437" if nfo else "cp1254"
+
+
+class Files:
+    """Kök altındaki bütün işlemler. Yollar parça listesidir; kök []."""
+
+    def __init__(self, root, trash, share="", archive=""):
+        self.root = root
+        self.trash = trash
+        self.share = share
+        self.archive = archive
+        self.lock = threading.Lock()
+
+    # -- yollar
+    def split(self, raw):
+        if not isinstance(raw, str):
+            raise PanelError(400, "geçersiz yol")
+        raw = raw.strip("/")
+        if not raw:
+            return []
+        parts = raw.split("/")
+        if len(parts) > MAX_DEPTH or not all(valid_name(p) for p in parts):
+            raise PanelError(400, "geçersiz yol")
+        if parts[0] == self.trash:
+            raise PanelError(403, "çöpe yalnız Çöp sekmesinden erişilir")
+        if self.share and parts[0] == self.share:
+            raise PanelError(403, "eski paylaşım çalışma alanına erişilemez")
+        if self.archive and parts[0] == self.archive:
+            raise PanelError(403, "arşiv çalışma alanına erişilemez")
+        return parts
+
+    def check_new_name(self, parts, name):
+        if not valid_name(name) or CONTROL_RE.search(name) or name != name.strip():
+            raise PanelError(400, "geçersiz ad (boş olamaz, / içeremez, en çok 255 bayt)")
+        if not parts and name in (self.trash, self.share, self.archive):
+            raise PanelError(400, "bu ad sistem çalışma alanı için ayrılmış")
+
+    def check_source_names(self, parts, names, destination=False):
+        # Toplu işlem başlamadan hepsini denetle; reddedilen öge kısmi taşıma yaratmasın.
+        for name in names:
+            if not valid_name(name):
+                raise PanelError(400, "geçersiz ad")
+            if not parts and name in (self.trash, self.share, self.archive):
+                raise PanelError(403, "kök klasöre sistem çalışma alanı adıyla taşınamaz" if destination
+                                 else "sistem çalışma alanı taşınamaz veya yeniden adlandırılamaz")
+
+    def open_dir(self, parts):
+        fd = os.open(self.root, O_DIR)
+        try:
+            for part in parts:
+                nxt = os.open(part, O_DIR, dir_fd=fd)
+                os.close(fd)
+                fd = nxt
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def trash_dir(self, create):
+        with DirFd(self.open_dir([])) as root:
+            if create:
+                try:
+                    os.mkdir(self.trash, 0o775, dir_fd=root)
+                except FileExistsError:
+                    pass
+            return os.open(self.trash, O_DIR, dir_fd=root)
+
+    # -- okuma
+    def info(self, dir_fd, name, budget, sizes=True):
+        st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+        item = {"name": name, "mtime": int(st.st_mtime), "size": None}
+        if stat.S_ISDIR(st.st_mode):
+            item["type"] = "dir"
+            try:
+                with DirFd(os.open(name, O_DIR, dir_fd=dir_fd)) as fd:
+                    with os.scandir(fd) as it:
+                        item["count"] = sum(1 for _ in it)
+            except OSError:
+                item["count"] = None
+            if sizes:
+                try:
+                    item["size"] = dir_size(dir_fd, name, budget)
+                except (OSError, OverflowError, RecursionError):
+                    item["size"] = None
+        elif stat.S_ISREG(st.st_mode):
+            item["type"] = "file"
+            item["size"] = st.st_size
+        else:
+            item["type"] = "link" if stat.S_ISLNK(st.st_mode) else "other"
+        return item
+
+    def listing(self, parts, dirs_only):
+        entries, skipped, budget = [], 0, [WALK_BUDGET]
+        with DirFd(self.open_dir(parts)) as fd:
+            with os.scandir(fd) as it:
+                names = [e.name for e in it]
+            for name in names:
+                if not parts and name in (self.trash, self.share, self.archive):
+                    continue
+                if not valid_name(name):
+                    skipped += 1
+                    continue
+                try:
+                    item = self.info(fd, name, budget, sizes=not dirs_only)
+                except OSError:
+                    continue
+                if not dirs_only or item["type"] == "dir":
+                    entries.append(item)
+        return {"path": "/".join(parts), "entries": entries, "skipped": skipped}
+
+    def used(self):
+        """Kökün toplam boyutu (çöp hariç); bütçe aşılırsa None."""
+        total, budget = 0, [WALK_BUDGET]
+        with DirFd(self.open_dir([])) as fd:
+            with os.scandir(fd) as it:
+                names = [e.name for e in it]
+            for name in names:
+                if name in (self.trash, self.share, self.archive) or not valid_name(name):
+                    continue
+                try:
+                    st = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    if stat.S_ISDIR(st.st_mode):
+                        total += dir_size(fd, name, budget)
+                    elif stat.S_ISREG(st.st_mode):
+                        total += st.st_size
+                except OverflowError:
+                    return None
+                except (OSError, RecursionError):
+                    continue
+        return total
+
+    def trash_items(self):
+        try:
+            cop = self.trash_dir(create=False)
+        except FileNotFoundError:
+            return []
+        items, budget = [], [WALK_BUDGET]
+        with DirFd(cop):
+            with os.scandir(cop) as it:
+                tokens = [e.name for e in it if TOKEN_RE.match(e.name) and e.is_dir(follow_symlinks=False)]
+            for token in tokens:
+                meta = read_json_at(cop, token + ".json") or {}
+                try:
+                    with DirFd(os.open(token, O_DIR, dir_fd=cop)) as tfd:
+                        with os.scandir(tfd) as it:
+                            names = [e.name for e in it]
+                        if len(names) == 1 and valid_name(names[0]):
+                            item = self.info(tfd, names[0], budget)
+                        else:
+                            item = {"name": "(bozuk kayıt)", "type": "other", "size": None, "broken": True,
+                                    "mtime": int(token[:13]) // 1000}
+                except OSError:
+                    continue
+                origin = meta.get("from")
+                try:
+                    origin = "/".join(self.split(origin)) if isinstance(origin, str) else None
+                except PanelError:
+                    origin = None
+                deleted = meta.get("deleted")
+                item.update({"id": token, "from": origin,
+                             "deleted": deleted if isinstance(deleted, int) else int(token[:13]) // 1000})
+                items.append(item)
+        items.sort(key=lambda i: i["id"], reverse=True)
+        return items
+
+    def open_file(self, parts):
+        if not parts:
+            raise PanelError(400, "dosya değil")
+        with DirFd(self.open_dir(parts[:-1])) as dfd:
+            fd = os.open(parts[-1], O_FILE, dir_fd=dfd)
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            os.close(fd)
+            raise PanelError(400, "dosya değil")
+        return fd, st
+
+    def text(self, parts, enc):
+        if enc not in ("auto", "") and enc not in ENCODINGS:
+            raise PanelError(400, "geçersiz kodlama")
+        fd, st = self.open_file(parts)
+        with os.fdopen(fd, "rb") as fh:
+            data = fh.read(TEXT_LIMIT)
+        truncated = st.st_size > len(data)
+        if b"\x00" in data[:SNIFF_BYTES]:
+            raise PanelError(415, "metin dosyası değil")
+        detected = guess_encoding(data, parts[-1], truncated)
+        chosen = detected if enc in ("auto", "") else enc
+        return {"path": "/".join(parts), "size": st.st_size, "mtime": int(st.st_mtime),
+                "truncated": truncated, "detected": detected, "encoding": chosen,
+                "text": data.decode(ENCODINGS[chosen], errors="replace")}
+
+    # -- değişiklik (çağıran self.lock'u tutar)
+    def mkdir(self, parts, name):
+        self.check_new_name(parts, name)
+        with DirFd(self.open_dir(parts)) as fd:
+            os.mkdir(name, 0o775, dir_fd=fd)
+
+    def rename(self, parts, name, new):
+        self.check_source_names(parts, [name])
+        self.check_new_name(parts, new)
+        if name == new:
+            return
+        with DirFd(self.open_dir(parts)) as fd:
+            rename_noreplace(fd, name, fd, new)
+
+    def move(self, parts, names, dest):
+        self.check_source_names(parts, names)
+        self.check_source_names(dest, names, destination=True)
+        if dest == parts:
+            raise PanelError(400, "seçilenler zaten bu klasörde")
+        for name in names:
+            if dest[:len(parts) + 1] == parts + [name]:
+                raise PanelError(400, "bir klasör kendi içine taşınamaz")
+        moved = []
+        with DirFd(self.open_dir(parts)) as sfd, DirFd(self.open_dir(dest)) as dfd:
+            for name in names:
+                try:
+                    os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                raise PanelError(409, "“%s” hedefte zaten var; üzerine yazılmaz" % name)
+            for name in names:
+                try:
+                    rename_noreplace(sfd, name, dfd, name)
+                except OSError as err:
+                    if not moved:
+                        raise
+                    raise PanelError(status_for(err), "%d öge taşındı; “%s” taşınamadı: %s"
+                                     % (len(moved), name, os_message(err)))
+                moved.append(name)
+        return moved
+
+    def upload_check(self, parts, name, length=0):
+        """Gövde okunmadan önceki denetimler: geçerli ad, var olan klasör, boş hedef, boş alan."""
+        self.check_new_name(parts, name)
+        with DirFd(self.open_dir(parts)) as fd:
+            try:
+                os.stat(name, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                disk_room(fd, length)
+                return
+        raise PanelError(409, "“%s” zaten var; üzerine yazılmaz" % name)
+
+    def upload(self, parts, name, stream, length):
+        """Akışı <parts>/<name> olarak yazar. Geçici ada yazılır, bitince atomik taşınır:
+        yarım kalan dosya listeye hiç girmez, var olanın üzerine yazılmaz (DD-145)."""
+        self.upload_check(parts, name, length)
+        tmp = ".yukleniyor-%s" % secrets.token_hex(6)
+        written = since = 0
+        with DirFd(self.open_dir(parts)) as fd:
+            handle = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o664, dir_fd=fd)
+            try:
+                # umask ne olursa olsun ağacın kuralı: dosya 0664 (indirme hesabının servisleri aynı grupla
+                # yazar; Paylaşım aynı hesapla okur; ensure_downloads_tree de bunu bekler).
+                os.fchmod(handle, 0o664)
+                while written < length:
+                    chunk = stream.read(min(UPLOAD_CHUNK, length - written))
+                    if not chunk:
+                        raise PanelError(400, "yükleme yarıda kesildi")
+                    os.write(handle, chunk)
+                    written += len(chunk)
+                    since += len(chunk)
+                    if since >= DISK_CHECK_EVERY:
+                        since = 0
+                        disk_room(fd)
+                os.fsync(handle)
+            except BaseException:
+                os.close(handle)
+                try:
+                    os.unlink(tmp, dir_fd=fd)
+                except OSError:
+                    pass
+                raise
+            os.close(handle)
+            try:
+                # Akış kilitsiz sürer (saatlerce sürebilir); yalnız son adım kilitli:
+                # ad çakışmasına bakan yedek rename yolu için yeterli.
+                with self.lock:
+                    rename_noreplace(fd, tmp, fd, name)
+            except BaseException:
+                try:
+                    os.unlink(tmp, dir_fd=fd)
+                except OSError:
+                    pass
+                raise
+        return written
+
+    def to_trash(self, parts, names):
+        self.check_source_names(parts, names)
+        ids = []
+        with DirFd(self.open_dir(parts)) as sfd, DirFd(self.trash_dir(create=True)) as cop:
+            for name in names:
+                token = "%013d-%s" % (int(time.time() * 1000), secrets.token_hex(4))
+                os.mkdir(token, 0o775, dir_fd=cop)
+                try:
+                    write_json_at(cop, token + ".json", {"from": "/".join(parts), "name": name,
+                                                         "deleted": int(time.time())})
+                    with DirFd(os.open(token, O_DIR, dir_fd=cop)) as tfd:
+                        rename_noreplace(sfd, name, tfd, name)
+                except BaseException as err:
+                    for undo in (lambda: os.unlink(token + ".json", dir_fd=cop), lambda: os.rmdir(token, dir_fd=cop)):
+                        try:
+                            undo()
+                        except OSError:
+                            pass
+                    if ids and isinstance(err, OSError):
+                        raise PanelError(status_for(err), "%d öge çöpe taşındı; “%s” taşınamadı: %s"
+                                         % (len(ids), name, os_message(err)))
+                    raise
+                ids.append(token)
+        return ids
+
+    def restore(self, ids):
+        done = []
+        with DirFd(self.trash_dir(create=False)) as cop:
+            for token in ids:
+                meta = read_json_at(cop, token + ".json") or {}
+                with DirFd(os.open(token, O_DIR, dir_fd=cop)) as tfd:
+                    with os.scandir(tfd) as it:
+                        names = [e.name for e in it]
+                    if len(names) != 1 or not valid_name(names[0]):
+                        raise PanelError(400, "çöp kaydı bozuk; kalıcı silin")
+                    dest = []
+                    try:
+                        if isinstance(meta.get("from"), str):
+                            dest = self.split(meta["from"])
+                        dfd = self.open_dir(dest)
+                    except (PanelError, OSError):
+                        dest = []
+                        dfd = self.open_dir([])
+                    with DirFd(dfd):
+                        final = self.place(tfd, names[0], dfd, dest)
+                os.rmdir(token, dir_fd=cop)
+                try:
+                    os.unlink(token + ".json", dir_fd=cop)
+                except FileNotFoundError:
+                    pass
+                done.append({"id": token, "path": "/".join(dest), "name": final})
+        return done
+
+    def place(self, src_fd, name, dst_fd, dest):
+        candidate = name
+        for i in range(2, 102):
+            if dest or candidate not in (self.trash, self.share, self.archive):
+                try:
+                    rename_noreplace(src_fd, name, dst_fd, candidate)
+                    return candidate
+                except FileExistsError:
+                    pass
+            candidate = numbered(name, i)
+        raise PanelError(409, "geri yüklemek için boş bir ad bulunamadı")
+
+    def purge(self, ids):
+        with DirFd(self.trash_dir(create=False)) as cop:
+            for token in ids:
+                rmtree_at(cop, token)
+                try:
+                    os.unlink(token + ".json", dir_fd=cop)
+                except FileNotFoundError:
+                    pass
+
+    def empty(self):
+        try:
+            cop = self.trash_dir(create=False)
+        except FileNotFoundError:
+            return 0
+        with DirFd(cop):
+            with os.scandir(cop) as it:
+                names = [e.name for e in it]
+            for name in names:
+                rmtree_at(cop, name)
+        return sum(1 for n in names if TOKEN_RE.match(n))
+
+
+def os_message(err):
+    return {
+        errno.ENOENT: "bulunamadı (taşınmış ya da silinmiş olabilir)",
+        errno.EEXIST: "aynı adla bir öge var; üzerine yazılmaz",
+        errno.ENOTEMPTY: "aynı adla bir öge var; üzerine yazılmaz",
+        errno.ENOTDIR: "klasör değil",
+        errno.ELOOP: "sembolik bağlantı izlenmez",
+        errno.EACCES: "izin yok",
+        errno.EPERM: "izin yok",
+        errno.EXDEV: "farklı bir diske taşınamaz",
+        errno.EINVAL: "bir klasör kendi içine taşınamaz",
+        errno.ENOSPC: "diskte yer yok",
+        errno.EROFS: "dosya sistemi salt okunur",
+        errno.ENAMETOOLONG: "ad çok uzun",
+        errno.EBUSY: "öge kullanımda",
+    }.get(err.errno, "işlem yapılamadı (%s)" % errno.errorcode.get(err.errno, err.errno))
+
+
+def status_for(err):
+    if err.errno == errno.ENOENT:
+        return 404
+    if err.errno in (errno.EEXIST, errno.ENOTEMPTY):
+        return 409
+    if err.errno in (errno.EACCES, errno.EPERM):
+        return 403
+    return 400
+
+
+# --------------------------------------------------------------- sunucu
+def report_archive(job):
+    """DD-183: arşiv işinin sonucu, isteğin audit satırıyla aynı biçimde Günlük'e düşer.
+    İş arka planda biter; istemci adresi yoktur ("-")."""
+    ok = job.get("status") in ("done", "skipped", "cancelled")
+    detail = "%s → %s: %s" % (job_source(job), job.get("name", ""), job.get("message", ""))
+    print("dosya: %s - arsiv-sonuc %s -> %s" % (ACTOR, json.dumps(detail, ensure_ascii=False), "ok" if ok else "hata"),
+          flush=True)
+
+
+class Panel:
+    def __init__(self, args):
+        self.args = args
+        self.lock = threading.Lock()
+        self.usage_cache = (0.0, None)
+        self.files = Files(args.root, args.trash, args.share, getattr(args, "archive_dir", ""))
+        self.archives = (Archives(self.files, self.files.archive, rename_noreplace, rmtree_at, report=report_archive)
+                         if self.files.archive else None)
+
+    def used(self):
+        """İndirilenlerin toplamı; ağaç yürüyüşü USAGE_CACHE_SECONDS boyunca önbellekte."""
+        now = time.time()
+        stamp, value = self.usage_cache
+        if now - stamp < USAGE_CACHE_SECONDS:
+            return value
+        try:
+            value = self.files.used()
+        except OSError:
+            value = None
+        self.usage_cache = (now, value)
+        return value
+
+    def state(self):
+        vfs = os.statvfs(self.args.root)
+        items = self.files.trash_items()
+        return {
+            "host": socket.gethostname(),
+            "version": self.args.version,
+            "root": self.args.root,
+            "downloads": getattr(self.args, "downloads_dir", ""),
+            "domain": self.args.domain,
+            "protected": self.args.protected,
+            "writable": os.access(self.args.root, os.W_OK),
+            "disk": {"total": vfs.f_blocks * vfs.f_frsize, "free": vfs.f_bavail * vfs.f_frsize,
+                     "used": self.used(), "mount": os.path.ismount(self.args.root)},
+            "trash": {"count": len(items), "size": sum(i["size"] or 0 for i in items)},
+            "textLimit": TEXT_LIMIT,
+        }
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    panel = None
+    server_version = "master-files-panel"
+    sys_version = ""
+    protocol_version = "HTTP/1.1"
+    # DD-181: Caddy keeps this loopback connection alive; with Nagle every reply waited
+    # ~40 ms for the peer's delayed ACK (headers and body are separate writes).
+    disable_nagle_algorithm = True
+    # Caddy's default upstream keepalive is 120s; expire idle sockets after it.
+    # This is inactivity, not a deadline for a progressing upload/download.
+    timeout = 180
+
+    def log_message(self, fmt, *args):  # istek satırları yazılmaz; değişiklikler audit ile
+        pass
+
+    def audit(self, user, action, detail, ok):
+        print("dosya: %s %s %s %s -> %s" % (user, self.client(), action,
+                                             json.dumps(detail, ensure_ascii=False), "ok" if ok else "hata"), flush=True)
+
+    def client(self):
+        peer = self.client_address[0] if self.client_address else "?"
+        forwarded = self.headers.get("X-Forwarded-For", "") if self.headers else ""
+        if peer in ("127.0.0.1", "::1") and forwarded:
+            return forwarded.split(",")[-1].strip()[:64]
+        return peer
+
+    def security_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+
+    def send(self, code, body=b"", ctype="application/json; charset=utf-8", extra=None):
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.security_headers()
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def json(self, code, obj):
+        self.send(code, json.dumps(obj, ensure_ascii=False))
+
+    def error(self, code, message):
+        # Okunmamış bir istek gövdesi bağlantıda kalmasın: hatadan sonra bağlantı kapanır.
+        self.close_connection = True
+        self.json(code, {"error": message})
+
+    def allowed_hosts(self):
+        port = self.server.server_address[1]
+        hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
+        if self.panel.args.domain:
+            hosts.add("panel.%s" % self.panel.args.domain.lower())
+        hosts.update(h.lower() for h in self.panel.args.allow_host)
+        return hosts
+
+    def gate(self, route):
+        """Host ve API için köken denetimi. İşlemi yapanın günlük adı ya da None (yanıt gönderildi).
+        DD-194: oturumu Caddy denetler; bu iki denetim oturumdan bağımsız kalır."""
+        host = (self.headers.get("Host") or "").lower()
+        if host not in self.allowed_hosts():
+            self.error(403, "bu adresten erişilemez")
+            return None
+        if route.startswith("/api/"):
+            site = self.headers.get("Sec-Fetch-Site")
+            # İndirme bir bağlantıyla açılır (özel başlık gönderilemez); yalnız okur, yine de
+            # başka bir siteden gelen istek reddedilir.
+            header_ok = route == "/api/download" or self.headers.get(API_HEADER) == "1"
+            if not header_ok or (site and site not in ("same-origin", "none")):
+                self.error(403, "istek reddedildi (yalnız panel sayfasından)")
+                return None
+        return ACTOR
+
+    def body_json(self):
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return None
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if length <= 0 or length > MAX_BODY:
+            return None
+        try:
+            data = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    # -- yardımcılar
+    def names(self, data, key="names"):
+        names = data.get(key)
+        if (not isinstance(names, list) or not names or len(names) > MAX_NAMES
+                or not all(valid_name(n) for n in names) or len(set(names)) != len(names)):
+            raise PanelError(400, "geçersiz öge listesi")
+        return names
+
+    def ids(self, data):
+        ids = data.get("ids")
+        if (not isinstance(ids, list) or not ids or len(ids) > MAX_NAMES
+                or not all(isinstance(i, str) and TOKEN_RE.match(i) for i in ids) or len(set(ids)) != len(ids)):
+            raise PanelError(400, "geçersiz çöp kaydı")
+        return ids
+
+    def run(self, user, action, fn, lock, hint=""):
+        try:
+            if lock:
+                with self.panel.files.lock:
+                    code, result, detail = fn()
+            else:
+                code, result, detail = fn()
+        except (PanelError, ArchiveError) as err:
+            if action:
+                self.audit(user, action, "%s: %s" % (hint, err.message), False)
+            self.error(err.code, err.message)
+            return
+        except OSError as err:
+            if action:
+                self.audit(user, action, "%s: %s" % (hint, os_message(err)), False)
+            self.error(status_for(err), os_message(err))
+            return
+        if action:
+            self.audit(user, action, detail, True)
+        self.json(code, result)
+
+    # -- yöntemler
+    def do_GET(self):
+        split = urllib.parse.urlsplit(self.path)
+        route = split.path
+        user = self.gate(route)
+        if user is None:
+            return
+        query = urllib.parse.parse_qs(split.query, keep_blank_values=True)
+        arg = lambda key: (query.get(key) or [""])[0]
+        files = self.panel.files
+        if route == "/api/state":
+            self.run(user, None, lambda: (200, self.panel.state(), None), lock=False)
+        elif route == "/api/archives" and self.panel.archives:
+            self.run(user, None, lambda: (200, self.panel.archives.status(), None), lock=False)
+        elif route == "/api/list":
+            self.run(user, None, lambda: (200, files.listing(files.split(arg("path")), arg("dirs") == "1"), None),
+                     lock=False)
+        elif route == "/api/trash":
+            self.run(user, None, lambda: (200, {"items": files.trash_items()}, None), lock=False)
+        elif route == "/api/text":
+            self.run(user, None, lambda: (200, files.text(files.split(arg("path")), arg("enc") or "auto"), None),
+                     lock=False)
+        elif route == "/api/download":
+            self.download(user, arg("path"))
+        else:
+            self.error(404, "bulunamadı")
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def upload(self, user):
+        """POST /api/upload?path=<klasör>&name=<ad> — gövde dosyanın kendisidir (DD-145)."""
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        raw_path = (query.get("path") or [""])[0]
+        name = (query.get("name") or [""])[0]
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = -1
+        if length <= 0:
+            self.error(411, "yükleme için Content-Length gerekir")
+            return
+        if length > UPLOAD_MAX_BYTES:
+            self.error(413, "dosya çok büyük (en çok %d GB)" % (UPLOAD_MAX_BYTES // (1024 ** 3)))
+            return
+        files = self.panel.files
+        try:
+            parts = files.split(raw_path)
+            files.upload_check(parts, name, length)
+        except (PanelError, OSError) as err:
+            # Yanıt gövde okunmadan giderse bağlantı sıfırlanır ve istemci 502 görür.
+            self.drain(length)
+            code, message = (err.code, err.message) if isinstance(err, PanelError) else (status_for(err), os_message(err))
+            self.audit(user, "yükle", "%s: %s" % (name, message), False)
+            self.error(code, message)
+            return
+
+        def put():
+            written = files.upload(parts, name, self.rfile, length)
+            return 201, {"name": name, "size": written}, "/".join(parts + [name])
+
+        self.run(user, "yükle", put, lock=False, hint=name)
+
+    def drain(self, length):
+        """İstek gövdesini okuyup atar (en çok UPLOAD_DRAIN_MAX); daha büyüğü bağlantıyı kapatır."""
+        if length > UPLOAD_DRAIN_MAX:
+            return
+        left = length
+        try:
+            while left > 0:
+                chunk = self.rfile.read(min(UPLOAD_CHUNK, left))
+                if not chunk:
+                    break
+                left -= len(chunk)
+        except OSError:
+            pass
+
+    def download(self, user, raw):
+        files = self.panel.files
+        try:
+            parts = files.split(raw)
+            fd, st = files.open_file(parts)
+        except PanelError as err:
+            self.error(err.code, err.message)
+            return
+        except OSError as err:
+            self.error(status_for(err), os_message(err))
+            return
+        name = parts[-1]
+        fallback = re.sub(r"[^A-Za-z0-9._ -]", "_", name) or "dosya"
+        with os.fdopen(fd, "rb") as fh:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Content-Disposition", "attachment; filename=\"%s\"; filename*=UTF-8''%s"
+                             % (fallback, urllib.parse.quote(name, safe="")))
+            self.security_headers()
+            self.end_headers()
+            self.audit(user, "indir", "/".join(parts), True)
+            if self.command == "HEAD":
+                return
+            remaining = st.st_size
+            try:
+                while remaining > 0:
+                    chunk = fh.read(min(1 << 20, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                self.close_connection = True
+            if remaining:
+                self.close_connection = True
+
+    def do_POST(self):
+        route = urllib.parse.urlsplit(self.path).path
+        user = self.gate(route)
+        if user is None:
+            self.close_connection = True
+            return
+        if route == "/api/upload":
+            self.upload(user)
+            return
+        data = self.body_json()
+        if data is None:
+            self.error(400, "istek gövdesi JSON olmalı")
+            return
+        files = self.panel.files
+
+        if route in ("/api/archives", "/api/archives/cancel") and self.panel.archives:
+            submit = route == "/api/archives"
+
+            def archive_action():
+                manager = self.panel.archives
+                job = manager.submit(data) if submit else manager.cancel(data.get("id"))
+                # DD-183: readable in Günlük; the result follows as "arsiv-sonuc".
+                return 202, {"job": job}, "%s → %s" % (job_source(job), job["name"])
+            action = ("arsiv-olustur" if data.get("operation") == "zip" else "arsiv-ac") if submit else "arsiv-iptal"
+            names = data.get("names") if isinstance(data.get("names"), list) else []
+            hint = "%s → %s" % (", ".join(str(n) for n in names[:3])[:200], str(data.get("name", ""))[:200]) if submit else ""
+            self.run(user, action, archive_action, lock=False, hint=hint)
+            return
+
+        def mkdir():
+            parts, name = files.split(data.get("path")), data.get("name")
+            files.mkdir(parts, name)
+            return 201, {"name": name}, "/".join(parts + [name])
+
+        def rename():
+            parts, name, new = files.split(data.get("path")), data.get("name"), data.get("to")
+            files.rename(parts, name, new)
+            return 200, {"name": new}, "%s -> %s" % ("/".join(parts + [str(name)]), new)
+
+        def move():
+            parts, names, dest = files.split(data.get("path")), self.names(data), files.split(data.get("to"))
+            moved = files.move(parts, names, dest)
+            return 200, {"moved": moved}, "%s %s -> %s" % ("/".join(parts), names[:5], "/".join(dest))
+
+        def trash():
+            parts, names = files.split(data.get("path")), self.names(data)
+            ids = files.to_trash(parts, names)
+            return 200, {"ids": ids}, "%s %s" % ("/".join(parts), names[:5])
+
+        def restore():
+            ids = self.ids(data)
+            done = files.restore(ids)
+            return 200, {"restored": done}, ids[:5]
+
+        def purge():
+            ids = self.ids(data)
+            files.purge(ids)
+            return 200, {"purged": len(ids)}, ids[:5]
+
+        def empty():
+            if str(data.get("confirm", "")).strip().lower() != CONFIRM_WORD:
+                raise PanelError(400, "onay için %s yazın" % CONFIRM_WORD)
+            count = files.empty()
+            return 200, {"purged": count}, count
+
+        routes = {
+            "/api/mkdir": ("klasor", mkdir),
+            "/api/rename": ("ad", rename),
+            "/api/move": ("tasi", move),
+            "/api/trash": ("cope", trash),
+            "/api/trash/restore": ("geri-yukle", restore),
+            "/api/trash/purge": ("kalici-sil", purge),
+            "/api/trash/empty": ("cop-bosalt", empty),
+        }
+        if route not in routes:
+            self.error(404, "bulunamadı")
+            return
+        action, fn = routes[route]
+        hint = " ".join(str(data.get(k))[:200] for k in ("path", "name", "names", "ids", "to") if k in data)
+        self.run(user, action, fn, lock=True, hint=hint)
+
+
+class Server(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 128
+
+
+def cmd_serve(args):
+    host, _, port = args.listen.rpartition(":")
+    if host != "127.0.0.1" or not port.isdigit():
+        fail("panel yalnız yerel adresi dinler (127.0.0.1:PORT)")
+    if not os.path.isabs(args.root) or not TRASH_RE.match(args.trash):
+        fail("kök mutlak yol, çöp adı noktayla başlayan küçük harfli bir ad olmalı")
+    if args.share and (not TRASH_RE.match(args.share) or args.share == args.trash):
+        fail("paylaşım klasörü adı noktayla başlayan küçük harfli ve çöpten farklı olmalı")
+    if args.archive_dir and (not TRASH_RE.fullmatch(args.archive_dir) or args.archive_dir in (args.share, args.trash)):
+        fail("arşiv çalışma klasörü noktayla başlayan küçük harfli ve diğer iç alanlardan farklı olmalı")
+    # DD-203: paketlerin yazdığı klasörler (köke göre yol ve sahibinin adı); sayfa onları
+    # seçtirmez, paylaştırmaz ve kime ait olduğunu söyler. Kurulum listeyi bildirimlerden derler.
+    protected = []
+    for entry in (args.protected or "").split(";"):
+        if not entry.strip():
+            continue
+        rel, sep, owner = entry.partition("=")
+        if not sep or not owner.strip() or not all(valid_name(p) for p in rel.split("/")):
+            fail("geçersiz --protected")
+        protected.append({"path": rel, "owner": owner.strip()})
+    args.protected = protected
+    try:
+        Files(args.root, args.trash, args.share, args.archive_dir).split(args.downloads_dir)
+    except PanelError:
+        fail("geçersiz --downloads-dir")
+    try:
+        os.close(Files(args.root, args.trash, args.share).open_dir([]))
+    except OSError as err:
+        fail("kök açılamadı: %s (%s)" % (args.root, os_message(err)))
+    Handler.panel = Panel(args)
+    httpd = Server((host, int(port)), Handler)
+    print("dosya paneli: %s:%s dinleniyor (kök %s)" % (host, port, args.root), flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="master-files-panel")
+    sub = parser.add_subparsers(dest="cmd")
+    s = sub.add_parser("serve")
+    s.add_argument("--listen", required=True)
+    s.add_argument("--root", required=True)
+    s.add_argument("--trash", default=".cop")
+    s.add_argument("--share", default="")
+    s.add_argument("--archive-dir", default="")
+    s.add_argument("--domain", default="")
+    s.add_argument("--version", default="")
+    s.add_argument("--protected", default="")
+    s.add_argument("--downloads-dir", default="")
+    s.add_argument("--allow-host", dest="allow_host", action="append", default=[])
+    c = sub.add_parser("check")
+    c.add_argument("--url", required=True)
+    c.add_argument("--host", required=True)
+    args = parser.parse_args()
+    if args.cmd == "serve":
+        cmd_serve(args)
+    elif args.cmd == "check":
+        cmd_check(args)
+    else:
+        parser.print_usage()
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,14 @@
+[Unit]
+Description=WebDAV WAN expiry and interrupted-operation recovery
+After=caddy.service master-paylasim.service master-firewall.service
+
+[Service]
+Type=oneshot
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master_shares.py --state __STATE_FILE__ guard
+TimeoutStartSec=120
+UMask=0077
+# DD-181: runs every 30 s; PID 1's start/finish lines stay out of the journal, the helper's
+# own output is logged at notice.
+SyslogLevel=notice
+LogLevelMax=notice

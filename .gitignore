@@ -1,0 +1,9 @@
+# macOS Finder metadata, created on the dev workstation, never part of the
+# installer or its documentation.
+.DS_Store
+
+# Private installer inputs and downloaded WireGuard profiles/QR codes (DD-143).
+/kurulum/
+
+# Python bytecode left by local test runs; the exporter already excludes it.
+__pycache__/

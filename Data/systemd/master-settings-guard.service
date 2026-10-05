@@ -1,0 +1,15 @@
+[Unit]
+Description=Konsol unconfirmed settings rollback
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master_settings.py --state __STATE_FILE__ guard
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+TimeoutStartSec=150
+StandardOutput=null
+# DD-181: PID 1's start/finish lines for each run stay out of the journal; the helper's
+# own messages (stderr) are logged at notice, so errors still appear.
+SyslogLevel=notice
+LogLevelMax=notice

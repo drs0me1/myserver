@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# tailscale0 üzerinde beklenen IPv4 belirene kadar bekler.
+#
+# Caddy ExecStartPre. Bind adresi EnvironmentFile (state.env) içindeki
+# TAILSCALE_IPV4; systemd aynı değeri bu script'in ortamına verir.
+#
+# - Arayüzde adres yoksa bekler (boot).
+# - TAILSCALE_IPV4 set ama arayüzde yokken arayüzde başka IP varsa hemen
+#   fail (stale state — beklemek işe yaramaz; refresh-tailnet düzeltir).
+# - TAILSCALE_IPV4 boşsa herhangi bir global IPv4 yeter.
+#
+# Süre dolunca 1; StartLimit unit'i görünür failed yapar (DD-72 / DD-85).
+set -Eeuo pipefail
+
+TAILSCALE_IF="${TAILSCALE_IF:-tailscale0}"
+WAIT_SECONDS="${TAILNET_ADDR_WAIT_SECONDS:-120}"
+
+iface_has_any_v4() {
+    ip -4 -o addr show dev "$TAILSCALE_IF" scope global 2>/dev/null |
+        grep -q ' inet '
+}
+
+iface_has_exact_v4() {
+    local want="$1"
+    [[ "$want" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+    ip -4 -o addr show dev "$TAILSCALE_IF" scope global 2>/dev/null |
+        awk -v w="$want" '
+            $3 == "inet" {
+                sub(/\/.*/, "", $4)
+                if ($4 == w) found = 1
+            }
+            END { exit !found }
+        '
+}
+
+deadline=$((SECONDS + WAIT_SECONDS))
+while [[ "$SECONDS" -lt "$deadline" ]]; do
+    if [[ -n "${TAILSCALE_IPV4:-}" ]]; then
+        if iface_has_exact_v4 "$TAILSCALE_IPV4"; then
+            exit 0
+        fi
+        # Başka bir IPv4 varken state eskiyse beklemek 120s yakar; fail-closed.
+        if iface_has_any_v4; then
+            printf 'HATA: state.env TAILSCALE_IPV4=%s %s üzerinde yok (stale); refresh-tailnet bekleniyor.\n' \
+                "$TAILSCALE_IPV4" "$TAILSCALE_IF" >&2
+            exit 1
+        fi
+    elif iface_has_any_v4; then
+        exit 0
+    fi
+    sleep 2
+done
+
+if [[ -n "${TAILSCALE_IPV4:-}" ]]; then
+    printf 'HATA: %s üzerinde %s %ss içinde oluşmadı.\n' \
+        "$TAILSCALE_IF" "$TAILSCALE_IPV4" "$WAIT_SECONDS" >&2
+else
+    printf 'HATA: %s IPv4 adresi %ss içinde oluşmadı.\n' \
+        "$TAILSCALE_IF" "$WAIT_SECONDS" >&2
+fi
+exit 1

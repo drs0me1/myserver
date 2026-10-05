@@ -1,0 +1,38 @@
+{
+  "ad": "WireGuard",
+  "alt": "Cihazlarınız için VPN bağlantısı.",
+  "simge": "shield",
+  "ton": "t-dir",
+  "aciklama": "Çekirdek WireGuard katmanını kurar ve Konsol'a WireGuard sayfasını ekler. Ağları ve cihazları o sayfadan kurarsınız.",
+  "neler": [
+    ["box", "Paketler: wireguard-tools, qrencode · çekirdek modülü"],
+    ["shield", "Güvenlik duvarına WireGuard bildirimi eklenir"],
+    ["shield", "WireGuard sayfası açılır (ilk ağ: Yapılandır)"]
+  ],
+  "notlar": ["Debian paketleri + Konsol sayfası", "port ağ kurulunca açılır"],
+  "gunluk_kaynak": "journalctl -u wg-quick@*",
+  "kaldir": {
+    "neler": [
+      ["shield", "Bütün ağlar kapanır, UDP portları ve kurallar kalkar."],
+      ["folder", "WireGuard sayfası kalkar."]
+    ],
+    "veri_etiket": "Ağ anahtarlarını ve profilleri de sil",
+    "veri_kalir": "ağ anahtarları ve cihaz profilleri sunucuda korunur; yeniden kurunca ağlar geri gelir.",
+    "veri_silinir": "Ağ anahtarları ve bütün cihaz profilleri de silinir; cihazları yeniden eklemeniz gerekir."
+  },
+  "sayfa": {"rota": "wireguard", "baslik": "WireGuard", "ustbilgi": "Cihazlar ve ağlar"},
+  "gunluk": {
+    "ekle": "{detail} eklendi",
+    "cikar": "{detail} silindi",
+    "dns": "{detail} için DNS değişti",
+    "keepalive": "{0} için keepalive {1} sn",
+    "ag-ayarlar": "{detail} varsayılan DNS ayarı güncellendi",
+    "peer-durum": "{0} {1}",
+    "ag-durum": "{0} ağı {1}",
+    "ag-ekle": "{detail} ağı oluşturuldu",
+    "ag-kaldir": "{detail} ağı kaldırıldı",
+    "yeniden-uret": "{detail} yeniden üretildi",
+    "qr": "{detail} QR kodu görüntülendi",
+    "profil": "{detail} profili indirildi"
+  }
+}

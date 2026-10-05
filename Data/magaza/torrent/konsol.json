@@ -1,0 +1,45 @@
+{
+  "ad": "qBittorrent",
+  "alt": "Torrent indirmelerini yönetin.",
+  "simge": "download",
+  "ton": "t-video",
+  "aciklama": "Sunucudaki Podman'da konteyner olarak çalışır. Kurulumda seçtiğiniz hesap ve indirme klasörüyle başlar; diğer ayarlarına dokunmaz.",
+  "neler": [
+    ["box", "linuxserver/qbittorrent imajı __TORRENT_SURUM__, özetiyle sabit; Konsol yeni sürümü denetler, siz onaylayınca günceller"],
+    ["globe", "torrent.__LOCAL_DOMAIN__ adı eklenir (arayüz yalnız sunucuda dinler)"],
+    ["folder", "İndirme yeri __DOWNLOADS_PATH__, profil __TORRENT_PROFILE_DIR__"],
+    ["info", "Eş portu (TCP+UDP) yalnız sunucunun WAN IPv4 adresinde internete açılır; Tailscale'de ve başka adreste port yok. Numarası Podman sayfasında görünür ve orada değiştirilebilir"]
+  ],
+  "notlar": ["Podman konteyneri · __TORRENT_CONTAINER__", "arayüz yalnız sunucu"],
+  "gunluk_kaynak": "journalctl -u __TORRENT_CONTAINER__.service",
+  "kaldir": {
+    "neler": [
+      ["box", "Konteyner durur ve açılışta başlamaz; imaj sunucuda kalır."],
+      ["globe", "torrent.__LOCAL_DOMAIN__ adı kalkar."]
+    ],
+    "veri_etiket": "Profili, torrent listesini ve imajı da sil",
+    "veri_kalir": "indirilenler __DOWNLOADS_PATH__ altında kalır; profil ve torrent listesi korunur.",
+    "veri_silinir": "Profil, torrent listesi ve konteyner imajı da silinir. İndirilen dosyalara dokunulmaz; Konsol'da seçilen arayüz ve eş portu ile onaylanan imaj sürümü korunur."
+  },
+  "durdur_notu": "Süren indirmeler duraklar; başlatınca kaldığı yerden devam eder.",
+  "form": {
+    "kur_baslik": "qBittorrent'i kur",
+    "kur_alt": "Web arayüzü hesabı ve indirme klasörü",
+    "kur_not": "Kurulum bu bilgilerle başlar. Parola sunucuda yalnız özet olarak saklanır.",
+    "ayar_baslik": "qBittorrent ayarları",
+    "ayar_alt": "Web arayüzü hesabı ve indirme klasörü",
+    "ayar_not": "Doğrudan kaydedilir; çalışıyorsa qBittorrent kısa süre yeniden başlar. Mevcut indirmeler taşınmaz.",
+    "oku": "/durum",
+    "yaz": "/ayar",
+    "alanlar": [
+      {"ad": "username", "tur": "metin", "etiket": "Kullanıcı adı", "varsayilan": "admin", "desen": "[A-Za-z0-9._@\\-]{1,64}", "en_cok": 64, "ipucu": "Harf, rakam ve . _ @ - kullanılabilir."},
+      {"ad": "password", "tur": "parola", "etiket": "Parola", "en_az": 8, "en_cok": 256, "ipucu": "En az 8 karakter.", "ayar_ipucu": "Boş bırakılırsa kayıtlı parola korunur."},
+      {"ad": "save", "tur": "klasor", "etiket": "İndirme klasörü", "varsayilan": "__DOWNLOADS_PATH__", "ipucu": "İndirmeler ya da kütüphane altında; indirme klasörü dışındaki bir klasör konteynere aynı yolla bağlanır."}
+    ]
+  },
+  "sayfa": {"rota": "torrent", "baslik": "qBittorrent", "ustbilgi": "Hesap, indirme dizini ve servis", "detay": "qBittorrent ayarları ve ilk giriş bilgileri"},
+  "gunluk": {
+    "hesap": "qBittorrent hesabı kaydedildi ({detail})",
+    "dizin": "qBittorrent indirme dizini: {detail}"
+  }
+}

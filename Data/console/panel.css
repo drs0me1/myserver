@@ -1,0 +1,338 @@
+/* Model A: one sidebar, one workspace; shared application components stay intact.
+   DD-204: CasaOS-inspired skin — a wallpaper behind translucent ("glass") surfaces, rounded
+   tiles for applications and an overview page. Only the base's tokens and shell rules change;
+   pages, package pages and their scripts keep their markup. Colours live here as tokens,
+   the wallpaper's shapes in index.html. */
+:root {
+  --ground:#EEF2F5; --surface:#FFFFFF; --surface-2:#EEF2F4; --ink:#1B2430;
+  --muted:#5C6B7A; --line:#D7DFE6; --accent:#1F6F8B; --accent-hover:#185A71;
+  --accent-ink:#FFFFFF; --accent-soft:rgba(31,111,139,.14); --focus:rgba(31,111,139,.42);
+  --tint:rgba(255,255,255,.42); --tint-line:rgba(255,255,255,.6);
+  --vpn:#0E7C86;
+  /* glass surfaces and the wallpaper */
+  --glass:rgba(255,255,255,.62); --glass-2:rgba(255,255,255,.82); --glass-line:rgba(255,255,255,.62);
+  --glass-shadow:0 18px 48px -26px rgba(16,36,56,.45); --blur:18px; --radius:16px;
+  --sky1:#B9D5E8; --sky2:#E6EEF4; --m1:#8EA9BE; --m2:#6A879E; --m3:#4C6780; --m4:#37506A;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#0D1217; --surface:#151B21; --surface-2:#1C242B; --ink:#E6ECF1;
+    --muted:#9AA8B5; --line:#2A353F; --accent:#6FC3DC; --accent-hover:#8FD3E8;
+    --accent-ink:#082028; --accent-soft:rgba(111,195,220,.18); --focus:rgba(111,195,220,.45);
+    --tint:rgba(18,24,30,.46); --tint-line:rgba(255,255,255,.1);
+    --vpn:#5FC4CC;
+    --glass:rgba(18,24,30,.58); --glass-2:rgba(18,24,30,.78); --glass-line:rgba(255,255,255,.1);
+    --glass-shadow:0 18px 48px -26px rgba(0,0,0,.8);
+    --sky1:#0B1B2B; --sky2:#1E3346; --m1:#223447; --m2:#1A2A3B; --m3:#13202E; --m4:#0D1722;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#0D1217; --surface:#151B21; --surface-2:#1C242B; --ink:#E6ECF1;
+  --muted:#9AA8B5; --line:#2A353F; --accent:#6FC3DC; --accent-hover:#8FD3E8;
+  --accent-ink:#082028; --accent-soft:rgba(111,195,220,.18); --focus:rgba(111,195,220,.45);
+  --tint:rgba(18,24,30,.46); --tint-line:rgba(255,255,255,.1);
+  --vpn:#5FC4CC;
+  --glass:rgba(18,24,30,.58); --glass-2:rgba(18,24,30,.78); --glass-line:rgba(255,255,255,.1);
+  --glass-shadow:0 18px 48px -26px rgba(0,0,0,.8);
+  --sky1:#0B1B2B; --sky2:#1E3346; --m1:#223447; --m2:#1A2A3B; --m3:#13202E; --m4:#0D1722;
+}
+/* Readers who asked for less transparency, and engines without backdrop-filter, get opaque surfaces. */
+@media(prefers-reduced-transparency:reduce) {
+  :root { --glass:var(--surface); --glass-2:var(--surface); --glass-line:var(--line); --tint:var(--surface-2); --tint-line:var(--line); --blur:0px; }
+  .wall { display:none; }
+}
+@supports not (backdrop-filter:blur(1px)) {
+  :root { --glass:var(--surface); --glass-2:var(--surface); --glass-line:var(--line); --tint:var(--surface-2); --tint-line:var(--line); }
+}
+
+html,body { min-height:100%; }
+body { font-size:14px; background:transparent; }
+
+/* ---- wallpaper (fixed, behind everything) ---- */
+.wall { position:fixed; inset:0; z-index:-1; overflow:hidden; background:linear-gradient(180deg,var(--sky1) 0%,var(--sky2) 70%); }
+.wall svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.wall .glow { opacity:.9; }
+.wall .m1 { fill:var(--m1); } .wall .m2 { fill:var(--m2); } .wall .m3 { fill:var(--m3); } .wall .m4 { fill:var(--m4); }
+
+/* ---- glass surfaces ---- */
+.side, .card, .table, .fsrail, .store-row, .store-detail, .mobile-brand, .fs09-detail, .dav-share-row, dialog, .offbar, .addrow, .as-fw-scroll {
+  background:var(--glass); border:1px solid var(--glass-line); box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(150%); backdrop-filter:blur(var(--blur)) saturate(150%);
+}
+/* The Files panel holds the fixed selection dock: a backdrop-filter here would become its containing
+   block and pin the dock to the panel, so this surface is translucent without blur. */
+.fspanel { background:var(--glass-2); border:1px solid var(--glass-line); box-shadow:var(--glass-shadow); }
+.card, .store-detail, .fsrail, .fspanel, .table, .fs09-detail, .dav-share-row { border-radius:var(--radius); }
+.table .tr.head { background:var(--tint); }
+.card .table, .fspanel .table, .store-detail .table { box-shadow:none; }
+dialog { background:var(--glass-2); }
+
+/* ---- shell ---- */
+.shell { grid-template-columns:232px minmax(0,1fr); }
+.side { position:sticky; top:14px; height:calc(100vh - 28px); margin:14px 0 14px 14px; padding:22px 14px 16px; gap:18px; border-radius:18px; border-right-width:1px; }
+.brand { gap:3px; }
+.wordmark { font-size:28px; }
+.brand small { font-size:11.5px; overflow-wrap:anywhere; }
+.nav { gap:4px; }
+.nav a { padding:10px; font-size:13.5px; border-radius:10px; }
+.nav a:hover { background:var(--accent-soft); }
+.nav a[aria-current="page"] { background:var(--glass-2); box-shadow:inset 0 0 0 1px var(--glass-line); }
+.nav .settings-link { margin-top:10px; }
+.side > * { flex-shrink:0; }
+.side-foot { font-size:10.5px; padding:12px 6px 0; border-top:1px solid var(--glass-line); overflow-wrap:anywhere; margin-top:0; gap:10px; }
+.side-facts { margin:0; display:grid; gap:8px; }
+.side-facts > div { display:flex; flex-wrap:wrap; justify-content:space-between; gap:3px 8px; }
+.side-facts dt { color:var(--muted); }
+.side-facts dd { margin:0; color:var(--ink); font-variant-numeric:tabular-nums; }
+.side-facts .mono { font-size:10.5px; }
+.home-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 14px; }
+.home-title time { font-variant-numeric:tabular-nums; }
+.home-title span { font:400 13px/1.5 var(--f-body); color:var(--muted); letter-spacing:0; }
+.resources { border-top:1px solid var(--glass-line); padding:16px 6px 0; display:grid; gap:12px; margin-top:auto; }
+.resource-status { font-size:10px; color:var(--muted); margin:0; }
+.resource { display:grid; gap:6px; font-size:11px; font-variant-numeric:tabular-nums; }
+.resource > div { display:flex; align-items:center; justify-content:space-between; }
+.resource strong { font-weight:600; }
+.resource small { font-size:10px; color:var(--muted); line-height:1.5; overflow-wrap:anywhere; }
+.resource progress { appearance:none; display:block; width:100%; height:5px; border:0; border-radius:6px; overflow:hidden; background:var(--line); color:var(--accent); }
+.resource progress::-webkit-progress-bar { background:var(--line); }
+.resource progress::-webkit-progress-value { background:var(--accent); border-radius:6px; }
+.resource progress::-moz-progress-bar { background:var(--accent); border-radius:6px; }
+.main { padding:28px clamp(18px,3vw,42px) 56px; }
+.content { max-width:1240px; gap:22px; }
+.eyebrow { text-transform:none; letter-spacing:0; font-size:11.5px; margin-bottom:4px; }
+h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
+.page-note { margin:0; color:var(--muted); font-size:13px; line-height:1.7; }
+.skip-link { position:fixed; top:-80px; left:220px; padding:12px; background:var(--surface); z-index:20; }
+.skip-link:focus { top:10px; }
+
+/* ---- controls: pill buttons on glass ---- */
+.btn { border-radius:999px; }
+.btn-sm { border-radius:999px; }
+.btn-quiet { background:var(--glass-2); border-color:var(--glass-line); }
+.btn-quiet:hover { border-color:var(--accent); background:var(--glass-2); }
+.hm { background:var(--tint); }
+.hm.ok { background:var(--ok-soft); } .hm.warn { background:var(--warn-soft); } .hm.bad { background:var(--danger-soft); } .hm.idle { background:var(--idle-soft); }
+.fchip { background:var(--glass-2); border-color:var(--glass-line); }
+.fs-search { background:var(--tint); }
+.rl:hover { background:var(--glass-2); }
+.toast { border-radius:12px; }
+
+/* ---- home (DD-213): six desktop slots; the compact network card occupies at most two ---- */
+.widgets { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:14px; align-items:start; }
+.widgets:empty { display:none; }
+.widget { container-type:inline-size; min-width:0; padding:14px; }
+.widget[data-span="2"] { grid-column:span 2; }
+.widget .card-head h2 { font-size:14.5px; }
+.widget .card-head small { font-size:12px; }
+
+/* ---- network card: compact equal halves; stack only when their content cannot fit ---- */
+:root { --net-down:var(--accent); --net-up:#C2783A; }
+.net { display:grid; gap:12px; }
+.net-live, .net-apps { min-width:0; height:90px; }
+.net-live { display:grid; grid-template-rows:auto 1fr; gap:8px; }
+.net-rates { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+@container (min-width:300px) {
+  .net { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .net-live, .net-apps { height:126px; }
+  .net-rates { grid-template-columns:minmax(0,1fr); }
+}
+.net-rate { display:grid; gap:3px; min-width:0; }
+.net-rate .lbl { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); }
+.net-rate .lbl::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--net-down); flex:none; }
+.net-rate.up .lbl::before { background:var(--net-up); }
+.net-rate b { font:600 19px/1.15 var(--f-display); font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.net-chart { min-height:0; }
+.net-svg { display:block; width:100%; height:100%; }
+.net-svg .base { stroke:var(--line); stroke-width:1; }
+.net-svg .down-fill { fill:var(--accent-soft); stroke:none; }
+.net-svg .down { fill:none; stroke:var(--net-down); stroke-width:1.8; }
+.net-svg .up { fill:none; stroke:var(--net-up); stroke-width:1.5; }
+.net-apps { overflow:auto; scrollbar-width:thin; }
+.net-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:11px; }
+.net-table th, .net-table td { border:0; padding:6px 2px; text-align:right; }
+.net-table thead th { color:var(--muted); font-size:10px; font-weight:500; padding-top:0; padding-bottom:8px; }
+.net-table th:first-child { width:44%; text-align:left; }
+.net-table th:first-child, .net-table td:first-child { padding-left:0; }
+.net-table th:last-child, .net-table td:last-child { padding-right:0; }
+.net-app-name { display:flex; align-items:center; gap:5px; min-width:0; }
+.net-app .ico { width:18px; height:18px; border-radius:5px; flex:none; display:grid; place-items:center; color:#fff; }
+.net-app .ico svg { width:12px; height:12px; }
+.net-app strong { min-width:0; font-size:11px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.net-app .v { font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.net-empty { color:var(--muted); text-align:left!important; line-height:1.6; }
+
+/* ---- edit mode: below the tiles; sticky on desktop, normal flow on phones so cards stay clear ---- */
+.edit-bar { position:sticky; z-index:30; bottom:16px; justify-self:start; width:max-content; max-width:100%; margin-top:18px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px; border-radius:999px;
+  background:var(--glass-2); border:1px solid var(--glass-line); box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(150%); backdrop-filter:blur(var(--blur)) saturate(150%); }
+.edit-bar .edit-hint { padding:0 8px; font-size:12px; color:var(--muted); }
+.edit-bar .btn svg { width:15px; height:15px; }
+#genel-tiles.editing .tile { cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; animation:tile-wiggle .32s ease-in-out infinite alternate; }
+#genel-tiles.editing .tile:nth-child(2n) { animation-delay:-.16s; }
+#genel-tiles .tile.dragging { cursor:grabbing; animation:none; z-index:2; box-shadow:0 22px 40px -18px rgba(0,0,0,.55); border-color:var(--accent); }
+@keyframes tile-wiggle { from { transform:rotate(-1.1deg); } to { transform:rotate(1.1deg); } }
+.tile-move { display:flex; gap:8px; }
+.tile-move button { width:30px; height:30px; display:grid; place-items:center; border-radius:50%; border:1px solid var(--glass-line); background:var(--glass-2); color:var(--ink); cursor:pointer; }
+.tile-move button svg { width:15px; height:15px; }
+.tile-move button:disabled { opacity:.35; cursor:default; }
+.tile-move button:focus-visible, .widget-tools .btn:focus-visible, .edit-bar .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.widgets.editing .widget { outline:2px dashed var(--accent-soft); outline-offset:3px; }
+.widget.is-hidden > :not(.widget-tools) { opacity:.38; }
+.widget-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; padding-top:10px; border-top:1px dashed var(--line); }
+.widget-tools .btn { min-width:34px; justify-content:center; }
+.widget-tools .btn svg { width:14px; height:14px; }
+.section-title { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin:6px 2px 0; flex-wrap:wrap; }
+.section-title h2 { margin:0; font-size:15px; font-weight:650; }
+
+/* ---- application tiles: the overview and the App Store share one shape ---- */
+.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); gap:14px; }
+.home-empty { grid-column:1/-1; padding:16px 0; display:grid; justify-items:start; gap:8px; }
+.tile { position:relative; display:grid; justify-items:center; gap:9px; min-height:193px; padding:20px 2px 14px; text-decoration:none; color:inherit; text-align:center; cursor:pointer; }
+.tile:hover, .store-row:hover { border-color:var(--accent); }
+.tile .ico, .store-row .svc-ico { width:54px; height:54px; border-radius:16px; display:grid; place-items:center; color:#fff; box-shadow:0 10px 22px -12px rgba(0,0,0,.6); }
+.tile .ico svg, .store-row .svc-ico svg { width:26px; height:26px; }
+.tile strong { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.tile small { font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
+.tile .dot { position:absolute; top:10px; right:10px; width:8px; height:8px; border-radius:50%; }
+/* DD-210: an installed app's tile: the launch link stretches over the card; a compact row of bare icons
+   (Durdur/Başlat, Ayarlar, Günlükler; no text, background or border) sits beneath the icon and text.
+   Each slot has a 44 px touch area; unsupported actions leave a noninteractive blank. */
+.tile.has-actions { cursor:default; padding-bottom:10px; }
+.tile-link { display:grid; justify-items:center; gap:9px; color:inherit; text-decoration:none; }
+.tile-link::after { content:""; position:absolute; inset:0; border-radius:inherit; }
+.tile-link:focus-visible { outline:none; }
+.tile-link:focus-visible::after { outline:2px solid var(--accent); outline-offset:2px; }
+.tile-actions { position:relative; z-index:1; display:grid; grid-template-columns:repeat(3,44px); justify-content:center; max-width:100%; }
+.tile-act { position:relative; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:8px;
+  background:none; box-shadow:none; color:var(--muted); font:inherit; text-decoration:none; cursor:pointer; }
+.tile-act-empty { cursor:default; pointer-events:none; }
+.tile-act svg { width:18px; height:18px; }
+.tile-act:hover, .tile-act:active { color:var(--ink); background:none; }
+.tile-act:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.tile-act[aria-disabled="true"] { opacity:.55; cursor:progress; }
+/* One install/settings form call's content in the shared dialog; it lays out as the dialog's own children. */
+.app-form-root { display:contents; }
+.app-log-root { display:contents; }
+.app-log-root pre { max-height:55vh; }
+/* The install/settings form's folder chooser (inside the shared dialog). */
+.app-field { display:grid; gap:6px; min-width:0; }
+.app-field > label { display:grid; gap:6px; font-size:13px; }
+.app-field input { width:100%; min-width:0; padding:9px 10px; border:1px solid var(--line); border-radius:6px; background:var(--ground); color:var(--ink); font:inherit; }
+.app-field input[readonly] { color:var(--muted); }
+.app-folder-pick { display:flex; gap:8px; align-items:center; min-width:0; }
+.app-folder-pick input { flex:1 1 auto; }
+.app-folder-pick .btn { flex:0 0 auto; }
+.app-picker { display:grid; gap:6px; max-height:260px; overflow:auto; padding:8px; border:1px solid var(--line); border-radius:8px; }
+.app-picker-here { display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0; }
+.app-picker-here code { overflow-wrap:anywhere; font-size:12.5px; }
+.app-picker-row { display:flex; gap:8px; align-items:center; min-width:0; }
+.app-picker-row > span { flex:1 1 auto; min-width:0; display:grid; }
+.app-picker-row strong { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.app-picker-row small { font-size:11.5px; color:var(--muted); }
+.app-form small.hint-s { display:block; }
+/* App Store's "Aç" is a link while the app has its own web UI (DD-210); it looks like the button it replaces. */
+.store-actions a.btn { text-decoration:none; }
+.dot.on { background:var(--ok); } .dot.off { background:var(--idle); } .dot.warn { background:var(--warn); }
+/* icon tones: the shell's sections and the tones packages declare (konsol.json "ton") */
+.t-files, .tile .t-dir, .store-row .t-dir, .net-app .t-dir { background:linear-gradient(145deg,#3F8BD1,#2A5F9A); color:#fff; }
+.t-store { background:linear-gradient(145deg,#4E9A8A,#2F6F62); color:#fff; }
+.t-settings { background:linear-gradient(145deg,#6C7A89,#45515D); color:#fff; }
+.t-share { background:linear-gradient(145deg,#D08A3F,#9A5F22); color:#fff; }
+.tile .t-video, .store-row .t-video, .net-app .t-video { background:linear-gradient(145deg,#8B6BC4,#5A3F8F); color:#fff; }
+.tile .t-text, .tile .t-file, .store-row .t-text, .store-row .t-file, .net-app .t-text, .net-app .t-file { background:linear-gradient(145deg,#8A96A3,#5E6B78); color:#fff; }
+
+/* ---- App Store as tiles (rows keep their ids, buttons and progress lines) ---- */
+.store-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:14px; border:0; background:none; box-shadow:none; overflow:visible; }
+.store-row { display:grid; grid-template-columns:minmax(0,1fr); justify-items:center; align-content:start; text-align:center; gap:9px; padding:20px 14px 16px; border-radius:var(--radius); min-height:0; }
+.store-row + .store-row { border-top:1px solid var(--glass-line); }
+.store-row:has([aria-expanded="true"]) { border-color:var(--accent); background:var(--glass-2); }
+.store-who { min-width:0; }
+.store-who h2 { font-size:13.5px; margin:0 0 3px; font-weight:600; }
+.store-state { font-size:11px; }
+.store-actions,.store-detail-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; justify-content:center; }
+.store-actions .btn,.store-detail .btn { min-height:32px; font-size:12px; }
+.store-actions .btn-primary { min-width:52px; justify-content:center; }
+.store-progress { font-size:12px; color:var(--muted); margin:0; overflow-wrap:anywhere; }
+.store-error { color:var(--danger); }
+.store-detail { padding:20px; margin-top:18px; min-width:0; }
+.store-detail-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.store-detail h2 { font-size:15px; margin:0; }
+.store-detail .mod-desc { font-size:13px; margin:14px 0; }
+.store-detail .mod-facts { margin-bottom:14px; font-size:11px; }
+.store-detail .will { font-size:12px; margin:14px 0; }
+.store-detail .will li { min-width:0; overflow-wrap:anywhere; }
+.store-detail .linkbtn { font-size:12px; }
+.store-detail-actions { border-top:1px solid var(--glass-line); margin-top:18px; padding-top:16px; justify-content:flex-start; }
+.store-detail-actions .danger-text { margin-left:auto; }
+.store-detail .logbox { margin-top:18px; }
+.store-detail .acct-head { flex-wrap:wrap; overflow-wrap:anywhere; }
+.store-detail pre { max-height:320px; overflow:auto; font-size:11px; }
+
+/* ---- settings and files (existing pages in the new skin) ---- */
+.system-facts { margin:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.system-facts > div { border-top:1px solid var(--glass-line); padding:15px 4px; display:grid; gap:5px; }
+.system-facts dt { color:var(--muted); font-size:11px; }
+.system-facts dd { margin:0; overflow-wrap:anywhere; font-size:13px; }
+/* DD-182: Sağlık kartı — her satır: durum etiketi, denetim adı, ayrıntı. */
+.health-facts dt { display:flex; align-items:center; gap:8px; color:var(--ink); font-size:12px; }
+.as-tabs { gap:20px; padding:0; border-bottom-color:var(--glass-line); }
+.as-tabs button { border-radius:0; padding:12px 0; font-size:13px; border-bottom:2px solid transparent; font-weight:500; cursor:pointer; }
+.as-tabs [aria-selected=true] { background:none; color:var(--ink); border-bottom-color:var(--accent); }
+.fs09-tabs { gap:26px; border-bottom-color:var(--glass-line); }
+[data-view="dosyalar"] .fsrail { padding-bottom:12px; }
+.fs09-layout { grid-template-columns:minmax(0,1fr); }
+.fs09-layout.with-detail { grid-template-columns:minmax(0,1fr) 280px; }
+.fs09-detail-head > div { flex:1; min-width:0; }
+.fs09-layout.list .fs-t:not(.trash-t) > .tr { grid-template-columns:24px minmax(0,1fr) 85px 110px 86px; padding:13px 12px; }
+.fs09-layout.list .fs-t > .tr .c-size,.fs09-layout.list .fs-t > .tr .c-date { display:block; }
+.fs09-layout.list.with-detail .fs-t:not(.trash-t) > .tr { grid-template-columns:24px minmax(0,1fr) 86px; }
+.fs09-layout.list.with-detail .fs-t > .tr .c-size,.fs09-layout.list.with-detail .fs-t > .tr .c-date { display:none; }
+.fs09-layout.cards #fs-table { grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); }
+.fs09-layout .fs-t > .tr.focused { background:var(--accent-soft); }
+/* DD-183: running archive job, one line above the Files list; no jobs page. */
+.archive-bars { display:grid; gap:8px; margin:0 0 14px; }
+.archive-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid var(--glass-line); border-radius:12px; background:var(--glass-2); }
+.archive-bar p { flex:1; min-width:0; margin:0; font-size:12.5px; overflow-wrap:anywhere; }
+.archive-bar .spin { width:12px; height:12px; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:spin .8s linear infinite; flex:none; }
+.archive-form, .archive-form > * { min-width:0; overflow-wrap:anywhere; }
+
+@media(max-width:1199px) { .widgets { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+@media(max-width:1100px) {
+  .fs09-layout.with-detail { grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:760px) {
+  .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .shell { display:block; min-height:calc(100vh - 62px); }
+  .mobile-brand { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin:10px 10px 0; border-radius:14px; position:sticky; top:10px; z-index:25; }
+  .mobile-brand .wordmark { font-size:22px; }
+  .side { display:none; position:static; height:auto; margin:10px 10px 0; padding:18px; border-radius:14px; }
+  .side.menu-open { display:flex; }
+  .side .brand { display:none; }
+  .resources { grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:0; }
+  .resource-status { grid-column:1/-1; }
+  .side-foot { display:grid; gap:10px; }
+  .side-facts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 18px; }
+  .side-facts > div { display:grid; justify-content:start; }
+  .nav .settings-link { margin-top:10px; }
+  .main { padding:18px 14px 36px; }
+  .content { gap:18px; }
+  .edit-bar { position:static; }
+  .edit-bar .edit-hint { display:none; }
+  .as-tabs,.fs09-tabs { gap:17px; flex-wrap:wrap; }
+  .as-tabs button,.fs09-tabs button { font-size:12px; }
+  .system-facts { grid-template-columns:minmax(0,1fr); }
+  .fs09-layout.list .fs-t:not(.trash-t) > .tr { grid-template-columns:24px minmax(0,1fr) 76px; }
+  .fs09-layout.list .fs-t > .tr .c-size,.fs09-layout.list .fs-t > .tr .c-date { display:none; }
+  .skip-link { left:12px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; scroll-behavior:auto!important; } }
+@media(max-width:620px) {
+  .store-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .store-row { padding:16px 10px 14px; }
+  .store-row .btn { min-height:36px; }
+  .store-detail { padding:16px; }
+  .store-detail-actions .danger-text { margin-left:0; }
+}
+@media(max-width:480px) { .tiles { grid-template-columns:repeat(2,minmax(0,1fr)); } .tile { padding-inline:2px; } }

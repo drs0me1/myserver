@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Konsol</title>
+<link rel="stylesheet" href="/konsol.css">
+<link rel="stylesheet" href="/ayarlar.css">
+<link rel="stylesheet" href="/konteynerler.css">
+<link rel="stylesheet" href="/dosyalar.css">
+<link rel="stylesheet" href="/panel.css">
+<script src="/arsiv.js" defer></script>
+<script src="/dosyalar.js" defer></script>
+<script src="/ayarlar.js" defer></script>
+<script src="/konteynerler.js" defer></script>
+<script src="/konsol.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">İçeriğe geç</a>
+<!-- DD-204: duvar kâğıdı — dış görsel yok (CSP img-src 'self'); gradyan ve bu SVG. Renkler panel.css token'larından. -->
+<div class="wall" aria-hidden="true">
+  <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" focusable="false">
+    <defs><radialGradient id="wall-glow" cx="30%" cy="22%" r="45%"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect class="glow" fill="url(#wall-glow)" width="1600" height="900"/>
+    <path class="m1" d="M0 640 220 470 380 560 560 400 760 520 980 360 1180 500 1400 410 1600 540V900H0z"/>
+    <path class="m2" d="M0 720 180 600 340 660 520 540 700 640 900 520 1080 620 1300 540 1600 660V900H0z"/>
+    <path class="m3" d="M0 800 200 710 400 760 600 680 820 760 1040 690 1260 760 1600 720V900H0z"/>
+    <path class="m4" d="M0 900V850l260-50 300 40 320-30 340 40 380-20V900z"/>
+  </svg>
+</div>
+<header class="mobile-brand">
+  <span class="wordmark"><span id="brand-host-m">sunucu</span><span class="dot">.</span></span>
+  <button type="button" class="btn btn-quiet" id="menu-toggle" aria-controls="panel-sidebar" aria-expanded="false">Menü</button>
+</header>
+<div class="shell">
+  <aside class="side" id="panel-sidebar" aria-label="Sunucu konsolu">
+    <div class="brand"><span class="wordmark"><span id="brand-host">sunucu</span><span class="dot">.</span></span><small id="brand-sub">Konsol</small></div>
+    <nav class="nav" aria-label="Bölümler">
+      <a href="#/genel" data-route="genel" data-icon="home">Ana Menü</a>
+      <a href="#/dosyalar" data-route="dosyalar" data-icon="folder">Dosyalar</a>
+      <a href="#/moduller" data-route="moduller" data-icon="stack">App Store</a>
+      <a href="#/konteynerler" data-route="konteynerler" data-icon="box">Podman</a>
+      <!-- DD-216: installed applications have no sidebar entry; they open from their Ana Menü tiles. -->
+      <a href="#/ayarlar" data-route="ayarlar" data-icon="sliders" class="settings-link">Ayarlar</a>
+    </nav>
+    <section class="resources" aria-label="Sunucu kaynakları">
+      <p class="resource-status" id="resource-status" role="status">Kaynaklar okunuyor…</p>
+      <div class="resource"><div><span>İşlemci</span><strong id="resource-cpu">—</strong></div><progress id="bar-cpu" max="100" value="0" aria-label="İşlemci kullanımı" hidden></progress><small id="detail-cpu">Örnek bekleniyor</small></div>
+      <div class="resource"><div><span>RAM</span><strong id="resource-mem">—</strong></div><progress id="bar-mem" max="100" value="0" aria-label="Bellek kullanımı" hidden></progress><small id="detail-mem">—</small></div>
+      <div class="resource"><div><span>Disk</span><strong id="resource-disk">—</strong></div><progress id="bar-disk" max="100" value="0" aria-label="Disk kullanımı" hidden></progress><small id="detail-disk">—</small></div>
+    </section>
+    <div class="side-foot">
+      <dl class="side-facts">
+        <div><dt>Tailscale IP</dt><dd class="mono" id="foot-ts">—</dd></div>
+        <div><dt>WAN IP</dt><dd class="mono" id="foot-wan">—</dd></div>
+        <div><dt>Çalışma süresi</dt><dd id="foot-uptime">—</dd></div>
+        <div><dt>Sürüm</dt><dd class="mono" id="foot-version">—</dd></div>
+      </dl>
+      <span id="foot-access">Tailscale</span><button type="button" class="linkbtn" id="logout" hidden>Çıkış yap</button>
+    </div>
+  </aside>
+  <main class="main" id="main-content" tabindex="-1">
+    <div class="content">
+      <header class="topbar">
+        <div><p class="eyebrow" id="eyebrow" hidden></p><h1 id="title"></h1></div>
+        <div class="top-actions" id="top-actions"></div>
+      </header>
+
+      <!-- Application pages (DD-200): sections are created by konsol.js for installed packages. -->
+
+      <!-- ANA MENÜ (DD-213): widget'lar, uygulama kareleri ve sol altta Düzenle; konsol.js doldurur.
+           Düzenle çubuğu karelerin altındadır; sayfa uzunsa ekranın sol altına yapışır. -->
+      <section data-view="genel" hidden>
+        <div class="widgets" id="genel-widgets" aria-label="Sunucu durumu"></div>
+        <div class="section-title"><h2>Uygulamalar</h2><span class="hint-s" id="genel-sum"></span></div>
+        <div class="tiles" id="genel-tiles" aria-label="Uygulamalar"></div>
+        <div class="edit-bar" id="genel-edit" role="toolbar" aria-label="Ana Menü düzeni"></div>
+      </section>
+
+      <!-- DOSYALAR -->
+      <section data-view="dosyalar" hidden>
+        <nav id="fs-tabs" class="fs09-tabs" aria-label="Dosya bölümleri"></nav>
+        <!-- Folder shortcuts, selection actions and uploads share one workspace. -->
+        <div class="fswrap">
+          <nav class="fsrail" id="fs-rail" aria-label="Klasörler"></nav>
+          <div class="fspanel" id="fs-panel"><div id="fs-body" class="fs-body"></div></div>
+        </div>
+      </section>
+
+      <!-- Optional applications; built-in services live in Settings. -->
+      <section data-view="moduller" hidden>
+        <div class="store-list" id="mod-grid" aria-label="Uygulamalar"></div>
+        <section class="store-detail" id="mod-detail" aria-labelledby="mod-detail-title" hidden></section>
+      </section>
+
+      <!-- Podman: the base container manager (konteynerler.js, #/konteynerler); old Settings → Konteynerler links redirect here. -->
+      <section data-view="konteynerler" hidden>
+        <div id="konteyner-page"></div>
+      </section>
+
+      <section data-view="ayarlar" hidden>
+        <div id="settings-page" aria-label="Sunucu ayarları"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- genel amaçlı pencere: uygulama sayfalarının formları, paylaşım, arşiv, dosya görüntüleyici -->
+<dialog id="sh" aria-labelledby="sh-title"><div class="dlg" id="sh-body"></div></dialog>
+
+<dialog id="cf" aria-labelledby="cf-title">
+  <form class="dlg" id="cf-form" novalidate>
+    <div class="dlg-head">
+      <div><h3 id="cf-title">Onay</h3><p id="cf-sub"></p></div>
+      <button class="dlg-x" type="button" id="cf-x" aria-label="Kapat"></button>
+    </div>
+    <ul class="conseq" id="cf-list"></ul>
+    <div id="cf-extra"></div>
+    <div class="confirm-row" id="cf-word-row">
+      <label for="cf-word">Onay için <strong>onayla</strong> yazın</label>
+      <input type="text" id="cf-word" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="dlg-foot">
+      <button class="btn btn-quiet" type="button" id="cf-cancel">Vazgeç</button>
+      <button class="btn btn-danger" type="submit" id="cf-go" disabled>Tamam</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

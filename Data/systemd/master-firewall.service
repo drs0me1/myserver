@@ -1,0 +1,22 @@
+[Unit]
+Description=Master stack firewall
+# Host INPUT en erken anda otursun (DD-94). Docker yok (DD-152); tailscaled yeniden
+# başlayınca politika yeniden uygulanır (ts-input sırası).
+After=network-online.target tailscaled.service
+Wants=network-online.target
+PartOf=tailscaled.service
+StartLimitIntervalSec=300
+StartLimitBurst=12
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=10s
+Environment=STATE_FILE=/etc/master-stack/state.env
+ExecStart=/usr/local/sbin/master-firewall apply
+ExecStartPost=/usr/local/sbin/master-firewall --check
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=tailscaled.service

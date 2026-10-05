@@ -1,0 +1,10 @@
+[Unit]
+Description=Close expired WebDAV WAN publications
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

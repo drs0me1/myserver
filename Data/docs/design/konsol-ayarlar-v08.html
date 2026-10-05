@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Konsol · Ayarlar yönetimi — taslak v08</title>
+<style>html,body { margin:0; }</style>
+</head>
+<body>
+<style>
+#konsol-settings {
+  --ks-ground:light-dark(#f0f2ef,#0f1211); --ks-surface:light-dark(#fbfcfa,#161a18);
+  --ks-soft:light-dark(#e8ece6,#202722); --ks-ink:light-dark(#191c19,#e5e9e4);
+  --ks-muted:light-dark(#5e655e,#a3ada5); --ks-line:light-dark(#d6dbd3,#303a33);
+  --ks-accent:light-dark(#0e5a73,#77c8df); --ks-tint:light-dark(#dceaee,#18343e);
+  --ks-on:light-dark(#286840,#81d5a5); --ks-onbg:light-dark(#e3efe6,#1c3226);
+  --ks-warn:light-dark(#85500b,#eac281); --ks-warnbg:light-dark(#f7edda,#392c18);
+  --ks-danger:light-dark(#a52b25,#f19b92); --ks-dangerbg:light-dark(#f8e6e2,#3a211f);
+  --ks-button:light-dark(#0e5a73,#6bbfd8); --ks-button-ink:light-dark(#fff,#102328);
+  color:var(--ks-ink); background:var(--ks-ground); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  position:relative; isolation:isolate; width:100%; min-width:0; text-align:left; color-scheme:light dark;
+}
+#konsol-settings *,#konsol-settings *::before,#konsol-settings *::after {box-sizing:border-box}
+#konsol-settings [hidden] {display:none!important}
+#konsol-settings button,#konsol-settings input,#konsol-settings select {font:inherit;color:inherit}
+#konsol-settings button {cursor:inherit}
+#konsol-settings button:disabled {opacity:.45;cursor:not-allowed}
+#konsol-settings :focus-visible {outline:3px solid var(--ks-accent);outline-offset:3px}
+#konsol-settings h1,#konsol-settings h2,#konsol-settings h3,#konsol-settings p {margin:0}
+#konsol-settings h1 {font-size:28px;letter-spacing:-.035em;font-weight:650;line-height:1.15}
+#konsol-settings h2 {font-size:16px;font-weight:600;letter-spacing:-.02em}
+#konsol-settings h3 {font-size:14px;font-weight:600}
+#konsol-settings small,.ks-muted {color:var(--ks-muted)}
+#konsol-settings small {font-size:12px}
+#konsol-settings code,.ks-mono {font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+#konsol-settings .ks-shell {display:grid;grid-template-columns:164px minmax(0,1fr);min-height:780px}
+#konsol-settings .ks-side {background:var(--ks-surface);border-right:1px solid var(--ks-line);padding:25px 14px;display:flex;flex-direction:column;gap:28px}
+#konsol-settings .ks-brand {font-size:28px;font-weight:700;letter-spacing:-.06em}
+#konsol-settings .ks-brand span {color:var(--ks-accent)}
+#konsol-settings .ks-side nav {display:grid;gap:5px}
+#konsol-settings .ks-navitem {border:0;background:none;text-align:left;padding:10px;border-radius:7px;display:flex;gap:10px;align-items:center}
+#konsol-settings .ks-navitem[aria-current] {background:var(--ks-tint);color:var(--ks-ink);font-weight:600}
+#konsol-settings .ks-sidefoot {margin-top:auto;border-top:1px solid var(--ks-line);padding-top:14px;display:grid;gap:5px}
+#konsol-settings .ks-main {padding:26px 24px 24px;min-width:0;display:flex;flex-direction:column;gap:20px}
+#konsol-settings .ks-top {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#konsol-settings .ks-eyebrow {font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ks-muted);margin-bottom:6px}
+#konsol-settings .ks-badge {display:inline-flex;align-items:center;gap:6px;border-radius:5px;background:var(--ks-soft);padding:3px 8px;font-size:11px;white-space:nowrap}
+#konsol-settings .ks-badge.ks-good {color:var(--ks-on);background:var(--ks-onbg)}
+#konsol-settings .ks-badge.ks-warn {color:var(--ks-warn);background:var(--ks-warnbg)}
+#konsol-settings .ks-badge.ks-bad {color:var(--ks-danger);background:var(--ks-dangerbg)}
+#konsol-settings .ks-tabs {display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--ks-line);padding-bottom:10px}
+#konsol-settings .ks-tab {background:none;border:0;padding:9px 12px;border-radius:7px;color:var(--ks-muted);font-weight:500;min-height:40px}
+#konsol-settings .ks-tab[aria-selected=true] {background:var(--ks-ink);color:var(--ks-surface)}
+#konsol-settings .ks-view {display:grid;gap:16px}
+#konsol-settings .ks-card {background:var(--ks-surface);border:1px solid var(--ks-line);border-radius:11px;overflow:hidden;min-width:0}
+#konsol-settings .ks-cardhead {padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--ks-line)}
+#konsol-settings .ks-cardhead p {margin-top:3px}
+#konsol-settings .ks-body {padding:18px;display:grid;gap:16px}
+#konsol-settings .ks-toolbar {display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+#konsol-settings .ks-inline {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#konsol-settings .ks-btn {display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--ks-line);background:var(--ks-surface);padding:8px 11px;border-radius:7px;font-weight:500;min-height:36px;text-decoration:none}
+#konsol-settings .ks-btn:hover:not(:disabled) {background:var(--ks-soft)}
+#konsol-settings .ks-primary {background:var(--ks-button);color:var(--ks-button-ink);border-color:transparent}
+#konsol-settings .ks-primary:hover:not(:disabled) {background:var(--ks-accent);color:var(--ks-button-ink)}
+#konsol-settings .ks-textbtn {border:0;background:none;color:var(--ks-accent);padding:6px;font-size:12px;white-space:nowrap}
+#konsol-settings .ks-segment {display:flex;padding:3px;border-radius:8px;background:var(--ks-soft)}
+#konsol-settings .ks-segment button {border:0;background:none;padding:6px 10px;border-radius:5px;color:var(--ks-muted);font-size:12px}
+#konsol-settings .ks-segment button[aria-pressed=true] {background:var(--ks-surface);color:var(--ks-ink)}
+#konsol-settings select,#konsol-settings input {min-width:0;max-width:100%;background:var(--ks-surface);border:1px solid var(--ks-line);border-radius:6px;padding:9px 10px}
+#konsol-settings .ks-field {display:grid;gap:6px;font-size:13px;font-weight:500}
+#konsol-settings .ks-field small {font-weight:400}
+#konsol-settings .ks-formgrid {display:grid;grid-template-columns:1fr 1fr;gap:16px}
+#konsol-settings .ks-wide {grid-column:1/-1}
+#konsol-settings .ks-note {font-size:12px;color:var(--ks-muted);display:flex;gap:9px;padding:12px 16px;background:var(--ks-soft);line-height:1.6}
+#konsol-settings .ks-note.ks-warn {background:var(--ks-warnbg);color:var(--ks-warn)}
+#konsol-settings .ks-note.ks-good {background:var(--ks-onbg);color:var(--ks-on)}
+#konsol-settings .ks-tablewrap {overflow:auto;max-width:100%}
+#konsol-settings table {width:100%;border-collapse:collapse;text-align:left}
+#konsol-settings th {padding:10px 12px;background:var(--ks-soft);font-size:11px;font-weight:500;color:var(--ks-muted);white-space:nowrap}
+#konsol-settings td {padding:13px 12px;border-bottom:1px solid var(--ks-line);font-size:12px;vertical-align:middle}
+#konsol-settings tr:last-child td {border-bottom:0}
+#konsol-settings td strong {font-size:13px;font-weight:500;display:block}
+#konsol-settings td small {display:block;font-size:11px}
+#konsol-settings tr.ks-dirty td {background:var(--ks-tint)}
+#konsol-settings .ks-switch {display:inline-flex;align-items:center;gap:8px;white-space:nowrap;border:0;background:none;padding:4px 0;min-height:34px}
+#konsol-settings .ks-switch::before {content:"";width:30px;height:18px;border-radius:5px;border:1px solid var(--ks-line);background:var(--ks-soft);flex:none}
+#konsol-settings .ks-switch::after {content:"";position:absolute;width:10px;height:12px;margin-left:3px;border-radius:3px;background:var(--ks-surface);border:1px solid var(--ks-line);transition:margin .12s}
+#konsol-settings .ks-switch[aria-checked=true]::before {background:var(--ks-on);border-color:var(--ks-on)}
+#konsol-settings .ks-switch[aria-checked=true]::after {margin-left:16px}
+#konsol-settings .ks-switch {position:relative;font-size:12px}
+#konsol-settings .ks-rule-detail td {padding:16px 18px;background:var(--ks-soft)}
+#konsol-settings dl.ks-details {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 14px}
+#konsol-settings .ks-details dt {color:var(--ks-muted);font-size:11px}
+#konsol-settings .ks-details dd {margin:3px 0 0;font-size:12px;overflow-wrap:anywhere}
+#konsol-settings pre {margin:0;padding:12px;border-radius:7px;border:1px solid var(--ks-line);background:var(--ks-surface);white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.65 ui-monospace,Menlo,monospace}
+#konsol-settings .ks-route {display:grid;grid-template-columns:1fr 20px 1.5fr;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--ks-line);font-size:12px}
+#konsol-settings .ks-route:last-child {border:0}
+#konsol-settings .ks-routing {padding:0 18px}
+#konsol-settings .ks-provider {display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+#konsol-settings .ks-provider label {padding:12px;border:1px solid var(--ks-line);border-radius:8px;display:flex;align-items:flex-start;gap:8px}
+#konsol-settings .ks-provider label:has(input:checked) {border-color:var(--ks-accent);background:var(--ks-tint)}
+#konsol-settings input[type=radio] {margin:4px 0 0;accent-color:var(--ks-accent)}
+#konsol-settings .ks-provider strong {font-size:13px;font-weight:500}
+#konsol-settings .ks-provider small {display:block}
+#konsol-settings .ks-foot {margin-top:auto;padding:15px 0 0;border-top:1px solid var(--ks-line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#konsol-settings .ks-foot strong {font-size:13px;font-weight:500}
+#konsol-settings .ks-foot small {display:block}
+#konsol-settings .ks-status {font-size:12px;color:var(--ks-muted);min-height:18px}
+#konsol-settings .ks-rollback {background:var(--ks-warnbg);border:1px solid var(--ks-warn);border-radius:8px;padding:14px;display:grid;gap:10px}
+#konsol-settings .ks-modal-layer {position:absolute;inset:0;z-index:10;background:light-dark(#1b262cbf,#000b);padding:30px 12px;display:flex;align-items:flex-start;justify-content:center}
+#konsol-settings .ks-dialog {background:var(--ks-surface);color:var(--ks-ink);border:1px solid var(--ks-line);border-radius:13px;width:100%;max-width:590px;box-shadow:0 20px 80px #0004}
+#konsol-settings .ks-dialog h2 {font-size:19px}
+#konsol-settings .ks-dialogfoot {padding:14px 18px;border-top:1px solid var(--ks-line);display:flex;gap:9px;justify-content:flex-end;flex-wrap:wrap}
+#konsol-settings .ks-error {color:var(--ks-danger);font-size:12px}
+#konsol-settings .ks-folder {border:1px solid var(--ks-line);border-radius:8px;padding:12px;text-align:left;background:var(--ks-surface);display:flex;align-items:center;justify-content:space-between;gap:10px}
+#konsol-settings .ks-folder[aria-pressed=true] {background:var(--ks-tint);border-color:var(--ks-accent)}
+#konsol-settings .ks-changes {margin:0;padding-left:18px;display:grid;gap:9px;font-size:13px}
+#konsol-settings .ks-compact td {padding-top:8px;padding-bottom:8px}
+#konsol-settings .ks-compact .ks-body {gap:12px}
+@media(max-width:850px) {
+  #konsol-settings .ks-shell {grid-template-columns:132px minmax(0,1fr)}
+  #konsol-settings .ks-side {padding:20px 10px}
+  #konsol-settings .ks-main {padding:22px 16px}
+  #konsol-settings .ks-provider {grid-template-columns:1fr}
+}
+@media(max-width:620px) {
+  #konsol-settings .ks-shell {display:block;min-height:0}
+  #konsol-settings .ks-side {padding:12px 16px;flex-direction:row;align-items:center;justify-content:space-between;border-right:0;border-bottom:1px solid var(--ks-line)}
+  #konsol-settings .ks-side nav,#konsol-settings .ks-sidefoot {display:none}
+  #konsol-settings .ks-brand {font-size:23px}
+  #konsol-settings .ks-main {padding:20px 12px}
+  #konsol-settings .ks-tab {padding:8px;font-size:12px}
+  #konsol-settings .ks-formgrid {grid-template-columns:1fr}
+  #konsol-settings .ks-wide {grid-column:auto}
+  #konsol-settings .ks-cardhead,#konsol-settings .ks-body {padding:14px}
+  #konsol-settings .ks-provider {grid-template-columns:1fr}
+  #konsol-settings dl.ks-details {grid-template-columns:1fr 1fr}
+  #konsol-settings h1 {font-size:25px}
+  #konsol-settings input,#konsol-settings select {font-size:16px}
+  #konsol-settings .ks-route {grid-template-columns:1fr 18px 1fr}
+  #konsol-settings .ks-switch,#konsol-settings .ks-textbtn,#konsol-settings .ks-btn {min-height:44px}
+  #konsol-settings .ks-tabs {gap:1px}
+  #konsol-settings .ks-dialogfoot .ks-btn {flex:1}
+  #konsol-settings #ks-fw-table[data-mode=ports] thead,#konsol-settings #ks-dns-table thead {display:none}
+  #konsol-settings #ks-fw-table[data-mode=ports] tbody,#konsol-settings #ks-dns-table tbody {display:block}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail),#konsol-settings #ks-dns-table tr {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;padding:14px;border-bottom:1px solid var(--ks-line)}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td,#konsol-settings #ks-dns-table td {padding:0;border:0}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(1) {grid-column:1;grid-row:1}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(2) {grid-column:2;grid-row:1;text-align:right;white-space:nowrap}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(3) {grid-column:1;grid-row:2}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(3)::before {content:'Servis dinliyor: ';color:var(--ks-muted)}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(4) {grid-column:1;grid-row:3;align-self:center}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(5) {grid-column:2;grid-row:2;justify-self:end}
+  #konsol-settings #ks-fw-table[data-mode=ports] tr:not(.ks-rule-detail)>td:nth-child(6) {grid-column:2;grid-row:3;justify-self:end}
+  #konsol-settings #ks-fw-table[data-mode=ports] .ks-rule-detail,#konsol-settings #ks-fw-table[data-mode=ports] .ks-rule-detail td {display:block;width:100%}
+  #konsol-settings tr.ks-dirty {background:var(--ks-tint)}
+  #konsol-settings #ks-fw-table[data-mode=rules] {min-width:650px}
+  #konsol-settings #ks-dns-table td:nth-child(1) {grid-column:1;grid-row:1;align-self:center}
+  #konsol-settings #ks-dns-table td:nth-child(2) {grid-column:1;grid-row:2}
+  #konsol-settings #ks-dns-table td:nth-child(3) {grid-column:1;grid-row:3;color:var(--ks-muted)}
+  #konsol-settings #ks-dns-table td:nth-child(4) {grid-column:2;grid-row:1}
+  #konsol-settings #ks-dns-table td:nth-child(5) {grid-column:2;grid-row:3;justify-self:end}
+}
+@media(prefers-reduced-motion:reduce) {#konsol-settings *,#konsol-settings *::after {transition:none!important}}
+</style>
+<div id="konsol-settings" lang="tr" aria-label="Konsol Ayarlar — etkileşimli tasarım v08">
+  <div class="ks-shell">
+    <aside class="ks-side" aria-label="Konsol">
+      <div><div class="ks-brand">nrm<span>.</span></div><small>Sunucu konsolu</small></div>
+      <nav aria-label="Ana gezinme">
+        <button class="ks-navitem" disabled>Genel bakış</button>
+        <button class="ks-navitem" disabled>WireGuard</button>
+        <button class="ks-navitem" disabled>Dosyalar</button>
+        <button class="ks-navitem" disabled>Modüller</button>
+        <button class="ks-navitem" disabled>Günlük</button>
+        <button class="ks-navitem" aria-current="page">Ayarlar</button>
+      </nav>
+      <div class="ks-sidefoot"><small>Çalışan sürüm · v125</small><small>Öneri · Tasarım v08</small><span class="ks-badge">Örnek sunucu</span></div>
+    </aside>
+    <main class="ks-main">
+      <header class="ks-top">
+        <div><p class="ks-eyebrow">Konsol / Yapılandırma</p><h1>Ayarlar</h1></div>
+        <span class="ks-badge ks-warn">Tıklanabilir taslak · canlı değil</span>
+      </header>
+      <nav class="ks-tabs" role="tablist" aria-label="Ayar bölümleri">
+        <button type="button" class="ks-tab" id="ks-tab-firewall" role="tab" aria-selected="true" aria-controls="ks-view-firewall" data-tab="firewall">Güvenlik Duvarı</button>
+        <button type="button" class="ks-tab" id="ks-tab-caddy" role="tab" aria-selected="false" aria-controls="ks-view-caddy" data-tab="caddy">Caddy</button>
+        <button type="button" class="ks-tab" id="ks-tab-dns" role="tab" aria-selected="false" aria-controls="ks-view-dns" data-tab="dns">Dnsmasq</button>
+        <button type="button" class="ks-tab" id="ks-tab-qbit" role="tab" aria-selected="false" aria-controls="ks-view-qbit" data-tab="qbit">qBittorrent</button>
+      </nav>
+      <div class="ks-rollback" id="ks-rollback" hidden aria-live="polite">
+        <strong>Bağlantı doğrulaması · <span id="ks-countdown">60</span> saniye</strong>
+        <small>Bu bir simülasyon. Süre dolarsa taslak önceki ayarlara döner. Gerçek uygulamada geri alma, tarayıcıdan bağımsız olarak sunucuda çalışmalı.</small>
+        <div class="ks-inline"><button class="ks-btn ks-primary" id="ks-confirm-connection">Bağlantım sürüyor, onayla</button><button class="ks-btn" id="ks-rollback-now">Hemen geri al</button></div>
+      </div>
+      <section class="ks-view" id="ks-view-firewall" role="tabpanel" aria-labelledby="ks-tab-firewall">
+        <div class="ks-toolbar">
+          <div class="ks-segment" aria-label="Güvenlik duvarı görünümü"><button data-fw-view="ports" aria-pressed="true">Portlar</button><button data-fw-view="rules" aria-pressed="false">Tüm kurallar</button></div>
+          <div class="ks-inline">
+            <select id="ks-family" aria-label="IP ailesi"><option value="4">IPv4</option><option value="6">IPv6</option></select>
+            <select id="ks-scope" aria-label="Trafik kaynağı"><option value="wan">İnternet / WAN</option><option value="tail">Tailscale</option><option value="wg">WireGuard</option><option value="all">Tüm kaynaklar</option></select>
+            <button class="ks-btn" id="ks-add-rule">+ Kural ekle</button>
+          </div>
+        </div>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2 id="ks-fw-title">Port erişimi</h2><p><small id="ks-fw-subtitle">İzin ile dinleyen servis birbirinden bağımsızdır.</small></p></div><span class="ks-badge" id="ks-fw-count"></span></div>
+          <div class="ks-tablewrap"><table id="ks-fw-table" aria-label="Güvenlik duvarı portları"></table></div>
+          <div class="ks-note" id="ks-fw-note"></div>
+        </article>
+        <div class="ks-note ks-warn">Firewall değişikliği servisi başlatmaz veya durdurmaz. Port izni, dinleme adresi ve kural sırası birlikte belirleyicidir. Değişiklikler önce taslağa eklenir.</div>
+      </section>
+      <section class="ks-view" id="ks-view-caddy" role="tabpanel" aria-labelledby="ks-tab-caddy" hidden>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2>Web adresleri</h2><p><small>DNS adı → Caddy → servis</small></p></div><span class="ks-badge">Salt okunur</span></div>
+          <div class="ks-tablewrap"><table aria-label="Caddy yönlendirmeleri"><thead><tr><th>Adres</th><th>Hedef</th><th>Erişim</th><th>Yöneten</th></tr></thead><tbody>
+            <tr><td><strong>panel.ayc</strong><small>/api/wg/* · /api/konsol/*</small></td><td><code>127.0.0.1:61008</code><small>Diğer dosya API'leri: 61009</small></td><td>Tailscale</td><td>Konsol</td></tr>
+            <tr><td><strong>torrent.ayc</strong><small>HTTP</small></td><td><code>127.0.0.1:61006</code></td><td>Tailscale</td><td>qBittorrent</td></tr>
+            <tr><td><strong>paylas.ayc</strong><small>100.64.0.10:61010</small></td><td><code>127.0.0.1:61010</code></td><td>Tailscale</td><td>Paylaşım</td></tr>
+            <tr><td><strong>health.ayc</strong><small>HTTP</small></td><td><code>200 · ok</code></td><td>Tailscale</td><td>Temel kurulum</td></tr>
+            <tr><td><strong>10.8.0.1:61006</strong><small>caddy-wg@wg0</small></td><td><code>127.0.0.1:61006</code></td><td>WireGuard · ui</td><td>WireGuard</td></tr>
+          </tbody></table></div>
+          <div class="ks-note">Dnsmasq'ta yeni bir ad eklemek Caddy'de otomatik site oluşturmaz. Bu sekme mevcut yönlendirmeleri gösterir; Caddy düzenleme bu taslağın kapsamında değildir.</div>
+        </article>
+        <article class="ks-card"><div class="ks-body"><details><summary>Örnek Caddy yapılandırmasını göster</summary><pre>http://torrent.ayc {
+    reverse_proxy 127.0.0.1:61006
+}
+http://paylas.ayc, http://100.64.0.10:61010 {
+    reverse_proxy 127.0.0.1:61010
+}</pre></details></div></article>
+      </section>
+      <section class="ks-view" id="ks-view-dns" role="tabpanel" aria-labelledby="ks-tab-dns" hidden>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2>Tanımlı adlar</h2><p><small>Yerel alan: <code>ayc</code> · Tailscale adresi güncel IP'yi izler</small></p></div><button class="ks-btn" id="ks-add-dns">+ Ad ekle</button></div>
+          <div class="ks-tablewrap"><table id="ks-dns-table" aria-label="DNS kayıtları"></table></div>
+          <div class="ks-note">Adı kapatmak servisi durdurmaz. İstemcilerin önbelleği nedeniyle değişiklik anında görünmeyebilir; örnek yerel TTL 60 saniye.</div>
+        </article>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2>Üst DNS'e yönlendirme</h2><p><small>Yerelde karşılanmayan genel alan adları için</small></p></div><button class="ks-switch" role="switch" aria-checked="false" id="ks-forward" aria-label="Üst DNS'e yönlendirme">Kapalı</button></div>
+          <div class="ks-body" id="ks-provider-body">
+            <div class="ks-provider" role="group" aria-label="Üst DNS sağlayıcısı">
+              <label><input type="radio" name="ks-provider" value="cloudflare"><span><strong>Cloudflare</strong><small>1.1.1.1 · 1.0.0.1</small></span></label>
+              <label><input type="radio" name="ks-provider" value="google"><span><strong>Google</strong><small>8.8.8.8 · 8.8.4.4</small></span></label>
+              <label><input type="radio" name="ks-provider" value="custom"><span><strong>Özel sunucular</strong><small>IP adreslerini siz belirleyin</small></span></label>
+            </div>
+            <form id="ks-custom-form" class="ks-formgrid" hidden>
+              <label class="ks-field">Birincil DNS<input id="ks-dns-primary" autocomplete="off" placeholder="9.9.9.9"></label>
+              <label class="ks-field">İkincil DNS<input id="ks-dns-secondary" autocomplete="off" placeholder="149.112.112.112"></label>
+              <div class="ks-inline ks-wide"><button class="ks-btn" type="submit">Adresleri taslağa ekle</button><small class="ks-error" id="ks-custom-error" role="alert"></small></div>
+            </form>
+            <small id="ks-forward-note"></small>
+          </div>
+          <div class="ks-routing" id="ks-dns-routing"></div>
+          <div class="ks-note ks-good">Dinleyiciler: loopback + tailscale0. WAN'a kapalı. <code>*.ayc</code> özel bölgesi üst DNS'e gönderilmez; kapalı yerel kayıtlar dışarı sızmaz.</div>
+        </article>
+      </section>
+      <section class="ks-view" id="ks-view-qbit" role="tabpanel" aria-labelledby="ks-tab-qbit" hidden>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2>Web arayüzü hesabı</h2><p><small>qBittorrent'in kendi giriş bilgileri</small></p></div><span class="ks-badge ks-good">Modül kurulu</span></div>
+          <form class="ks-body" id="ks-qbit-form">
+            <div class="ks-formgrid">
+              <label class="ks-field ks-wide">Kullanıcı adı<input id="ks-qbit-user" value="admin" autocomplete="off" maxlength="64" required></label>
+              <label class="ks-field">Yeni parola<input id="ks-qbit-password" type="password" autocomplete="new-password" placeholder="Değiştirmeyecekseniz boş bırakın"></label>
+              <label class="ks-field">Yeni parola tekrar<input id="ks-qbit-repeat" type="password" autocomplete="new-password" placeholder="Parolayı tekrar yazın"></label>
+            </div>
+            <small>Mevcut parola gösterilmez. Bu taslağa gerçek parolanızı girmeyin. Yeni parola için en az 12 karakter önerilir.</small>
+            <div class="ks-inline"><button type="submit" class="ks-btn">Hesabı taslağa ekle</button><span id="ks-qbit-error" class="ks-error" role="alert"></span></div>
+          </form>
+          <div class="ks-note">Hesap değişikliği qBittorrent oturumlarının yeniden açılmasını gerektirebilir. Parola hiçbir taslak kaydında veya değişiklik özetinde tutulmaz.</div>
+        </article>
+        <article class="ks-card">
+          <div class="ks-cardhead"><div><h2>İndirme dizini</h2><p><small>Yeni torrentler için varsayılan hedef</small></p></div><button class="ks-btn" id="ks-pick-folder">Klasör seç</button></div>
+          <div class="ks-body"><label class="ks-field">Seçilen konum<input id="ks-qbit-path" value="/srv/downloads" readonly></label><small id="ks-qbit-temp"></small><div id="ks-path-note" class="ks-note"></div></div>
+          <div class="ks-note">Mevcut dosyalar taşınmaz, çalışan torrentlerin kayıt yolu değiştirilmez. Kategoriye özel yollar ayrı kalır.</div>
+        </article>
+      </section>
+      <footer class="ks-foot">
+        <div><strong id="ks-pending">Bekleyen değişiklik yok</strong><small>Yalnız bu taslakta · sunucuya istek gönderilmez</small></div>
+        <div class="ks-inline"><button class="ks-btn" id="ks-discard" disabled>Vazgeç</button><button class="ks-btn ks-primary" id="ks-review" disabled>Değişiklikleri incele</button></div>
+      </footer>
+      <div class="ks-status" id="ks-status" role="status" aria-live="polite">Örnek veriler gösteriliyor; sunucudaki ayarlar değiştirilmez.</div>
+    </main>
+  </div>
+  <div class="ks-modal-layer" id="ks-modal-layer" hidden>
+    <section class="ks-dialog" role="dialog" aria-modal="true" aria-labelledby="ks-dialog-title">
+      <div class="ks-cardhead"><h2 id="ks-dialog-title"></h2><button class="ks-textbtn" data-close aria-label="Pencereyi kapat">Kapat</button></div>
+      <div class="ks-body" id="ks-dialog-body"></div>
+      <div class="ks-dialogfoot" id="ks-dialog-foot"></div>
+    </section>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const root=document.getElementById('konsol-settings');
+  const $=s=>root.querySelector(s);
+  const all=s=>Array.from(root.querySelectorAll(s));
+  const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const copy=x=>JSON.parse(JSON.stringify(x));
+  const scopes={wan:'İnternet / WAN',tail:'Tailscale',wg:'WireGuard',all:'Tüm kaynaklar'};
+  const providers={cloudflare:['1.1.1.1','1.0.0.1'],google:['8.8.8.8','8.8.4.4']};
+  function port(id,name,proto,number,scope,on,listening,bind,family,critical) {
+    return {id,name,proto,port:String(number),scope,on,listening,bind,family:family||'4',critical:!!critical,source:'any',owner:'Kurulum'};
+  }
+  const initial={
+    ports:[
+      port('ssh4','SSH','tcp',22,'wan',true,true,'0.0.0.0','4',true),
+      port('ts4','Tailscale','udp',41641,'wan',true,true,'0.0.0.0','4',true),
+      port('wg4','WireGuard · wg0','udp',61001,'wan',true,true,'0.0.0.0'),
+      port('http4','HTTP','tcp',80,'wan',false,true,'Tailscale IP'),
+      port('https4','HTTPS','tcp',443,'wan',false,false,'—'),
+      port('dnsu4','DNS','udp',53,'wan',false,true,'Loopback + Tailscale'),
+      port('dnst4','DNS','tcp',53,'wan',false,true,'Loopback + Tailscale'),
+      port('torrent4','Torrent eş bağlantısı','tcp',61005,'wan',false,false,'—'),
+      port('panelts','Konsol','tcp',80,'tail',true,true,'100.64.0.10','4',true),
+      port('dnsts','DNS','udp',53,'tail',true,true,'100.64.0.10','4',true),
+      port('dnstcts','DNS','tcp',53,'tail',true,true,'100.64.0.10','4',true),
+      port('sharets','Paylaşım · WebDAV','tcp',61010,'tail',true,true,'100.64.0.10'),
+      port('torrentwg','qBittorrent arayüzü','tcp',61006,'wg',true,true,'10.8.0.1'),
+      port('dnswg','DNS','udp',53,'wg',false,false,'—'),
+      port('ssh6','SSH','tcp',22,'wan',true,true,'::','6',true),
+      port('ts6','Tailscale','udp',41641,'wan',true,true,'::','6',true),
+      port('wg6','WireGuard','udp',61001,'wan',false,false,'—','6'),
+      port('http6','HTTP','tcp',80,'wan',false,false,'—','6'),
+      port('dns6','DNS','udp',53,'wan',false,false,'—','6')
+    ],
+    dns:[
+      {id:'panel',name:'panel.ayc',target:'Tailscale IP',on:true,owner:'Konsol'},
+      {id:'health',name:'health.ayc',target:'Tailscale IP',on:true,owner:'Temel'},
+      {id:'torrent',name:'torrent.ayc',target:'Tailscale IP',on:true,owner:'qBittorrent'},
+      {id:'share',name:'paylas.ayc',target:'Tailscale IP',on:true,owner:'Paylaşım'}
+    ],
+    forward:false,provider:'cloudflare',custom:['9.9.9.9','149.112.112.112'],
+    qbit:{user:'admin',path:'/srv/downloads',passwordChanged:false}
+  };
+  let baseline=copy(initial), draft=copy(initial), tab='firewall',fwView='ports',detail=null,timer=null,deadline=0,lastFocus=null;
+  const design={compact:false,ruleFirst:false};
+  function say(text){$('#ks-status').textContent=text;}
+  function differences(){
+    const result=[];
+    draft.ports.forEach(p=>{
+      const old=baseline.ports.find(v=>v.id===p.id);
+      if(!old) result.push({group:'Firewall',text:'Yeni kural: '+p.name+' · '+p.proto.toUpperCase()+'/'+p.port+' · '+scopes[p.scope]+' · '+(p.on?'izin ver':'engelle')});
+      else if(old.on!==p.on) result.push({group:'Firewall',text:p.name+' · '+scopes[p.scope]+' · IPv'+p.family+' · '+(old.on?'Açık → Kapalı':'Kapalı → Açık')});
+    });
+    baseline.ports.filter(p=>!draft.ports.some(v=>v.id===p.id)).forEach(p=>result.push({group:'Firewall',text:'Özel kural kaldır: '+p.name+' · '+p.port}));
+    draft.dns.forEach(d=>{
+      const old=baseline.dns.find(v=>v.id===d.id);
+      if(!old) result.push({group:'DNS',text:'Yeni ad: '+d.name+' → '+d.target});
+      else if(old.on!==d.on) result.push({group:'DNS',text:d.name+' · '+(d.on?'Aç':'Kapat')});
+    });
+    baseline.dns.filter(d=>!draft.dns.some(v=>v.id===d.id)).forEach(d=>result.push({group:'DNS',text:'Adı sil: '+d.name}));
+    if(draft.forward!==baseline.forward) result.push({group:'DNS',text:'Üst DNS yönlendirmesi: '+(draft.forward?'Açık':'Kapalı')});
+    if(draft.provider!==baseline.provider || JSON.stringify(draft.custom)!==JSON.stringify(baseline.custom)) result.push({group:'DNS',text:'Üst DNS: '+dnsAddresses().join(', ')});
+    if(draft.qbit.user!==baseline.qbit.user) result.push({group:'qBittorrent',text:'Kullanıcı adı: '+baseline.qbit.user+' → '+draft.qbit.user});
+    if(draft.qbit.passwordChanged) result.push({group:'qBittorrent',text:'Yeni parola belirlendi · içerik kaydedilmez'});
+    if(draft.qbit.path!==baseline.qbit.path) result.push({group:'qBittorrent',text:'İndirme dizini: '+baseline.qbit.path+' → '+draft.qbit.path});
+    return result;
+  }
+  function saveUI(){
+    if(!window.openai || !window.openai.setWidgetState)return;
+    window.openai.setWidgetState({
+      modelContent:{design:'Konsol Ayarlar v08',tab,compact:design.compact,scope:$('#ks-scope').value,firewallView:fwView,exampleOnly:true},
+      privateContent:{tab,family:$('#ks-family').value,scope:$('#ks-scope').value,fwView,compact:design.compact}
+    }).catch(()=>{});
+  }
+  function applyUI(saved){
+    const p=saved&&saved.privateContent;
+    if(!p)return;
+    if(['firewall','caddy','dns','qbit'].includes(p.tab))tab=p.tab;
+    if(['4','6'].includes(p.family))$('#ks-family').value=p.family;
+    if(Object.keys(scopes).includes(p.scope))$('#ks-scope').value=p.scope;
+    if(['ports','rules'].includes(p.fwView))fwView=p.fwView;
+    design.compact=!!p.compact;
+    render();
+  }
+  function dnsAddresses(){return draft.provider==='custom'?draft.custom:providers[draft.provider];}
+  function switchHTML(id,on,label,kind){
+    return '<button class="ks-switch cursor-interaction" role="switch" aria-checked="'+on+'" aria-label="'+esc(label)+'" data-'+kind+'="'+esc(id)+'">'+(on?'Açık':'Kapalı')+'</button>';
+  }
+  function isPortDirty(p){const old=baseline.ports.find(v=>v.id===p.id);return !old||old.on!==p.on;}
+  function ruleFor(p){
+    const iface=p.scope==='wan'?'eth0':p.scope==='tail'?'tailscale0':'wg0';
+    return (p.family==='6'?'ip6tables':'iptables')+' -A MASTER-INPUT -i '+iface+
+      (p.source==='any'?'':' -s '+p.source)+' -p '+p.proto+' --dport '+p.port+' -j '+(p.on?'ACCEPT':'DROP');
+  }
+  function detailHTML(p){
+    return '<tr class="ks-rule-detail"><td colspan="6"><dl class="ks-details">'+
+      '<div><dt>Tablo / Zincir</dt><dd>filter / MASTER-INPUT</dd></div>'+
+      '<div><dt>Kaynak</dt><dd>'+esc(p.source==='any'?'Her adres':p.source)+'</dd></div>'+
+      '<div><dt>Hedef</dt><dd>Sunucu · IPv'+p.family+'</dd></div>'+
+      '<div><dt>Yön / Arayüz</dt><dd>INPUT / '+esc(p.scope==='wan'?'eth0':p.scope==='tail'?'tailscale0':'wg0')+'</dd></div>'+
+      '<div><dt>Yöneten</dt><dd>'+esc(p.owner)+'</dd></div>'+
+      '<div><dt>Bağlantı durumu</dt><dd>Yeni bağlantılar; mevcut oturum ayrı kuralda</dd></div></dl>'+
+      '<pre>'+esc(ruleFor(p))+'</pre><p><small>Önerilen kural önizlemesi; canlı iptables çıktısı değildir. Gerçek sayaçlar ve sıra sunucudan okunacak.</small></p>'+
+      (p.owner==='Kullanıcı'?'<button class="ks-textbtn" data-remove-port="'+esc(p.id)+'">Bu özel kuralı kaldır</button>':'')+'</td></tr>';
+  }
+  function renderFirewall(){
+    const family=$('#ks-family').value,scope=$('#ks-scope').value;
+    const list=draft.ports.filter(p=>p.family===family&&(scope==='all'||p.scope===scope));
+    all('[data-fw-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.fwView===fwView)));
+    $('#ks-fw-title').textContent=fwView==='ports'?'Port erişimi':'Kurallar ve öncelik sırası';
+    $('#ks-fw-subtitle').textContent=fwView==='ports'?'İzin ile dinleyen servis birbirinden bağımsızdır.':'Çekirdek ve Tailscale kuralları görünür; sahipleri dışında değiştirilmez.';
+    $('#ks-fw-count').textContent=fwView==='ports'?list.filter(p=>p.on).length+' açık · '+list.filter(p=>!p.on).length+' kapalı':'Örnek kurallar · IPv'+family;
+    let html='';
+    if(fwView==='ports'){
+      html='<thead><tr><th>Servis / Kapsam</th><th>Port</th><th>Servis dinliyor mu?</th><th>Etkin erişim</th><th>Port izni</th><th></th></tr></thead><tbody>';
+      list.forEach(p=>{
+        const effective=p.on&&p.listening&&(p.scope!=='wan'||['0.0.0.0','::'].includes(p.bind));
+        html+='<tr class="'+(isPortDirty(p)?'ks-dirty':'')+'"><td><strong>'+esc(p.name)+'</strong><small>'+esc(scopes[p.scope])+(p.critical?' · yönetim':'')+'</small></td>'+
+          '<td><code>'+esc(p.port)+'</code><small>'+p.proto.toUpperCase()+'</small></td>'+
+          '<td>'+(p.listening?'Evet':'Hayır')+'<small>'+esc(p.bind)+'</small></td>'+
+          '<td><span class="ks-badge '+(effective?'ks-good':'')+'">'+(effective?'İzinli':p.on?'Dinleyici yok':'Engelli')+'</span></td>'+
+          '<td>'+switchHTML(p.id,p.on,p.name+' '+scopes[p.scope]+' port izni','port')+'</td>'+
+          '<td><button class="ks-textbtn" data-detail="'+esc(p.id)+'" aria-expanded="'+(detail===p.id)+'">Ayrıntı</button></td></tr>';
+        if(detail===p.id)html+=detailHTML(p);
+      });
+      if(!list.length)html+='<tr><td colspan="6">Bu kapsamda örnek port kaydı yok.</td></tr>';
+      html+='</tbody>';
+    } else {
+      html='<thead><tr><th>Sıra / Tablo</th><th>Zincir</th><th>Eşleşme</th><th>Sonuç</th><th>Paket</th><th>Yönetim</th></tr></thead><tbody>';
+      const fixed=[
+        ['01 · filter','INPUT','→ MASTER-INPUT','JUMP','28.413','Kurulum'],
+        ['02 · filter','MASTER-INPUT','lo · tüm trafik','ACCEPT','8.612','Çekirdek'],
+        ['03 · filter','MASTER-INPUT','ESTABLISHED, RELATED','ACCEPT','18.217','Çekirdek'],
+        ['04 · filter','ts-input','Tailscale kuralları','→ Ayrı zincir','1.424','Tailscale']
+      ];
+      if(family==='6')fixed.push(['05 · filter','MASTER-INPUT','ICMPv6 · NDP / PMTU','ACCEPT','216','Çekirdek']);
+      fixed.forEach(r=>html+='<tr><td>'+r[0]+'</td><td><code>'+r[1]+'</code></td><td>'+r[2]+'</td><td>'+r[3]+'</td><td class="ks-mono">'+r[4]+'</td><td><span class="ks-badge">'+r[5]+'</span></td></tr>');
+      list.forEach((p,i)=>{
+        html+='<tr class="'+(isPortDirty(p)?'ks-dirty':'')+'"><td>'+String(i+6).padStart(2,'0')+' · filter</td><td><code>MASTER-INPUT</code></td>'+
+          '<td><strong>'+esc(p.name)+'</strong><small>'+esc(scopes[p.scope])+' · '+p.proto.toUpperCase()+'/'+esc(p.port)+'</small><button class="ks-textbtn" data-detail="'+esc(p.id)+'">Ayrıntı</button></td>'+
+          '<td>'+(p.on?'ACCEPT':'DROP')+'</td><td class="ks-mono">—</td><td>'+switchHTML(p.id,p.on,p.name+' kuralı','port')+'</td></tr>';
+        if(detail===p.id)html+=detailHTML(p);
+      });
+      [
+        ['Son · filter','MASTER-INPUT','WAN · kalan yeni trafik','DROP','1.642','Temel politika'],
+        ['01 · filter','MASTER-FORWARD','wg0 → WAN','ACCEPT','846','WireGuard'],
+        ['02 · filter','MASTER-FORWARD','wg0 → tailnet / diğer ağlar','DROP','12','Ağ izolasyonu'],
+        ['01 · nat','MASTER-NAT',(family==='6'?'fdcc:ad94:bacf:61a4::/112':'10.8.0.0/24')+' → eth0','MASQUERADE','209','WireGuard']
+      ].forEach(r=>html+='<tr><td>'+r[0]+'</td><td><code>'+r[1]+'</code></td><td>'+r[2]+'</td><td>'+r[3]+'</td><td class="ks-mono">'+r[4]+'</td><td><span class="ks-badge">'+r[5]+'</span></td></tr>');
+      html+='</tbody>';
+    }
+    $('#ks-fw-table').innerHTML=html;
+    $('#ks-fw-table').dataset.mode=fwView;
+    $('#ks-fw-table').setAttribute('aria-label',fwView==='ports'?'Güvenlik duvarı portları':'Tüm güvenlik duvarı kuralları');
+    $('#ks-fw-note').textContent=fwView==='ports'?'Listede olmayan WAN portları varsayılan olarak engellenir. Kapalı bir port için “Kural ekle”yi kullanın. Gösterilenler örnektir; dışarıdan port taraması yapılmadı.':'Sıra önemlidir: ilk eşleşen sonlandırıcı kural uygulanır. Diğer yazılımların zincirleri ve bağlantıyı koruyan çekirdek kurallar burada salt okunurdur. “Kural ekle” yapılandırılmış bir formdur; serbest komut çalıştırmaz.';
+  }
+  function renderDNS(){
+    let html='<thead><tr><th>Alan adı</th><th>Yanıt / Tür</th><th>Kaynak</th><th>Çözümleme</th><th></th></tr></thead><tbody>';
+    draft.dns.forEach(d=>{
+      const old=baseline.dns.find(v=>v.id===d.id),dirty=!old||old.on!==d.on;
+      html+='<tr class="'+(dirty?'ks-dirty':'')+'"><td><strong>'+esc(d.name)+'</strong></td><td><code>'+esc(d.target)+'</code><small>'+(d.target==='Tailscale IP'?'Dinamik A/AAAA':'Sabit IP')+'</small></td><td>'+esc(d.owner)+'</td><td>'+switchHTML(d.id,d.on,d.name+' çözümleme','dns')+'</td><td>'+(d.owner==='Kullanıcı'?'<button class="ks-textbtn" data-remove-dns="'+esc(d.id)+'">Sil</button>':'')+'</td></tr>';
+    });
+    $('#ks-dns-table').innerHTML=html+'</tbody>';
+    $('#ks-forward').setAttribute('aria-checked',String(draft.forward));
+    $('#ks-forward').textContent=draft.forward?'Açık':'Kapalı';
+    all('input[name=ks-provider]').forEach(input=>{input.checked=input.value===draft.provider;input.disabled=!draft.forward;});
+    $('#ks-custom-form').hidden=draft.provider!=='custom';
+    $('#ks-dns-primary').disabled=!draft.forward;$('#ks-dns-secondary').disabled=!draft.forward;
+    $('#ks-custom-form button').disabled=!draft.forward;
+    $('#ks-forward-note').textContent=draft.forward?'Seçilen sunucular: '+dnsAddresses().join(' · ')+'. Sıralama, katı bir birincil/yedek garantisi değildir.':'Yönlendirme kapalı. Yerel adlar çalışmaya devam eder; diğer alan adları bu çözümleyici üzerinden yanıtlanmaz.';
+    const panel=draft.dns.find(d=>d.name==='panel.ayc');
+    $('#ks-dns-routing').innerHTML='<div class="ks-route"><code>panel.ayc</code><span>→</span><span>'+(panel&&panel.on?'Yerel kayıt · 100.64.0.10':'Yerel kayıt kapalı · NXDOMAIN')+'</span></div>'+
+      '<div class="ks-route"><code>example.org</code><span>→</span><span>'+esc(draft.forward?dnsAddresses().join(' / '):'Üst DNS kapalı · yanıt yok')+'</span></div>'+
+      '<div class="ks-route"><code>bilinmeyen.ayc</code><span>→</span><span>NXDOMAIN · dışarı gönderilmez</span></div>';
+  }
+  function render(){
+    root.classList.toggle('ks-compact',design.compact);
+    all('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===tab)));
+    all('[role=tabpanel]').forEach(p=>p.hidden=p.id!=='ks-view-'+tab);
+    renderFirewall();renderDNS();
+    $('#ks-qbit-path').value=draft.qbit.path;
+    $('#ks-qbit-temp').textContent='Geçici indirmeler: '+draft.qbit.path+'/incomplete';
+    $('#ks-path-note').textContent=draft.qbit.path.startsWith('/srv/downloads')?'Mevcut servis yazma alanının içinde.':'Öneri: servis yazma izni bu klasörle sınırlı olarak güncellenecek. Kök, çöp ve paylaşım alanlarına izin verilmez.';
+    $('#ks-path-note').classList.toggle('ks-warn',!draft.qbit.path.startsWith('/srv/downloads'));
+    const n=differences().length;
+    $('#ks-pending').textContent=n?n+' bekleyen değişiklik':'Bekleyen değişiklik yok';
+    $('#ks-review').disabled=!n||!!timer;$('#ks-discard').disabled=!n||!!timer;
+    all('[data-port],[data-dns],#ks-add-rule,#ks-add-dns,#ks-forward,#ks-pick-folder,#ks-qbit-form button,#ks-custom-form button,input[name=ks-provider]').forEach(b=>{if(timer)b.disabled=true;});
+  }
+  function changed(message){render();say(message||'Değişiklik taslağa eklendi. Henüz uygulanmadı.');saveUI();}
+  function openModal(title,body,foot){
+    lastFocus=document.activeElement;
+    $('#ks-dialog-title').textContent=title;$('#ks-dialog-body').innerHTML=body;$('#ks-dialog-foot').innerHTML=foot||'<button class="ks-btn" data-close>Kapat</button>';
+    $('#ks-modal-layer').hidden=false;root.scrollIntoView({block:'start',behavior:'instant'});
+    const focus=$('#ks-dialog-body input')||$('#ks-dialog-foot button')||$('[data-close]');if(focus)focus.focus();
+  }
+  function closeModal(){
+    $('#ks-modal-layer').hidden=true;$('#ks-dialog-body').replaceChildren();$('#ks-dialog-foot').replaceChildren();
+    if(lastFocus&&lastFocus.isConnected)lastFocus.focus();
+  }
+  function isIP(value){
+    if(/^\d+\.\d+\.\d+\.\d+$/.test(value))return value.split('.').every(x=>+x>=0&&+x<=255&&String(+x)===x);
+    if(!value.includes(':')||!/^[\da-f:]+$/i.test(value))return false;
+    try{return !!new URL('http://['+value+']/').hostname;}catch(_){return false;}
+  }
+  function isCIDR(value,family){
+    if(value==='any')return true;
+    const parts=value.split('/');
+    return parts.length<=2&&isIP(parts[0])&&((family==='4')===parts[0].includes('.'))&&
+      (parts.length===1||(/^\d+$/.test(parts[1])&&+parts[1]<=(family==='4'?32:128)));
+  }
+  function isDomain(value){return value.length<=253&&value.includes('.')&&value.split('.').every(p=>/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(p));}
+  function addRule(){
+    openModal('Yeni port kuralı',
+      '<form id="ks-rule-form" class="ks-formgrid">'+
+      '<label class="ks-field ks-wide">Kural adı<input name="label" placeholder="Örn. Kişisel uygulama" maxlength="60" required></label>'+
+      '<label class="ks-field">Trafik kaynağı<select name="scope"><option value="wan">İnternet / WAN</option><option value="tail">Tailscale</option><option value="wg">WireGuard</option></select></label>'+
+      '<label class="ks-field">IP ailesi<select name="family"><option value="4">IPv4</option><option value="6">IPv6</option></select></label>'+
+      '<label class="ks-field">Protokol<select name="protocol"><option value="tcp">TCP</option><option value="udp">UDP</option></select></label>'+
+      '<label class="ks-field">Hedef port<input name="port" type="number" min="1" max="65535" placeholder="8080" required></label>'+
+      '<label class="ks-field ks-wide">Kaynak IP / CIDR<input name="source" value="any" autocomplete="off"><small>any = tüm adresler. Örnek: 203.0.113.7/32</small></label>'+
+      '<label class="ks-field ks-wide">Eylem<select name="action"><option value="allow">İzin ver · ACCEPT</option><option value="deny">Engelle · DROP</option></select></label>'+
+      '<div class="ks-note ks-wide">Yeni kural, temel bağlantı korumalarından sonra ve varsayılan WAN engelinden önce önerilir. WAN portunu açmak servisi WAN adresinde dinletmez.</div>'+
+      '<div class="ks-error ks-wide" id="ks-rule-error" role="alert"></div></form>',
+      '<button class="ks-btn" data-close>Vazgeç</button><button class="ks-btn ks-primary" type="submit" form="ks-rule-form">Taslağa ekle</button>');
+    $('#ks-rule-form [name=family]').value=$('#ks-family').value;
+    $('#ks-rule-form [name=scope]').value=$('#ks-scope').value==='all'?'wan':$('#ks-scope').value;
+  }
+  function addDNS(){
+    openModal('Yeni DNS adı',
+      '<form id="ks-name-form" class="ks-formgrid">'+
+      '<label class="ks-field ks-wide">Tam alan adı<input name="name" placeholder="arsiv.ayc" autocomplete="off" required><small>Yalnız DNS kaydı oluşturur; web sitesi veya Caddy yönlendirmesi açmaz.</small></label>'+
+      '<label class="ks-field ks-wide">Yanıt kaynağı<select name="target"><option value="dynamic">Sunucunun güncel Tailscale IP adresi</option><option value="static">Sabit IPv4 / IPv6 adresi</option></select></label>'+
+      '<label class="ks-field ks-wide" id="ks-static-field" hidden>IP adresi<input name="ip" placeholder="100.64.0.20" autocomplete="off"></label>'+
+      '<div class="ks-error ks-wide" id="ks-name-error" role="alert"></div></form>',
+      '<button class="ks-btn" data-close>Vazgeç</button><button class="ks-btn ks-primary" type="submit" form="ks-name-form">Adı taslağa ekle</button>');
+  }
+  function pickFolder(){
+    const choices=['/srv/downloads','/srv/downloads/filmler','/srv/downloads/diziler','/srv/media'];
+    openModal('İndirme klasörünü seç',
+      '<p><small>Örnek klasörler · canlı dosya sistemi okunmadı</small></p>'+
+      choices.map(path=>'<button class="ks-folder" aria-pressed="'+(path===draft.qbit.path)+'" data-folder="'+path+'"><span class="ks-mono">'+path+'</span><small>'+(path==='/srv/media'?'İzin güncellemesi gerekir':'Seç')+'</small></button>').join('')+
+      '<div class="ks-note">Seçim yeni indirmeler içindir. Mevcut dosyalar taşınmaz. Gerçek uygulamada yol, disk, sahiplik ve servis yazma izinleri birlikte doğrulanacak.</div>');
+  }
+  function review(){
+    const diff=differences();
+    if(!diff.length)return;
+    const firewall=diff.some(d=>d.group==='Firewall'),critical=draft.ports.some(p=>p.critical&&isPortDirty(p));
+    openModal('Değişiklikleri incele',
+      '<p><small>'+diff.length+' değişiklik · yalnız taslakta uygulanır</small></p>'+
+      '<ul class="ks-changes">'+diff.map(d=>'<li><strong>'+d.group+'</strong> — '+esc(d.text)+'</li>').join('')+'</ul>'+
+      (critical?'<div class="ks-note ks-warn">Yönetim erişimini etkileyen bir değişiklik var. SSH/Tailscale/Konsol bağlantısı kesilebilir.</div>':'')+
+      (firewall?'<div class="ks-note ks-warn">Uygulamadan sonra 60 saniye içinde bağlantıyı onaylayın. Onay gelmezse taslak eski ayarlara döner. Canlı uygulamanın sunucuda bağımsız geri alma mekanizması olacak.</div>':'')+
+      '<small>Bu demo hiçbir API çağrısı yapmaz ve gerçek parola kaydetmez.</small>',
+      '<button class="ks-btn" data-close>Düzenlemeye dön</button><button class="ks-btn ks-primary" id="ks-apply">Taslakta uygula</button>');
+  }
+  function commit(){
+    if(timer){clearInterval(timer);timer=null;}
+    draft.qbit.passwordChanged=false;baseline=copy(draft);$('#ks-rollback').hidden=true;render();
+    all('[data-port],[data-dns],#ks-add-rule,#ks-add-dns,#ks-forward,#ks-pick-folder,#ks-qbit-form button').forEach(b=>b.disabled=false);
+    say('Taslak uygulandı. Canlı sunucuda hiçbir işlem yapılmadı.');saveUI();
+  }
+  function rollback(){
+    if(timer){clearInterval(timer);timer=null;}
+    draft=copy(baseline);$('#ks-rollback').hidden=true;$('#ks-qbit-user').value=draft.qbit.user;
+    render();all('[data-port],[data-dns],#ks-add-rule,#ks-add-dns,#ks-forward,#ks-pick-folder,#ks-qbit-form button').forEach(b=>b.disabled=false);
+    say('Taslak önceki ayarlara geri alındı. Sunucuya dokunulmadı.');
+  }
+  function apply(){
+    const firewall=differences().some(d=>d.group==='Firewall');
+    closeModal();
+    if(!firewall){commit();return;}
+    deadline=Date.now()+60000;$('#ks-countdown').textContent='60';$('#ks-rollback').hidden=false;
+    timer=setInterval(()=>{const s=Math.max(0,Math.ceil((deadline-Date.now())/1000));$('#ks-countdown').textContent=String(s);if(!s)rollback();},250);
+    render();$('#ks-rollback').scrollIntoView({block:'center',behavior:'instant'});
+    say('60 saniyelik bağlantı doğrulaması simülasyonu başladı.');
+  }
+  root.addEventListener('click',event=>{
+    const b=event.target.closest('button');if(!b||b.disabled)return;
+    // In-conversation previews prohibit native form navigation. Dispatch only
+    // the local validation/staging event; no form is ever submitted to a URL.
+    if(b.type==='submit'&&b.form){
+      event.preventDefault();
+      if(b.form.reportValidity())b.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      return;
+    }
+    if(timer&&!b.matches('[data-tab],[data-fw-view],[data-detail],[data-close],#ks-confirm-connection,#ks-rollback-now'))return;
+    if(b.hasAttribute('data-tab')){tab=b.dataset.tab;render();saveUI();}
+    else if(b.hasAttribute('data-fw-view')){fwView=b.dataset.fwView;detail=null;renderFirewall();saveUI();}
+    else if(b.hasAttribute('data-port')){const p=draft.ports.find(p=>p.id===b.dataset.port);p.on=!p.on;changed(p.critical?'Yönetim erişimi değişikliği taslağa eklendi; inceleme ve bağlantı onayı gerekecek.':null);}
+    else if(b.hasAttribute('data-detail')){detail=detail===b.dataset.detail?null:b.dataset.detail;renderFirewall();}
+    else if(b.hasAttribute('data-dns')){const d=draft.dns.find(d=>d.id===b.dataset.dns);d.on=!d.on;changed();}
+    else if(b.hasAttribute('data-remove-dns')){draft.dns=draft.dns.filter(d=>d.id!==b.dataset.removeDns);changed();}
+    else if(b.hasAttribute('data-remove-port')){draft.ports=draft.ports.filter(p=>p.id!==b.dataset.removePort);changed();}
+    else if(b.hasAttribute('data-folder')){draft.qbit.path=b.dataset.folder;closeModal();changed();}
+    else if(b.hasAttribute('data-close'))closeModal();
+    else if(b.id==='ks-add-rule')addRule();
+    else if(b.id==='ks-add-dns')addDNS();
+    else if(b.id==='ks-pick-folder')pickFolder();
+    else if(b.id==='ks-forward'){draft.forward=!draft.forward;changed();}
+    else if(b.id==='ks-review')review();
+    else if(b.id==='ks-discard'){draft=copy(baseline);$('#ks-qbit-user').value=draft.qbit.user;$('#ks-qbit-password').value='';$('#ks-qbit-repeat').value='';changed('Bekleyen değişikliklerden vazgeçildi.');}
+    else if(b.id==='ks-apply')apply();
+    else if(b.id==='ks-confirm-connection')commit();
+    else if(b.id==='ks-rollback-now')rollback();
+  });
+  root.addEventListener('change',event=>{
+    const target=event.target;
+    if(target.id==='ks-family'||target.id==='ks-scope'){detail=null;renderFirewall();saveUI();}
+    if(target.name==='ks-provider'){draft.provider=target.value;changed();}
+    if(target.name==='target'&&$('#ks-static-field'))$('#ks-static-field').hidden=target.value!=='static';
+  });
+  root.addEventListener('submit',event=>{
+    event.preventDefault();const form=event.target;
+    if(timer)return;
+    if(form.id==='ks-rule-form'){
+      const data=new FormData(form),number=Number(data.get('port')),family=data.get('family'),source=String(data.get('source')).trim();
+      const label=String(data.get('label')).trim(),scope=data.get('scope'),proto=data.get('protocol');
+      const err=$('#ks-rule-error');
+      if(!label||!Number.isInteger(number)||number<1||number>65535||!isCIDR(source,family)){err.textContent='Kural adı, 1–65535 arasında port ve IP ailesiyle uyumlu kaynak girin.';return;}
+      if(draft.ports.some(p=>p.family===family&&p.scope===scope&&p.proto===proto&&p.port===String(number)&&p.source===source)){err.textContent='Bu kapsam, port ve kaynak için bir kayıt var; satırdaki anahtarı kullanın.';return;}
+      const p=port('custom-'+Date.now(),label,proto,number,scope,data.get('action')==='allow',false,'Ölçülmedi',family,false);p.owner='Kullanıcı';p.source=source;
+      draft.ports.push(p);$('#ks-family').value=family;$('#ks-scope').value=scope;closeModal();changed();
+    }
+    if(form.id==='ks-name-form'){
+      const data=new FormData(form),name=String(data.get('name')).trim().toLowerCase(),target=data.get('target')==='dynamic'?'Tailscale IP':String(data.get('ip')).trim();
+      const err=$('#ks-name-error');
+      if(!isDomain(name)){err.textContent='Geçerli bir tam alan adı girin (ör. arsiv.ayc).';return;}
+      if(draft.dns.some(d=>d.name===name)){err.textContent='Bu ad zaten tanımlı; mevcut kaydı kullanın.';return;}
+      if(target!=='Tailscale IP'&&!isIP(target)){err.textContent='Geçerli bir IPv4 veya IPv6 adresi girin.';return;}
+      draft.dns.push({id:'custom-'+Date.now(),name,target,on:true,owner:'Kullanıcı'});closeModal();changed();
+    }
+    if(form.id==='ks-custom-form'){
+      const primary=$('#ks-dns-primary').value.trim(),secondary=$('#ks-dns-secondary').value.trim();
+      if(!isIP(primary)||(secondary&&!isIP(secondary))){$('#ks-custom-error').textContent='Geçerli DNS IP adresleri girin; ikincil adres boş kalabilir.';return;}
+      if([primary,secondary].some(ip=>['127.0.0.1','::1','100.64.0.10','0.0.0.0'].includes(ip))){$('#ks-custom-error').textContent='DNS döngüsünü önlemek için bu sunucunun kendi adresini kullanmayın.';return;}
+      draft.custom=[primary,secondary].filter(Boolean);$('#ks-custom-error').textContent='';changed();
+    }
+    if(form.id==='ks-qbit-form'){
+      const user=$('#ks-qbit-user').value.trim(),password=$('#ks-qbit-password').value,repeat=$('#ks-qbit-repeat').value,error=$('#ks-qbit-error');
+      if(!user||user.length>64||/[\x00-\x1f]/.test(user)){error.textContent='Geçerli bir kullanıcı adı girin.';return;}
+      if(password!==repeat){error.textContent='Parolalar eşleşmiyor.';return;}
+      if(password&&password.length<12){error.textContent='Taslakta en az 12 karakterli bir örnek parola kullanın.';return;}
+      draft.qbit.user=user;if(password)draft.qbit.passwordChanged=true;
+      $('#ks-qbit-password').value='';$('#ks-qbit-repeat').value='';error.textContent='';
+      changed(password?'Hesap değişikliği taslağa eklendi; parola içeriği hemen temizlendi.':null);
+    }
+  });
+  root.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&event.target.matches('input')&&event.target.form){
+      event.preventDefault();
+      if(event.target.form.reportValidity())event.target.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      return;
+    }
+    if(event.key==='Escape'&&!$('#ks-modal-layer').hidden){closeModal();return;}
+    if(event.key==='Tab'&&!$('#ks-modal-layer').hidden){
+      const focusables=Array.from($('#ks-modal-layer').querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')).filter(el=>el.getClientRects().length);
+      const first=focusables[0],last=focusables[focusables.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
+    if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)&&event.target.matches('[data-tab]')){
+      event.preventDefault();const tabs=all('[data-tab]'),i=tabs.indexOf(event.target);
+      const n=event.key==='Home'?0:event.key==='End'?tabs.length-1:(i+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length;
+      tabs[n].click();tabs[n].focus();
+    }
+  });
+  $('#ks-dns-primary').value=draft.custom[0];$('#ks-dns-secondary').value=draft.custom[1];
+  render();
+  if(window.openai)applyUI(window.openai.widgetState);
+  window.addEventListener('openai:set_globals',event=>applyUI(event.detail&&event.detail.globals&&event.detail.globals.widgetState));
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:root,onChange:()=>{fwView=design.ruleFirst?'rules':'ports';render();saveUI();}});
+    tweak.addToggle(design,'compact',{label:'Daha sıkı satır aralığı'});
+    tweak.addToggle(design,'ruleFirst',{label:'Önce tüm kuralları göster'});
+  }
+})();
+</script>
+
+</body>
+</html>

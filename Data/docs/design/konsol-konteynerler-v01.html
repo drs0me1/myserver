@@ -1,0 +1,1127 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Konsol Konteynerler — tasarım demosu v01</title>
+<!--
+  Konsol → Konteynerler: Portainer benzeri tam konteyner yöneticisi için TASARIM PROTOTİPİ (v01, 2026-10-03).
+  Teknik plan: konsol-konteynerler-v01.md (Astra). Bu dosya Opus'un görsel/etkileşim önerisidir.
+  Kendi içinde çalışır: dış bağımlılık, API çağrısı, gerçek sunucu değeri ya da sır yoktur. Bütün veriler
+  örnektir; düğmeler yalnız bu sayfada canlandırılır, sunucuda hiçbir şey değişmez. Dondurulmuş referans:
+  değişiklik yeni bir vNN dosyasında yapılır.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --ground:#EEF2F5; --surface:#FFFFFF; --surface-2:#EEF2F4; --ink:#1B2430; --muted:#5C6B7A; --line:#D7DFE6;
+  --accent:#1F6F8B; --accent-hover:#185A71; --accent-ink:#FFFFFF; --accent-soft:rgba(31,111,139,.14);
+  --focus:rgba(31,111,139,.42); --tint:rgba(255,255,255,.42); --tint-line:rgba(255,255,255,.6);
+  --ok:#2B7A4B; --ok-soft:#DCEFE2; --warn:#93600F; --warn-soft:#F4E6CC; --idle:#6F776F; --idle-soft:#E3E7E1;
+  --danger:#B3261E; --danger-soft:#F7E0DC; --video:#6A4C93;
+  --glass:rgba(255,255,255,.62); --glass-2:rgba(255,255,255,.84); --glass-line:rgba(255,255,255,.62);
+  --glass-shadow:0 18px 48px -26px rgba(16,36,56,.45); --blur:18px; --radius:16px;
+  --sky1:#B9D5E8; --sky2:#E6EEF4; --m1:#8EA9BE; --m2:#6A879E; --m3:#4C6780; --m4:#37506A;
+  --f-display:"SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground:#0D1217; --surface:#151B21; --surface-2:#1C242B; --ink:#E6ECF1; --muted:#9AA8B5; --line:#2A353F;
+    --accent:#6FC3DC; --accent-hover:#8FD3E8; --accent-ink:#082028; --accent-soft:rgba(111,195,220,.18);
+    --focus:rgba(111,195,220,.45); --tint:rgba(18,24,30,.46); --tint-line:rgba(255,255,255,.1);
+    --ok:#5CC28C; --ok-soft:#173325; --warn:#E2A84C; --warn-soft:#3A2C14; --idle:#8E968F; --idle-soft:#242A27;
+    --danger:#F08A80; --danger-soft:#3A1B18; --video:#B79BE0;
+    --glass:rgba(18,24,30,.58); --glass-2:rgba(22,29,36,.9); --glass-line:rgba(255,255,255,.1);
+    --glass-shadow:0 18px 48px -26px rgba(0,0,0,.8);
+    --sky1:#0B1B2B; --sky2:#1E3346; --m1:#223447; --m2:#1A2A3B; --m3:#13202E; --m4:#0D1722;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:#0D1217; --surface:#151B21; --surface-2:#1C242B; --ink:#E6ECF1; --muted:#9AA8B5; --line:#2A353F;
+  --accent:#6FC3DC; --accent-hover:#8FD3E8; --accent-ink:#082028; --accent-soft:rgba(111,195,220,.18);
+  --focus:rgba(111,195,220,.45); --tint:rgba(18,24,30,.46); --tint-line:rgba(255,255,255,.1);
+  --ok:#5CC28C; --ok-soft:#173325; --warn:#E2A84C; --warn-soft:#3A2C14; --idle:#8E968F; --idle-soft:#242A27;
+  --danger:#F08A80; --danger-soft:#3A1B18; --video:#B79BE0;
+  --glass:rgba(18,24,30,.58); --glass-2:rgba(22,29,36,.9); --glass-line:rgba(255,255,255,.1);
+  --glass-shadow:0 18px 48px -26px rgba(0,0,0,.8);
+  --sky1:#0B1B2B; --sky2:#1E3346; --m1:#223447; --m2:#1A2A3B; --m3:#13202E; --m4:#0D1722;
+}
+@media (prefers-reduced-transparency:reduce) {
+  :root { --glass:var(--surface); --glass-2:var(--surface); --glass-line:var(--line); --tint:var(--surface-2); --blur:0px; }
+  .wall { display:none; }
+}
+* { box-sizing:border-box; }
+html, body { min-height:100%; }
+body { margin:0; color:var(--ink); background:var(--ground); font:14px/1.5 var(--f-body); -webkit-font-smoothing:antialiased; }
+[hidden] { display:none !important; }
+button, input, select { font:inherit; color:inherit; }
+:focus-visible { outline:none; box-shadow:0 0 0 3px var(--focus); border-radius:6px; }
+svg { flex:none; }
+.mono { font-family:var(--f-mono); font-size:.9em; letter-spacing:-.01em; }
+.vis-hidden { position:absolute !important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+/* wallpaper (as Konsol's index.html) */
+.wall { position:fixed; inset:0; z-index:-1; overflow:hidden; background:linear-gradient(180deg,var(--sky1) 0%,var(--sky2) 70%); }
+.wall svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.wall .m1 { fill:var(--m1); } .wall .m2 { fill:var(--m2); } .wall .m3 { fill:var(--m3); } .wall .m4 { fill:var(--m4); }
+
+.glass, .side, .card, dialog, .mobile-brand, .menu {
+  background:var(--glass); border:1px solid var(--glass-line); box-shadow:var(--glass-shadow);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(150%); backdrop-filter:blur(var(--blur)) saturate(150%);
+}
+
+/* demo bar: clearly a design demo, never part of the product */
+.demo { position:sticky; top:0; z-index:30; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; justify-content:center;
+  padding:7px 14px; background:repeating-linear-gradient(135deg,#F4E6CC 0 14px,#F8EEDB 14px 28px); color:#5B3B05;
+  border-bottom:1px solid #E2C88F; font-size:12.5px; }
+:root[data-theme="dark"] .demo { background:repeating-linear-gradient(135deg,#3A2C14 0 14px,#33270F 14px 28px); color:#F2D399; border-color:#5B4520; }
+@media (prefers-color-scheme:dark) { :root:not([data-theme="light"]) .demo { background:repeating-linear-gradient(135deg,#3A2C14 0 14px,#33270F 14px 28px); color:#F2D399; border-color:#5B4520; } }
+.demo strong { font-weight:700; letter-spacing:.02em; }
+.demo .seg { display:inline-flex; border:1px solid currentColor; border-radius:999px; overflow:hidden; }
+.demo .seg button { border:0; background:none; padding:2px 10px; cursor:pointer; font-size:12px; color:inherit; }
+.demo .seg button[aria-pressed="true"] { background:currentColor; }
+.demo .seg button[aria-pressed="true"] span { color:#FFF8EA; }
+:root[data-theme="dark"] .demo .seg button[aria-pressed="true"] span { color:#2A1E08; }
+
+/* shell */
+.shell { display:grid; grid-template-columns:232px minmax(0,1fr); min-height:calc(100vh - 40px); }
+.side { position:sticky; top:52px; height:calc(100vh - 66px); margin:14px 0 14px 14px; padding:22px 14px 16px; border-radius:18px;
+  display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
+.brand { display:grid; gap:3px; padding-inline:8px; }
+.wordmark { font:700 28px/1 var(--f-display); letter-spacing:-.035em; }
+.wordmark .dot { color:var(--accent); }
+.brand small { font-size:11.5px; color:var(--muted); }
+.nav { display:grid; gap:4px; }
+.nav a { display:flex; align-items:center; gap:11px; padding:10px; border-radius:10px; color:var(--muted); text-decoration:none; font-weight:500; font-size:13.5px; }
+.nav a svg { width:18px; height:18px; }
+.nav a:hover { background:var(--accent-soft); color:var(--ink); }
+.nav a[aria-current="page"] { background:var(--glass-2); color:var(--ink); box-shadow:inset 0 0 0 1px var(--glass-line); }
+.nav a[aria-current="page"] svg { color:var(--accent); }
+.nav .new { margin-left:auto; font-size:10px; font-weight:600; padding:1px 6px; border-radius:999px; background:var(--accent-soft); color:var(--accent); }
+.side-label { font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:14px 10px 2px; }
+.side-foot { margin-top:auto; padding:12px 8px 0; border-top:1px solid var(--glass-line); font-size:10.5px; color:var(--muted); display:grid; gap:3px; }
+.mobile-brand { display:none; }
+
+.main { padding:26px clamp(16px,3vw,42px) 64px; min-width:0; }
+.content { max-width:1240px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:18px; }
+.topbar { display:flex; justify-content:space-between; align-items:flex-end; gap:12px 20px; flex-wrap:wrap; }
+.eyebrow { margin:0 0 4px; font-size:11.5px; color:var(--muted); }
+h1 { margin:0; font:650 28px/1.1 var(--f-display); letter-spacing:-.02em; }
+.top-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.stack { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; min-width:0; }
+
+/* buttons */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:8px 15px; border-radius:999px; border:1px solid transparent;
+  font-weight:500; font-size:13.5px; cursor:pointer; white-space:nowrap; text-decoration:none; color:inherit; }
+.btn svg { width:16px; height:16px; }
+.btn-primary { background:var(--accent); color:var(--accent-ink); }
+.btn-primary:hover { background:var(--accent-hover); }
+.btn-quiet { background:var(--glass-2); border-color:var(--glass-line); }
+.btn-quiet:hover { border-color:var(--accent); }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-sm { padding:5px 11px; font-size:12.5px; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity:.5; cursor:not-allowed; }
+.linkbtn { background:none; border:0; padding:0; color:var(--accent); font-weight:500; cursor:pointer; display:inline-flex; gap:4px; align-items:center; font-size:13px; }
+.linkbtn:hover { text-decoration:underline; }
+.ib { width:32px; height:32px; display:inline-grid; place-items:center; border-radius:9px; border:0; background:none; color:var(--muted); cursor:pointer; position:relative; }
+.ib::before { content:""; position:absolute; inset:-6px; }
+.ib svg { width:17px; height:17px; }
+.ib:hover { color:var(--ink); background:var(--accent-soft); }
+.ib[aria-disabled="true"] { opacity:.45; cursor:progress; }
+.danger-text { color:var(--danger) !important; }
+
+/* pills and badges */
+.hm { display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px; white-space:nowrap; font-size:12px; font-weight:500;
+  background:var(--tint); color:var(--muted); font-variant-numeric:tabular-nums; }
+.hm.ok { background:var(--ok-soft); color:var(--ok); } .hm.warn { background:var(--warn-soft); color:var(--warn); }
+.hm.bad { background:var(--danger-soft); color:var(--danger); } .hm.idle { background:var(--idle-soft); color:var(--idle); }
+.dotmark { width:7px; height:7px; border-radius:50%; background:currentColor; }
+.spin { width:12px; height:12px; border-radius:50%; border:2px solid currentColor; border-right-color:transparent; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.src { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:6px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+.src svg { width:12px; height:12px; }
+.src.store { color:var(--video); border-color:color-mix(in srgb,var(--video) 40%,transparent); }
+.src.konsol { color:var(--accent); border-color:color-mix(in srgb,var(--accent) 40%,transparent); }
+.src.dis { color:var(--warn); border-color:color-mix(in srgb,var(--warn) 45%,transparent); }
+
+/* cards, summary */
+.card { border-radius:var(--radius); padding:16px 18px; display:grid; gap:12px; min-width:0; }
+.card h2 { margin:0; font-size:15px; font-weight:600; display:flex; gap:9px; align-items:center; }
+.card h2 svg { width:17px; height:17px; color:var(--accent); }
+.card-head { display:flex; justify-content:space-between; align-items:center; gap:8px 12px; flex-wrap:wrap; }
+.card-head small { color:var(--muted); font-size:12.5px; }
+.summary { display:flex; flex-wrap:wrap; align-items:center; gap:14px 30px; }
+.summary .rt { display:flex; align-items:center; gap:10px; }
+.summary .rt svg { width:22px; height:22px; color:var(--accent); }
+.summary dl { display:flex; flex-wrap:wrap; gap:8px 28px; margin:0 0 0 auto; }
+.summary dl > div { display:grid; gap:1px; }
+.summary dt { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.summary dd { margin:0; font:600 19px/1.2 var(--f-display); font-variant-numeric:tabular-nums; }
+.summary dd small { font:400 12px var(--f-body); color:var(--muted); margin-left:4px; }
+/* block, not flex: mixed inline text (bold, code) wraps as one paragraph beside the icon */
+.note { display:block; position:relative; padding-left:24px; font-size:12.5px; color:var(--muted); line-height:1.55; margin:0; }
+.note > svg { position:absolute; left:0; top:2px; width:15px; height:15px; color:var(--accent); }
+.card.note { padding:14px 18px 14px 44px; }
+.card.note > svg { left:18px; top:16px; }
+.summary .rt .note { padding-left:0; }
+.note.warn > svg { color:var(--warn); } .note.bad > svg { color:var(--danger); }
+
+/* tabs */
+.tabs { display:flex; gap:4px; padding:4px; border-radius:999px; width:max-content; max-width:100%; overflow-x:auto; scrollbar-width:none; }
+.tabs [role="tab"] { border:0; background:none; padding:7px 15px; border-radius:999px; font-size:13.5px; font-weight:500; color:var(--muted); cursor:pointer; display:inline-flex; gap:7px; align-items:center; white-space:nowrap; }
+.tabs [role="tab"] svg { width:15px; height:15px; }
+.tabs [role="tab"][aria-selected="true"] { background:var(--glass-2); color:var(--ink); box-shadow:0 1px 0 var(--glass-line), 0 4px 14px -8px rgba(0,0,0,.35); }
+.tabs .count { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+/* toolbar */
+.toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.search { display:flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; background:var(--glass-2); border:1px solid var(--glass-line); min-width:min(260px,100%); flex:1 1 220px; max-width:340px; }
+.search svg { width:15px; height:15px; color:var(--muted); }
+.search input { border:0; background:none; outline:none; width:100%; font-size:13.5px; }
+.search input:focus-visible { box-shadow:none; }
+.search:focus-within { box-shadow:0 0 0 3px var(--focus); }
+.chips { display:flex; gap:6px; flex-wrap:wrap; }
+.chip { border:1px solid var(--glass-line); background:var(--glass-2); padding:5px 11px; border-radius:999px; font-size:12.5px; cursor:pointer; color:var(--muted); }
+.chip[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+
+/* containers table → cards on phones */
+.ctable { border-radius:var(--radius); overflow:hidden; }
+.crow { display:grid; grid-template-columns:minmax(0,1.7fr) 8.5rem minmax(0,.9fr) minmax(0,1.5fr) 7.5rem 5.6rem; gap:14px; align-items:center; padding:12px 16px; }
+.crow + .crow { border-top:1px solid var(--line); }
+.crow.head { padding:9px 16px; background:var(--tint); font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.crow:not(.head):hover { background:color-mix(in srgb,var(--accent-soft) 55%,transparent); }
+.crow > * { min-width:0; }
+.who { display:flex; gap:11px; align-items:center; min-width:0; }
+.who .ico { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; color:#fff; flex:none; box-shadow:0 8px 18px -10px rgba(0,0,0,.6); }
+.who .ico svg { width:18px; height:18px; }
+.t-video { background:linear-gradient(145deg,#8B6BC4,#5A3F8F); } .t-media { background:linear-gradient(145deg,#3F8BD1,#2A5F9A); }
+.t-mon { background:linear-gradient(145deg,#3FA07A,#2A6E54); } .t-rss { background:linear-gradient(145deg,#D08A3E,#9A5E25); } .t-ext { background:linear-gradient(145deg,#8A96A3,#5E6B78); }
+.who .nm { display:grid; min-width:0; }
+.who .nm button { all:unset; cursor:pointer; font-weight:600; font-size:14px; overflow-wrap:anywhere; }
+.who .nm button:hover { color:var(--accent); text-decoration:underline; }
+.who .nm button:focus-visible { box-shadow:0 0 0 3px var(--focus); border-radius:4px; }
+.who .nm small { font-size:11.5px; color:var(--muted); overflow-wrap:anywhere; }
+.res { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; display:grid; gap:1px; }
+.access { font-size:12px; display:grid; gap:2px; }
+.access .mono { font-size:11.5px; }
+.access .muted { color:var(--muted); }
+.acts { display:flex; gap:2px; justify-content:flex-end; position:relative; }
+.crow [data-l]::before { display:none; }
+.empty { padding:40px 20px; text-align:center; display:grid; gap:10px; justify-items:center; color:var(--muted); }
+.empty svg { width:34px; height:34px; color:var(--accent); }
+.empty strong { color:var(--ink); font-size:15px; }
+
+/* overflow menu */
+.menu { position:absolute; right:0; top:36px; z-index:20; min-width:200px; padding:6px; border-radius:12px; display:grid; gap:1px; background:var(--glass-2); }
+.menu button { display:flex; gap:10px; align-items:center; border:0; background:none; padding:8px 10px; border-radius:8px; font-size:13px; cursor:pointer; text-align:left; }
+.menu button svg { width:15px; height:15px; color:var(--muted); }
+.menu button:hover, .menu button:focus-visible { background:var(--accent-soft); box-shadow:none; }
+.menu button[aria-disabled="true"] { opacity:.5; cursor:not-allowed; }
+.menu hr { border:0; border-top:1px solid var(--line); margin:4px 2px; }
+
+/* detail */
+.back { display:inline-flex; gap:6px; align-items:center; color:var(--muted); text-decoration:none; font-size:13px; border:0; background:none; cursor:pointer; padding:0; }
+.back svg { width:15px; height:15px; }
+.back:hover { color:var(--accent); }
+.dhead { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+.dhead .ico { width:52px; height:52px; border-radius:15px; display:grid; place-items:center; color:#fff; box-shadow:0 10px 22px -12px rgba(0,0,0,.6); }
+.dhead .ico svg { width:26px; height:26px; }
+.dhead .ttl { display:grid; gap:4px; min-width:0; flex:1 1 260px; }
+.dhead h1 { font-size:24px; overflow-wrap:anywhere; }
+.dhead .meta { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; font-size:12.5px; color:var(--muted); }
+.dhead .bar { display:flex; gap:8px; flex-wrap:wrap; }
+.sec-tabs { border-radius:999px; }
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(13rem,100%),1fr)); gap:12px 18px; margin:0; }
+.facts > div { display:grid; gap:3px; min-width:0; }
+.facts dt { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
+.facts dd { margin:0; font-size:13.5px; overflow-wrap:anywhere; }
+.facts dd small { display:block; font-size:12px; color:var(--muted); }
+.mini { width:100%; border-collapse:collapse; font-size:13px; }
+.mini th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:500; padding:6px 8px; border-bottom:1px solid var(--line); }
+.mini td { padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top; overflow-wrap:anywhere; }
+.mini tr:last-child td { border-bottom:0; }
+.lock { display:inline-flex; gap:5px; align-items:center; font-size:11.5px; color:var(--muted); }
+.lock svg { width:12px; height:12px; }
+.spark { display:flex; align-items:flex-end; gap:2px; height:38px; }
+.spark i { flex:1; background:color-mix(in srgb,var(--accent) 70%,transparent); border-radius:2px 2px 0 0; min-height:2px; }
+.logbox { background:#0E1418; color:#D7E2EA; border-radius:12px; padding:12px 14px; font:12px/1.65 var(--f-mono); max-height:340px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.logbox .t { color:#7F94A3; } .logbox .w { color:#E9C46A; } .logbox .e { color:#F4978E; } .logbox mark { background:#2E5A68; color:inherit; border-radius:3px; }
+.logtools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+select.inp, input.inp { padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); font-size:13px; min-width:0; }
+input.inp.mono { font-family:var(--f-mono); font-size:12.5px; }
+.inp[aria-invalid="true"] { border-color:var(--danger); box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 25%,transparent); }
+
+/* dialogs and the edit sheet */
+dialog { border-radius:18px; padding:0; color:var(--ink); background:var(--glass-2); max-width:min(560px,calc(100vw - 24px)); width:100%; }
+dialog::backdrop { background:rgba(10,18,26,.42); -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+.dlg { display:grid; gap:14px; padding:20px 22px 22px; }
+.dlg-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.dlg-head h3 { margin:0; font-size:18px; font-weight:600; }
+.dlg-head p { margin:3px 0 0; color:var(--muted); font-size:13px; }
+.dlg-foot { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.conseq { margin:0; padding:0; list-style:none; display:grid; gap:8px; }
+.conseq li { display:flex; gap:10px; align-items:flex-start; font-size:13px; line-height:1.5; }
+.conseq li svg { width:16px; height:16px; margin-top:2px; color:var(--accent); }
+.conseq li.warn svg { color:var(--warn); } .conseq li.bad svg { color:var(--danger); } .conseq li.ok svg { color:var(--ok); }
+.opt { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font-size:13px; cursor:pointer; }
+.opt input { margin-top:3px; }
+.opt small { display:block; color:var(--muted); font-size:12px; }
+.word { display:grid; gap:6px; font-size:13px; }
+dialog.sheet { margin:0 0 0 auto; height:100vh; max-height:100vh; max-width:min(640px,100vw); border-radius:18px 0 0 18px; }
+dialog.sheet .dlg { height:100%; grid-template-rows:auto auto minmax(0,1fr) auto; padding:0; gap:0; }
+.sheet .dlg-head { padding:18px 22px 10px; }
+.sheet .steps { display:flex; gap:6px; padding:0 22px 12px; font-size:12px; color:var(--muted); flex-wrap:wrap; }
+.sheet .steps span { padding:2px 9px; border-radius:999px; background:var(--tint); }
+.sheet .steps span[aria-current="step"] { background:var(--accent); color:var(--accent-ink); }
+.sheet .body { overflow:auto; padding:6px 22px 16px; display:grid; gap:16px; align-content:start; }
+.sheet .foot { padding:12px 22px 18px; border-top:1px solid var(--line); display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center; }
+fieldset { border:1px solid var(--line); border-radius:14px; padding:12px 14px 14px; margin:0; display:grid; gap:10px; min-width:0; }
+legend { padding:0 6px; font-weight:600; font-size:13.5px; display:flex; gap:8px; align-items:center; }
+legend svg { width:15px; height:15px; color:var(--accent); }
+.field { display:grid; gap:5px; font-size:12.5px; min-width:0; }
+.field > span { color:var(--muted); }
+.row-ed { display:grid; gap:8px; align-items:end; grid-template-columns:minmax(0,1.5fr) minmax(0,.8fr) minmax(0,.8fr) 5.2rem 32px; }
+.row-ed.mnt { grid-template-columns:7.6rem minmax(0,1.4fr) minmax(0,1.2fr) 4.6rem 32px; }
+.row-ed.env { grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) 4.6rem 32px; }
+.row-ed .field > span { font-size:11px; }
+.row-ed .chk { display:flex; gap:6px; align-items:center; font-size:12px; padding-bottom:7px; }
+.hostnet { display:grid; gap:10px; padding:12px; border-radius:12px; background:var(--tint); border:1px dashed var(--line); }
+.inline-warn { font-size:12px; color:var(--warn); display:flex; gap:6px; align-items:flex-start; }
+.inline-warn svg { width:14px; height:14px; margin-top:1px; }
+.err { font-size:12px; color:var(--danger); }
+.diff { display:grid; gap:8px; }
+.diff div { display:grid; grid-template-columns:5.4rem minmax(0,1fr); gap:10px; font-size:13px; align-items:baseline; padding:8px 10px; border-radius:10px; background:var(--tint); }
+.diff b { font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+.diff .add b { color:var(--ok); } .diff .del b { color:var(--danger); } .diff .chg b { color:var(--warn); }
+.diff del { color:var(--muted); }
+.prog { margin:0; padding:0; list-style:none; display:grid; gap:8px; }
+.prog li { display:flex; gap:10px; align-items:center; font-size:13px; color:var(--muted); }
+.prog li .st { width:18px; height:18px; display:grid; place-items:center; }
+.prog li.done { color:var(--ink); } .prog li.done .st { color:var(--ok); }
+.prog li.run { color:var(--ink); font-weight:500; }
+.toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:60; max-width:calc(100vw - 32px); padding:10px 16px; border-radius:12px; background:#1B2430; color:#F2F6F9; font-size:13px; box-shadow:0 14px 40px -12px rgba(0,0,0,.6); }
+
+/* resource tabs */
+.rtable { width:100%; border-collapse:collapse; font-size:13px; }
+.rtable th { text-align:left; padding:9px 14px; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:500; background:var(--tint); }
+.rtable td { padding:11px 14px; border-top:1px solid var(--line); vertical-align:middle; overflow-wrap:anywhere; }
+.rtable .r { text-align:right; white-space:nowrap; }
+
+@media (max-width:1060px) {
+  .crow { grid-template-columns:minmax(0,1.6fr) 8rem minmax(0,1.4fr) 5.4rem; }
+  .crow .c-res, .crow .c-src { display:none; }
+  .grid2 { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width:820px) {
+  .shell { grid-template-columns:minmax(0,1fr); }
+  .side { display:none; position:fixed; z-index:40; top:58px; left:10px; right:10px; height:auto; max-height:calc(100vh - 80px); margin:0; }
+  .side.open { display:flex; }
+  .mobile-brand { display:flex; justify-content:space-between; align-items:center; margin:10px 12px 0; padding:10px 14px; border-radius:16px; position:sticky; top:44px; z-index:35; }
+  .mobile-brand .wordmark { font-size:22px; }
+  .main { padding:18px 16px 56px; }
+  h1 { font-size:24px; }
+  .summary dl { margin:0; gap:8px 20px; }
+  .crow.head { display:none; }
+  .crow { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"who acts" "state src" "access access"; gap:8px 10px; padding:14px; }
+  .crow .c-who { grid-area:who; } .crow .acts { grid-area:acts; align-self:start; }
+  .crow .c-state { grid-area:state; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .crow .c-src { grid-area:src; display:block; justify-self:end; align-self:center; }
+  .crow .c-access { grid-area:access; }
+  .crow .c-res { display:none; }
+  .row-ed, .row-ed.mnt, .row-ed.env { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .row-ed > .rm { justify-self:end; }
+  dialog.sheet { max-width:100vw; width:100vw; border-radius:0; }
+  .rtable thead { display:none; }
+  .rtable tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; padding:12px 14px; border-top:1px solid var(--line); }
+  .rtable td { border:0; padding:0; }
+  .rtable td[data-l]::before { content:attr(data-l) " · "; color:var(--muted); font-size:11.5px; }
+  .rtable td.r { grid-column:2; grid-row:1 / span 3; align-self:center; }
+}
+@media (prefers-reduced-motion:reduce) { .spin { animation:none; } }
+</style>
+</head>
+<body>
+<div class="wall" aria-hidden="true">
+  <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" focusable="false">
+    <path class="m1" d="M0 640 220 470 380 560 560 400 760 520 980 360 1180 500 1400 410 1600 540V900H0z"/>
+    <path class="m2" d="M0 720 180 600 340 660 520 540 700 640 900 520 1080 620 1300 540 1600 660V900H0z"/>
+    <path class="m3" d="M0 800 200 710 400 760 600 680 820 760 1040 690 1260 760 1600 720V900H0z"/>
+    <path class="m4" d="M0 900V850l260-50 300 40 320-30 340 40 380-20V900z"/>
+  </svg>
+</div>
+
+<div class="demo" role="note" aria-label="Tasarım demosu">
+  <span><strong>TASARIM DEMOSU</strong> · örnek veri · düğmeler yalnız bu sayfada canlandırılır, sunucuya hiçbir istek gitmez</span>
+  <span class="seg" role="group" aria-label="Tema">
+    <button type="button" data-theme-set="" aria-pressed="true"><span>Sistem</span></button>
+    <button type="button" data-theme-set="light" aria-pressed="false"><span>Açık</span></button>
+    <button type="button" data-theme-set="dark" aria-pressed="false"><span>Koyu</span></button>
+  </span>
+  <span class="seg" role="group" aria-label="Örnek durum">
+    <button type="button" data-sample="dolu" aria-pressed="true"><span>Örnek liste</span></button>
+    <button type="button" data-sample="bos" aria-pressed="false"><span>Hiç konteyner yok</span></button>
+  </span>
+</div>
+
+<header class="mobile-brand">
+  <span class="wordmark">sunucu<span class="dot">.</span></span>
+  <button type="button" class="btn btn-quiet btn-sm" id="menu-toggle" aria-controls="side" aria-expanded="false">Menü</button>
+</header>
+
+<div class="shell">
+  <aside class="side" id="side" aria-label="Konsol menüsü">
+    <div class="brand"><span class="wordmark">sunucu<span class="dot">.</span></span><small>panel.ornek · örnek ad</small></div>
+    <nav class="nav" aria-label="Bölümler">
+      <a href="#" data-dead><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 8 9 2.5 15.5 8M4 7v8h10V7"/></svg>Genel bakış</a>
+      <a href="#" data-dead><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4.5h5l1.5 2H16v8H2z"/></svg>Dosyalar</a>
+      <a href="#" data-dead><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="3" width="13" height="5" rx="1.5"/><rect x="2.5" y="10" width="13" height="5" rx="1.5"/></svg>App Store</a>
+      <a href="#" aria-current="page"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 2 15.5 5.5v7L9 16 2.5 12.5v-7z M2.5 5.5 9 9l6.5-3.5M9 9v7"/></svg>Konteynerler<span class="new">yeni</span></a>
+      <div class="side-label">Kurulu uygulamalar</div>
+      <a href="#" data-dead><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 2 15 4.5v4.2c0 3.5-2.6 6-6 7.3-3.4-1.3-6-3.8-6-7.3V4.5z"/></svg>WireGuard</a>
+      <a href="#" data-dead><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 2.5v9M5.5 8 9 11.5 12.5 8M3 15h12"/></svg>qBittorrent</a>
+      <a href="#" data-dead style="margin-top:10px"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 5h7M13.5 5H15M3 13h2.5M9 13h6"/><circle cx="11.8" cy="5" r="1.8"/><circle cx="7.2" cy="13" r="1.8"/></svg>Ayarlar</a>
+    </nav>
+    <p class="note"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4M8 4.8v.1"/></svg>Ayarlar → Konteynerler sekmesi kalkar; eski bağlantılar buraya yönlenir.</p>
+    <div class="side-foot"><span>Tailscale</span><span class="mono">100.64.0.2 · örnek</span><span class="mono">v2-190 · öneri</span></div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="content" id="view" aria-live="off"></div>
+  </main>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlg-title"><div class="dlg" id="dlg-body"></div></dialog>
+<dialog id="sheet" class="sheet" aria-labelledby="sheet-title"><div class="dlg" id="sheet-body"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+(() => {
+"use strict";
+/* ---------------- small helpers ---------------- */
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+const ICON = {
+  play: '<path d="M5 3.5v11l9-5.5z"/>', stop: '<rect x="4.5" y="4.5" width="9" height="9" rx="1.5"/>',
+  restart: '<path d="M14.5 9a5.5 5.5 0 1 1-1.6-3.9M14.5 2.8v3.4h-3.4"/>', more: '<circle cx="4" cy="9" r="1.2"/><circle cx="9" cy="9" r="1.2"/><circle cx="14" cy="9" r="1.2"/>',
+  edit: '<path d="M11.5 3.5 14.5 6.5 6.5 14.5H3.5v-3z"/>', trash: '<path d="M3.5 5h11M7 5V3.5h4V5M5 5l.8 9.5h6.4L13 5"/>',
+  log: '<path d="M4 4h10M4 8h10M4 12h6"/>', box: '<path d="M9 2 15.5 5.5v7L9 16 2.5 12.5v-7z M2.5 5.5 9 9l6.5-3.5M9 9v7"/>',
+  plus: '<path d="M9 3.5v11M3.5 9h11"/>', search: '<circle cx="8" cy="8" r="5"/><path d="m12 12 3 3"/>', back: '<path d="M11 4 6 9l5 5"/>',
+  info: '<circle cx="9" cy="9" r="7"/><path d="M9 8v4.5M9 5.5v.1"/>', warn: '<path d="M9 2.5 16 15H2z M9 7v4M9 12.8v.1"/>',
+  check: '<path d="m3.5 9.5 3.5 3.5 7.5-8"/>', lock: '<rect x="4" y="8" width="10" height="7" rx="1.5"/><path d="M6 8V6a3 3 0 0 1 6 0v2"/>',
+  net: '<circle cx="9" cy="9" r="6.5"/><path d="M2.5 9h13M9 2.5c2 2 2 11 0 13M9 2.5c-2 2-2 11 0 13"/>', disk: '<ellipse cx="9" cy="5" rx="6" ry="2.2"/><path d="M3 5v8c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V5"/>',
+  layers: '<path d="m9 2.5 6.5 3.5L9 9.5 2.5 6z M2.5 9.5 9 13l6.5-3.5M2.5 12.5 9 16l6.5-3.5"/>', folder: '<path d="M2 4.5h5l1.5 2H16v8H2z"/>',
+  key: '<circle cx="6" cy="11" r="3"/><path d="m8.2 8.8 6-6M12 5l1.8 1.8"/>', clock: '<circle cx="9" cy="9" r="6.5"/><path d="M9 5.5V9l2.5 1.5"/>',
+  gauge: '<path d="M3 13a6 6 0 1 1 12 0M9 13l3-4"/>', store: '<rect x="2.5" y="3" width="13" height="5" rx="1.5"/><rect x="2.5" y="10" width="13" height="5" rx="1.5"/>',
+  link: '<path d="M7.5 10.5 10.5 7.5M8 5l1.5-1.5a3 3 0 0 1 4.2 4.2L12 9.5M10 13l-1.5 1.5a3 3 0 0 1-4.2-4.2L6 8.5"/>', x: '<path d="M4.5 4.5l9 9M13.5 4.5l-9 9"/>',
+  down: '<path d="M9 2.5v9M5.5 8 9 11.5 12.5 8M3 15h12"/>', media: '<rect x="2.5" y="4" width="13" height="10" rx="2"/><path d="M7.5 7v4l3.5-2z"/>',
+  mon: '<path d="M2 10h3l2-5 3 9 2-4h4"/>', rss: '<path d="M4 4a10 10 0 0 1 10 10M4 8a6 6 0 0 1 6 6"/><circle cx="4.8" cy="13.2" r="1.2"/>',
+};
+const svg = (name, cls) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 18 18"); s.setAttribute("fill", "none");
+  s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "1.6"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+  s.setAttribute("aria-hidden", "true"); if (cls) s.setAttribute("class", cls); s.innerHTML = ICON[name] || ICON.box; return s; };
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 4200); }
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+/* ---------------- sample data (no real host values) ---------------- */
+const TS = "100.64.0.2";   // sample Tailscale address
+const SCOPES = { local: "Yalnız bu sunucu", tailscale: "Tailscale", public: "İnternet (açık)" };
+const SCOPE_ADDR = { local: "127.0.0.1", tailscale: TS, public: "0.0.0.0" };
+let C = [];
+function sample() {
+  C = [
+    { id: "qbittorrent", name: "qbittorrent", title: "qBittorrent", tone: "t-video", icon: "down", src: "store", app: "qBittorrent",
+      image: "lscr.io/linuxserver/qbittorrent", ref: "5.2.4 · sha256:b522f9f4…", pinned: "paket", state: "running", health: null, live: true,
+      cpu: "1,4 %", mem: "212 MB", spark: [3,4,6,5,8,7,9,6,5,7,8,6], up: "3 saat", net: "host", unit: "qbittorrent.service",
+      listener: { addr: "127.0.0.1", port: 61006, via: "torrent.ornek (Tailscale, Caddy)" },
+      ports: [], mounts: [
+        { kind: "folder", src: "/var/lib/qbittorrent", dst: "/config", ro: false, guard: "profile" },
+        { kind: "folder", src: "/srv/downloads", dst: "/srv/downloads", ro: false, guard: "app-folder" } ],
+      env: [ { k: "PUID", v: "1000", pkg: true }, { k: "PGID", v: "1000", pkg: true }, { k: "UMASK", v: "002", pkg: true }, { k: "WEBUI_PORT", v: "61006", pkg: true } ],
+      boot: true, restart: "on-failure", cpuLim: "", memLim: "", stopNote: "Süren indirmeler duraklar; başlatınca kaldığı yerden devam eder." },
+    { id: "jellyfin", name: "jellyfin", title: "Jellyfin", tone: "t-media", icon: "media", src: "konsol",
+      image: "docker.io/jellyfin/jellyfin", ref: "10.10.7 · sha256:3c1a77e0…", pinned: "etiket→özet", state: "running", health: "healthy", live: true,
+      cpu: "6,8 %", mem: "684 MB", spark: [5,6,9,12,8,7,11,14,10,9,8,12], up: "2 gün", net: "bridge", unit: "jellyfin.service",
+      ports: [ { scope: "tailscale", host: 8096, ctr: 8096, proto: "tcp" }, { scope: "local", host: 8920, ctr: 8920, proto: "tcp" } ],
+      mounts: [ { kind: "volume", src: "jellyfin-config", dst: "/config", ro: false }, { kind: "volume", src: "jellyfin-cache", dst: "/cache", ro: false },
+        { kind: "folder", src: "/srv/media", dst: "/media", ro: true } ],
+      env: [ { k: "TZ", v: "Europe/Istanbul" }, { k: "JELLYFIN_PublishedServerUrl", v: "http://" + TS + ":8096" } ],
+      boot: true, restart: "always", cpuLim: "2", memLim: "2 GB" },
+    { id: "uptime-kuma", name: "uptime-kuma", title: "Uptime Kuma", tone: "t-mon", icon: "mon", src: "konsol",
+      image: "docker.io/louislam/uptime-kuma", ref: "1.23.16 · sha256:9a0e5d14…", pinned: "etiket→özet", state: "stopped", health: null, live: false,
+      cpu: "—", mem: "—", spark: [], up: "", net: "bridge", unit: "uptime-kuma.service",
+      ports: [ { scope: "tailscale", host: 3001, ctr: 3001, proto: "tcp" } ],
+      mounts: [ { kind: "volume", src: "uptime-kuma-data", dst: "/app/data", ro: false } ],
+      env: [ { k: "UPTIME_KUMA_DISABLE_FRAME_SAMEORIGIN", v: "false" } ], boot: false, restart: "on-failure", cpuLim: "", memLim: "512 MB" },
+    { id: "freshrss", name: "freshrss", title: "FreshRSS", tone: "t-rss", icon: "rss", src: "konsol",
+      image: "docker.io/freshrss/freshrss", ref: "1.26.1 · sha256:61f2c8b3…", pinned: "etiket→özet", state: "running", health: "unhealthy", live: true,
+      cpu: "0,3 %", mem: "96 MB", spark: [2,2,3,2,2,4,2,2,3,2,2,2], up: "41 dk", net: "bridge", unit: "freshrss.service",
+      ports: [ { scope: "local", host: 8081, ctr: 80, proto: "tcp" } ],
+      mounts: [ { kind: "volume", src: "freshrss-data", dst: "/var/www/FreshRSS/data", ro: false } ],
+      env: [ { k: "CRON_MIN", v: "*/20" }, { k: "ADMIN_API_TOKEN", v: "", secret: true } ], boot: true, restart: "on-failure", cpuLim: "", memLim: "" },
+    { id: "deneme-nginx", name: "deneme-nginx", title: "deneme-nginx", tone: "t-ext", icon: "box", src: "dis",
+      image: "docker.io/library/nginx", ref: "1.27-alpine · etiket", pinned: "etiket", state: "exited", health: null, live: true,
+      cpu: "—", mem: "—", spark: [], up: "", net: "bridge", unit: "",
+      ports: [ { scope: "public", host: 8088, ctr: 80, proto: "tcp" } ], mounts: [], env: [], boot: false, restart: "no", cpuLim: "", memLim: "" },
+  ];
+}
+sample();
+const IMAGES = [
+  { repo: "lscr.io/linuxserver/qbittorrent", tag: "5.2.4", dig: "b522f9f4…", size: "228 MB", used: ["qbittorrent"], pkg: true },
+  { repo: "docker.io/jellyfin/jellyfin", tag: "10.10.7", dig: "3c1a77e0…", size: "1,2 GB", used: ["jellyfin"] },
+  { repo: "docker.io/louislam/uptime-kuma", tag: "1.23.16", dig: "9a0e5d14…", size: "412 MB", used: ["uptime-kuma"] },
+  { repo: "docker.io/freshrss/freshrss", tag: "1.26.1", dig: "61f2c8b3…", size: "188 MB", used: ["freshrss"] },
+  { repo: "docker.io/library/nginx", tag: "1.27-alpine", dig: "c1d4a2f9…", size: "48 MB", used: ["deneme-nginx"] },
+  { repo: "docker.io/library/nginx", tag: "1.25-alpine", dig: "77b0e1aa…", size: "43 MB", used: [] },
+];
+const VOLUMES = [
+  { name: "jellyfin-config", size: "312 MB", used: ["jellyfin"] }, { name: "jellyfin-cache", size: "2,1 GB", used: ["jellyfin"] },
+  { name: "uptime-kuma-data", size: "38 MB", used: ["uptime-kuma"] }, { name: "freshrss-data", size: "64 MB", used: ["freshrss"] },
+  { name: "eski-deneme", size: "12 MB", used: [] },
+];
+const NETWORKS = [
+  { name: "host", driver: "host", subnet: "sunucunun kendi ağı", used: ["qbittorrent"], sys: true },
+  { name: "podman", driver: "bridge", subnet: "10.88.0.0/16", used: ["jellyfin", "uptime-kuma", "freshrss", "deneme-nginx"], sys: true },
+  { name: "medya", driver: "bridge", subnet: "10.89.1.0/24", used: [], sys: false },
+];
+
+/* ---------------- state ---------------- */
+const S = { tab: "konteynerler", filter: "tum", q: "", detail: null, section: "genel", busy: {}, empty: false, menu: null, logQ: "", logN: "200" };
+const byId = (id) => C.find((c) => c.id === id);
+const visible = () => (S.empty ? [] : C);
+
+/* ---------------- shared bits ---------------- */
+function statePill(c) {
+  if (S.busy[c.id]) return h("span", { class: "hm warn" }, h("span", { class: "spin", "aria-hidden": "true" }), S.busy[c.id]);
+  if (c.state === "running" && c.health === "unhealthy") return h("span", { class: "hm bad" }, h("span", { class: "dotmark" }), "Sağlıksız");
+  if (c.state === "running") return h("span", { class: "hm ok" }, h("span", { class: "dotmark" }), "Çalışıyor");
+  if (c.state === "stopped") return h("span", { class: "hm idle" }, "Durduruldu");
+  return h("span", { class: "hm idle" }, "Çıktı (0)");
+}
+function srcBadge(c) {
+  if (c.src === "store") return h("span", { class: "src store", title: "App Store uygulaması: yaşam döngüsü App Store ile ortak" }, svg("store"), "App Store");
+  if (c.src === "konsol") return h("span", { class: "src konsol", title: "Konsol'da oluşturuldu: tanımı Konsol saklar" }, svg("box"), "Konsol");
+  return h("span", { class: "src dis", title: "Konsol dışında oluşturuldu: düzenlemek için önce sahiplenin" }, svg("warn"), "Dışarıda");
+}
+function accessCell(c) {
+  if (c.net === "host") return h("div", { class: "access" }, h("span", null, "Sunucu ağı · arayüz ", h("span", { class: "mono" }, c.listener.addr + ":" + c.listener.port)),
+    h("span", { class: "muted" }, c.listener.via));
+  if (!c.ports.length) return h("div", { class: "access" }, h("span", { class: "muted" }, "Port yayımlanmıyor"));
+  return h("div", { class: "access" }, c.ports.map((p) => h("span", null, h("span", { class: "mono" }, SCOPE_ADDR[p.scope] + ":" + p.host + " → " + p.ctr + "/" + p.proto),
+    " ", h("span", { class: p.scope === "public" ? "hm bad" : "muted" }, SCOPES[p.scope]))));
+}
+const running = (c) => c.state === "running";
+
+/* ---------------- lifecycle (simulated) ---------------- */
+function lifecycle(c, action, opener) {
+  if (S.busy[c.id]) return;
+  const go = () => {
+    const label = { start: "Başlatılıyor…", stop: "Durduruluyor…", restart: "Yeniden başlatılıyor…" }[action];
+    S.busy[c.id] = label; render(opener);
+    setTimeout(() => {
+      delete S.busy[c.id];
+      if (action === "stop") { c.state = "stopped"; c.cpu = c.mem = "—"; if (c.src !== "dis") c.live = false; }
+      else { c.state = "running"; c.live = true; c.cpu = "0,9 %"; c.mem = c.id === "jellyfin" ? "612 MB" : "120 MB"; c.health = c.health === "unhealthy" ? "unhealthy" : c.health; }
+      toast(`${c.title}: ${{ start: "başlatıldı", stop: "durduruldu", restart: "yeniden başlatıldı" }[action]} (demo — sunucuda değişiklik yok).`);
+      render(opener);
+    }, 1400);
+  };
+  if (action === "stop") confirmStop(c, go); else go();
+}
+function confirmStop(c, go) {
+  const items = [["clock", c.stopNote || "Konteyner durur; açılışta da başlamaz, siz başlatana kadar kapalı kalır."]];
+  if (c.src === "store") items.push(["store", "App Store ve Genel bakış da aynı durumu gösterir (tek yaşam döngüsü)."]);
+  if (c.src === "dis") items.push(["warn", "Bu konteyneri Konsol oluşturmadı; onu başlatan başka bir araç yeniden başlatabilir."]);
+  openDialog(`${c.title} durdurulsun mu?`, "Kurulu kalır; istediğinizde başlatırsınız",
+    [h("ul", { class: "conseq" }, items.map(([i, t]) => h("li", null, svg(i), h("span", null, t))))],
+    [{ label: "Vazgeç" }, { label: "Durdur", primary: true, run: go }]);
+}
+
+/* ---------------- top + tabs ---------------- */
+function topbar(title, eyebrow, actions) {
+  return h("div", { class: "topbar" }, h("div", null, h("p", { class: "eyebrow" }, eyebrow), h("h1", { tabindex: "-1", id: "page-title" }, title)),
+    h("div", { class: "top-actions" }, actions));
+}
+const TABS = [["konteynerler", "Konteynerler", "box"], ["imajlar", "İmajlar", "layers"], ["birimler", "Birimler", "disk"], ["aglar", "Ağlar", "net"]];
+function tabs() {
+  const counts = { konteynerler: visible().length, imajlar: S.empty ? 0 : IMAGES.length, birimler: S.empty ? 0 : VOLUMES.length, aglar: NETWORKS.length };
+  const list = h("div", { class: "tabs glass", role: "tablist", "aria-label": "Konteyner kaynakları" },
+    TABS.map(([id, label, icon]) => h("button", { type: "button", role: "tab", id: "tab-" + id, "aria-selected": String(S.tab === id), "aria-controls": "panel",
+      tabindex: S.tab === id ? "0" : "-1", onclick: () => { S.tab = id; S.detail = null; render(); document.getElementById("tab-" + id).focus(); } },
+      svg(icon), label, h("span", { class: "count" }, counts[id]))));
+  list.addEventListener("keydown", (e) => {
+    if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) return;
+    const ids = TABS.map((t) => t[0]); let i = ids.indexOf(S.tab);
+    i = e.key === "Home" ? 0 : e.key === "End" ? ids.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length;
+    S.tab = ids[i]; render(); document.getElementById("tab-" + ids[i]).focus(); e.preventDefault();
+  });
+  return list;
+}
+
+/* ---------------- containers list ---------------- */
+function summary() {
+  const v = visible(), run = v.filter((c) => c.state === "running").length, bad = v.filter((c) => c.health === "unhealthy").length;
+  return h("section", { class: "card summary", "aria-label": "Özet" },
+    h("div", { class: "rt" }, svg("box"), h("div", null, h("strong", null, "Podman 5.4.2"), h("div", { class: "note" }, "rootful · bu sunucu · systemd ile yönetilir"))),
+    h("dl", null,
+      h("div", null, h("dt", null, "Çalışıyor"), h("dd", null, run)),
+      h("div", null, h("dt", null, "Duran"), h("dd", null, v.length - run)),
+      h("div", null, h("dt", null, "Sağlıksız"), h("dd", null, bad)),
+      h("div", null, h("dt", null, "Depolama"), h("dd", null, S.empty ? "0 B" : "4,6", S.empty ? null : h("small", null, "GB")))));
+}
+function filtered() {
+  const q = S.q.trim().toLowerCase();
+  return visible().filter((c) => {
+    if (S.filter === "calisan" && c.state !== "running") return false;
+    if (S.filter === "duran" && c.state === "running") return false;
+    if (S.filter === "sorunlu" && c.health !== "unhealthy") return false;
+    return !q || (c.name + " " + c.image + " " + c.title).toLowerCase().includes(q);
+  });
+}
+function rowActions(c) {
+  const busy = !!S.busy[c.id], run = running(c);
+  const wrap = h("div", { class: "acts" });
+  const svc = h("button", { type: "button", class: "ib", "aria-label": `${c.title}: ${busy ? S.busy[c.id] : run ? "Durdur" : "Başlat"}`, title: busy ? S.busy[c.id] : run ? "Durdur" : "Başlat",
+    "aria-disabled": busy ? "true" : "false", "data-k": c.id + ":svc", onclick: (e) => { if (!busy) lifecycle(c, run ? "stop" : "start", e.currentTarget.dataset.k); } },
+    svg(busy ? "clock" : run ? "stop" : "play"));
+  const more = h("button", { type: "button", class: "ib", "aria-label": `${c.title}: diğer işlemler`, title: "Diğer işlemler", "aria-haspopup": "menu",
+    "aria-expanded": String(S.menu === c.id), "data-k": c.id + ":more", onclick: () => { S.menu = S.menu === c.id ? null : c.id; render(c.id + ":more"); if (S.menu) document.querySelector(".menu button")?.focus(); } }, svg("more"));
+  wrap.append(svc, more);
+  if (S.menu === c.id) wrap.append(menuFor(c));
+  return wrap;
+}
+function menuFor(c) {
+  const busy = !!S.busy[c.id];
+  const item = (icon, label, fn, opts = {}) => h("button", { type: "button", role: "menuitem", class: opts.danger ? "danger-text" : null, "aria-disabled": opts.off ? "true" : "false",
+    title: opts.why || null, onclick: () => { if (opts.off) { toast(opts.why); return; } S.menu = null; fn(); } }, svg(icon), label);
+  const m = h("div", { class: "menu", role: "menu", "aria-label": `${c.title} işlemleri` },
+    item("restart", "Yeniden başlat", () => lifecycle(c, "restart", c.id + ":more"), { off: busy || !running(c), why: busy ? "Bir işlem sürüyor." : "Çalışmıyor; Başlat'ı kullanın." }),
+    item("edit", "Düzenle", () => openEditor(c), c.src === "dis" ? { off: true, why: "Konsol dışında oluşturuldu: düzenlemek için önce Sahiplen." } : { off: busy, why: "Bir işlem sürüyor." }),
+    item("log", "Günlük", () => openDetail(c.id, "gunluk")),
+    c.src === "dis" ? item("link", "Sahiplen…", () => openAdopt(c)) : null,
+    h("hr"),
+    item("trash", c.src === "store" ? "Uygulamayı kaldır…" : "Kaldır…", () => openRemove(c), { danger: true, off: busy, why: "Bir işlem sürüyor." }));
+  m.addEventListener("keydown", (e) => {
+    const items = [...m.querySelectorAll("button")]; const i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { items[(i + 1) % items.length].focus(); e.preventDefault(); }
+    if (e.key === "ArrowUp") { items[(i - 1 + items.length) % items.length].focus(); e.preventDefault(); }
+    if (e.key === "Escape") { S.menu = null; render(c.id + ":more"); e.stopPropagation(); }
+  });
+  return m;
+}
+function containersPanel() {
+  const rows = filtered();
+  const chip = (id, label) => h("button", { type: "button", class: "chip", "aria-pressed": String(S.filter === id), onclick: () => { S.filter = id; render(); } }, label);
+  const tools = h("div", { class: "toolbar" },
+    h("label", { class: "search" }, svg("search"), h("span", { class: "vis-hidden" }, "Ara"),
+      h("input", { type: "search", placeholder: "Ad ya da imaj ara", value: S.q, id: "q", oninput: (e) => { S.q = e.target.value; render("q"); } })),
+    h("div", { class: "chips", role: "group", "aria-label": "Duruma göre süz" }, chip("tum", "Tümü"), chip("calisan", "Çalışan"), chip("duran", "Duran"), chip("sorunlu", "Sağlıksız")));
+  if (S.empty) return [tools, h("section", { class: "card empty" }, svg("box"), h("strong", null, "Bu sunucuda konteyner yok"),
+    h("span", null, "App Store'dan bir uygulama kurun ya da bir imajdan yeni konteyner oluşturun."),
+    h("div", { class: "top-actions" }, h("button", { type: "button", class: "btn btn-primary", onclick: () => openEditor(null) }, svg("plus"), "Yeni konteyner")))];
+  const table = h("section", { class: "ctable glass", "aria-label": "Konteynerler" },
+    h("div", { class: "crow head", "aria-hidden": "true" }, h("span", null, "Ad ve imaj"), h("span", null, "Durum"), h("span", null, "Kaynak"), h("span", null, "Erişim"), h("span", null, "Yönetim"), h("span", null, "")),
+    rows.length ? rows.map((c) => h("div", { class: "crow", "data-id": c.id },
+      h("div", { class: "c-who who" }, h("span", { class: "ico " + c.tone }, svg(c.icon)),
+        h("div", { class: "nm" }, h("button", { type: "button", "data-k": c.id + ":open", onclick: () => openDetail(c.id, "genel") }, c.name),
+          h("small", null, c.image + " · " + c.ref))),
+      h("div", { class: "c-state" }, statePill(c), c.live ? null : h("span", { class: "hm", title: "Hizmet durunca Podman konteyneri siler; Konsol'daki tanım kalır" }, "tanım kayıtlı")),
+      h("div", { class: "c-res res" }, h("span", null, "İşlemci " + c.cpu), h("span", null, "Bellek " + c.mem)),
+      h("div", { class: "c-access" }, accessCell(c)),
+      h("div", { class: "c-src" }, srcBadge(c)),
+      rowActions(c)))
+      : h("div", { class: "empty" }, h("strong", null, "Eşleşen konteyner yok"), h("span", null, "Süzgeci ya da aramayı değiştirin.")));
+  return [tools, table,
+    h("p", { class: "note card" }, svg("info"), "Yönetim rozetleri: ", h("b", null, "App Store"), " uygulamaları App Store ile aynı yaşam döngüsünü paylaşır; ", h("b", null, "Konsol"),
+      " tanımları burada düzenlenir; ", h("b", null, "Dışarıda"), " oluşturulanlar sahiplenilene kadar yalnız başlatılıp durdurulur.")];
+}
+
+/* ---------------- detail ---------------- */
+const SECTIONS = [["genel", "Genel"], ["ag", "Ağ ve portlar"], ["baglama", "Bağlamalar"], ["ortam", "Ortam"], ["sinir", "Başlatma ve sınırlar"], ["gunluk", "Günlük"]];
+function openDetail(id, section) { S.detail = id; S.section = section || "genel"; S.menu = null; render("page-title"); window.scrollTo(0, 0); }
+function detailView(c) {
+  const busy = !!S.busy[c.id], run = running(c);
+  const head = h("div", { class: "dhead" }, h("span", { class: "ico " + c.tone }, svg(c.icon)),
+    h("div", { class: "ttl" }, h("h1", { tabindex: "-1", id: "page-title" }, c.name),
+      h("div", { class: "meta" }, statePill(c), srcBadge(c), h("span", { class: "mono" }, c.image + " · " + c.ref), c.up && run ? h("span", null, "çalışma süresi " + c.up) : null)),
+    h("div", { class: "bar" },
+      h("button", { type: "button", class: "btn " + (run ? "btn-quiet" : "btn-primary"), "aria-disabled": busy ? "true" : "false", "data-k": c.id + ":dsvc",
+        onclick: (e) => { if (!busy) lifecycle(c, run ? "stop" : "start", e.currentTarget.dataset.k); } }, svg(busy ? "clock" : run ? "stop" : "play"), busy ? S.busy[c.id] : run ? "Durdur" : "Başlat"),
+      h("button", { type: "button", class: "btn btn-quiet", "aria-disabled": busy || !run ? "true" : "false", title: run ? null : "Çalışmıyor", "data-k": c.id + ":drs",
+        onclick: (e) => { if (!busy && run) lifecycle(c, "restart", e.currentTarget.dataset.k); } }, svg("restart"), "Yeniden başlat"),
+      c.src === "dis" ? h("button", { type: "button", class: "btn btn-quiet", onclick: () => openAdopt(c) }, svg("link"), "Sahiplen")
+        : h("button", { type: "button", class: "btn btn-quiet", "aria-disabled": busy ? "true" : "false", onclick: () => { if (!busy) openEditor(c); } }, svg("edit"), "Düzenle"),
+      h("button", { type: "button", class: "btn btn-quiet danger-text", "aria-disabled": busy ? "true" : "false", onclick: () => { if (!busy) openRemove(c); } }, svg("trash"), c.src === "store" ? "Uygulamayı kaldır" : "Kaldır")));
+  const sec = h("div", { class: "tabs glass sec-tabs", role: "tablist", "aria-label": "Konteyner bölümleri" },
+    SECTIONS.map(([id, label]) => h("button", { type: "button", role: "tab", id: "sec-" + id, "aria-selected": String(S.section === id), tabindex: S.section === id ? "0" : "-1",
+      onclick: () => { S.section = id; render("sec-" + id); } }, label)));
+  sec.addEventListener("keydown", (e) => {
+    if (!["ArrowRight", "ArrowLeft"].includes(e.key)) return;
+    const ids = SECTIONS.map((s) => s[0]); const i = (ids.indexOf(S.section) + (e.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length;
+    S.section = ids[i]; render("sec-" + ids[i]); e.preventDefault();
+  });
+  return [h("button", { type: "button", class: "back", onclick: () => { S.detail = null; render(c.id + ":open"); } }, svg("back"), "Konteynerler"),
+    head, sec, h("div", { role: "tabpanel", "aria-labelledby": "sec-" + S.section, class: "stack" }, sectionBody(c))];
+}
+function sectionBody(c) {
+  const lockNote = (t) => h("span", { class: "lock" }, svg("lock"), t);
+  if (S.section === "genel") return [
+    !c.live ? h("p", { class: "card note" }, svg("info"), "Hizmet durduğu için Podman konteyneri şu an yok. Gösterilen değerler Konsol'un kayıtlı tanımıdır; Başlat aynı tanımla yeniden oluşturur.") : null,
+    c.health === "unhealthy" ? h("p", { class: "card note bad" }, svg("warn"), "Sağlık denetimi son 3 denemede başarısız: ", h("span", { class: "mono" }, "curl -f http://localhost/i/ (çıkış 7)"), ". Günlüğe bakın.") : null,
+    h("div", { class: "grid2" },
+      h("section", { class: "card" }, h("h2", null, svg("info"), "Özet"),
+        h("dl", { class: "facts" },
+          h("div", null, h("dt", null, "Hizmet"), h("dd", null, h("span", { class: "mono" }, c.unit || "— (systemd dışında)"), h("small", null, c.src === "dis" ? "elle başlatılmış" : "Quadlet tanımından"))),
+          h("div", null, h("dt", null, "Açılışta"), h("dd", null, c.boot ? "Başlar" : "Başlamaz")),
+          h("div", null, h("dt", null, "Yeniden başlatma"), h("dd", null, { always: "Her zaman", "on-failure": "Hata olursa", no: "Hayır" }[c.restart])),
+          h("div", null, h("dt", null, "Ağ"), h("dd", null, c.net === "host" ? "Sunucu ağı (host)" : "Köprü · podman")),
+          h("div", null, h("dt", null, "İmaj sabitlemesi"), h("dd", null, c.pinned === "paket" ? "Paket özetiyle sabit" : c.pinned === "etiket" ? "Yalnız etiket (önerilmez)" : "Çekilen özete sabit",
+            h("small", null, c.pinned === "paket" ? "güncelleme kurulumla gelir" : "güncelleme sizin onayınızla"))))),
+      h("section", { class: "card" }, h("h2", null, svg("gauge"), "Kaynak kullanımı"),
+        c.live && running(c) ? [h("div", { class: "spark", role: "img", "aria-label": "Son 10 dakikanın işlemci kullanımı (örnek)" }, c.spark.map((v) => h("i", { style: `height:${v * 6}%` }))),
+          h("dl", { class: "facts" }, h("div", null, h("dt", null, "İşlemci"), h("dd", null, c.cpu, h("small", null, c.cpuLim ? "sınır " + c.cpuLim + " çekirdek" : "sınır yok"))),
+            h("div", null, h("dt", null, "Bellek"), h("dd", null, c.mem, h("small", null, c.memLim ? "sınır " + c.memLim : "sınır yok"))))]
+          : h("p", { class: "note" }, svg("info"), "Çalışmıyor; ölçüm yok.")))];
+  if (S.section === "ag") return [h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, svg("net"), "Ağ ve portlar"),
+      c.src !== "dis" ? h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openEditor(c, "ag") }, svg("edit"), "Düzenle") : null),
+    c.net === "host" ? h("div", { class: "hostnet" },
+      h("p", { class: "note" }, svg("info"), "Sunucu ağını (host) kullanır: port eşlemesi yoktur. Uygulama kendi arayüz portunda, yalnız sunucunun içinde dinler; dışarıdan Caddy üzerinden açılır."),
+      h("table", { class: "mini" }, h("thead", null, h("tr", null, h("th", null, "Uygulama dinleyicisi"), h("th", null, "Kimden"), h("th", null, "Yönetim"))),
+        h("tbody", null, h("tr", null, h("td", null, h("span", { class: "mono" }, c.listener.addr + ":" + c.listener.port)), h("td", null, c.listener.via), h("td", null, lockNote("uygulama ayarı")))))) :
+    c.ports.length ? h("table", { class: "mini" }, h("thead", null, h("tr", null, h("th", null, "Erişim"), h("th", null, "Sunucu"), h("th", null, "Konteyner"), h("th", null, "Protokol"))),
+      h("tbody", null, c.ports.map((p) => h("tr", null, h("td", null, p.scope === "public" ? h("span", { class: "hm bad" }, SCOPES[p.scope]) : SCOPES[p.scope]),
+        h("td", null, h("span", { class: "mono" }, SCOPE_ADDR[p.scope] + ":" + p.host)), h("td", null, h("span", { class: "mono" }, p.ctr)), h("td", null, p.proto.toUpperCase())))))
+      : h("p", { class: "note" }, svg("info"), "Port yayımlanmıyor; konteynere yalnız aynı ağdaki diğer konteynerler ulaşır."),
+    c.ports.some((p) => p.scope === "public") ? h("p", { class: "note bad" }, svg("warn"), "Bu port internetten açık. Web uygulamaları için Ayarlar → Caddy'deki HTTPS yayını önerilir.") : null)];
+  if (S.section === "baglama") return [h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, svg("disk"), "Bağlamalar"),
+      c.src !== "dis" ? h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openEditor(c, "baglama") }, svg("edit"), "Düzenle") : null),
+    c.mounts.length ? h("table", { class: "mini" }, h("thead", null, h("tr", null, h("th", null, "Kaynak"), h("th", null, "Konteynerde"), h("th", null, "Erişim"), h("th", null, ""))),
+      h("tbody", null, c.mounts.map((m) => h("tr", null, h("td", null, m.kind === "volume" ? [h("span", { class: "src konsol" }, svg("disk"), "birim"), " ", h("span", { class: "mono" }, m.src)] : [h("span", { class: "src" }, svg("folder"), "klasör"), " ", h("span", { class: "mono" }, m.src)]),
+        h("td", null, h("span", { class: "mono" }, m.dst)), h("td", null, m.ro ? "Salt okunur" : "Okuma-yazma"),
+        h("td", null, m.guard === "profile" ? lockNote("uygulama verisi · korunur") : m.guard === "app-folder" ? lockNote("indirme klasörü · uygulama ayarı") : null)))))
+      : h("p", { class: "note" }, svg("warn"), "Hiç bağlama yok: konteyner yeniden oluşturulunca içindeki veriler silinir."))];
+  if (S.section === "ortam") return [h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, svg("key"), "Ortam değişkenleri"),
+      c.src === "konsol" ? h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openEditor(c, "ortam") }, svg("edit"), "Düzenle") : null),
+    c.env.length ? h("table", { class: "mini" }, h("thead", null, h("tr", null, h("th", null, "Ad"), h("th", null, "Değer"), h("th", null, ""))),
+      h("tbody", null, c.env.map((e) => h("tr", null, h("td", null, h("span", { class: "mono" }, e.k)), h("td", null, e.secret ? h("span", { class: "mono" }, "•••••••• (gizli, gösterilmez)") : h("span", { class: "mono" }, e.v)),
+        h("td", null, e.pkg ? lockNote("paket") : e.secret ? lockNote("gizli") : null)))))
+      : h("p", { class: "note" }, svg("info"), "Ortam değişkeni yok."),
+    h("p", { class: "note" }, svg("lock"), "Gizli değerler sunucudan hiç geri gönderilmez; değiştirmek için yenisini yazarsınız. Günlükte de maskelenir."))];
+  if (S.section === "sinir") return [h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, svg("clock"), "Başlatma ve sınırlar"),
+      c.src !== "dis" ? h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openEditor(c, "sinir") }, svg("edit"), "Düzenle") : null),
+    h("dl", { class: "facts" },
+      h("div", null, h("dt", null, "Açılışta başlat"), h("dd", null, c.boot ? "Evet" : "Hayır")),
+      h("div", null, h("dt", null, "Yeniden başlatma"), h("dd", null, { always: "Her zaman", "on-failure": "Hata olursa", no: "Hayır" }[c.restart])),
+      h("div", null, h("dt", null, "İşlemci sınırı"), h("dd", null, c.cpuLim ? c.cpuLim + " çekirdek" : "Yok")),
+      h("div", null, h("dt", null, "Bellek sınırı"), h("dd", null, c.memLim || "Yok"))),
+    h("p", { class: "note" }, svg("info"), "İşlemci ve bellek sınırları canlı uygulanır; yeniden oluşturma gerekmez."))];
+  // logs
+  const LINES = [
+    ["t", "08:12:04", "", "Başlatma tamamlandı"], ["t", "08:12:05", "", "Sunucu 0.0.0.0:" + (c.ports[0]?.ctr || c.listener?.port || 80) + " adresinde dinliyor"],
+    ["t", "08:14:31", "w", "Yavaş istek: /api/items 1840 ms"], ["t", "08:15:02", "", "Zamanlanmış görev çalıştı (20 dk)"],
+    ["t", "08:16:40", "", "Yapılandırma okundu: ADMIN_API_TOKEN=••••"], ["t", "08:18:09", c.health === "unhealthy" ? "e" : "", c.health === "unhealthy" ? "Sağlık denetimi başarısız: bağlantı reddedildi" : "Sağlık denetimi başarılı"],
+    ["t", "08:20:00", "", "Önbellek temizlendi (12 öğe)"],
+  ];
+  const q = S.logQ.trim().toLowerCase();
+  const mark = (text) => { if (!q) return text; const i = text.toLowerCase().indexOf(q); if (i < 0) return text; return [text.slice(0, i), h("mark", null, text.slice(i, i + q.length)), text.slice(i + q.length)]; };
+  const shown = LINES.filter((l) => !q || l[3].toLowerCase().includes(q));
+  return [h("section", { class: "card" }, h("div", { class: "card-head" }, h("h2", null, svg("log"), "Günlük"), h("small", null, "journalctl -u " + (c.unit || c.name) + " · son " + S.logN + " satır")),
+    h("div", { class: "logtools" },
+      h("label", { class: "search", style: "max-width:280px" }, svg("search"), h("span", { class: "vis-hidden" }, "Günlükte ara"), h("input", { type: "search", id: "logq", placeholder: "Günlükte ara", value: S.logQ, oninput: (e) => { S.logQ = e.target.value; render("logq"); } })),
+      h("label", { class: "field", style: "grid-auto-flow:column;align-items:center;gap:8px" }, h("span", null, "Satır"),
+        h("select", { class: "inp", id: "logn", onchange: (e) => { S.logN = e.target.value; render("logn"); } }, ["100", "200", "500", "1000"].map((n) => h("option", { value: n, selected: S.logN === n }, n)))),
+      h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => toast("Günlük yenilendi (demo).") }, svg("restart"), "Yenile")),
+    c.live ? h("pre", { class: "logbox", tabindex: "0", "aria-label": "Günlük satırları" }, shown.length ? shown.map((l) => h("div", { class: l[2] }, h("span", { class: "t" }, l[1] + " "), mark(l[3]))) : "Eşleşen satır yok.")
+      : h("p", { class: "note" }, svg("info"), "Hizmet durmuş: son çalışmanın günlüğü journald'da kalır (örnekte gösterilmiyor)."),
+    h("p", { class: "note" }, svg("lock"), "Parola, anahtar ve belirteç değerleri sunucuda maskelenir; tarayıcıya ulaşmaz."))];
+}
+
+/* ---------------- editor (create + edit share one form) ---------------- */
+let ED = null;   // { orig, draft, mode, step, focus }
+const RESERVED = [22, 53, 80, 443, 61006, 61009, 61010, 61001];
+function openEditor(c, focus) {
+  S.menu = null;
+  const base = c ? clone(c) : { id: "", name: "", title: "", tone: "t-ext", icon: "box", src: "konsol", image: "", ref: "", pinned: "etiket→özet", state: "created", live: false, net: "bridge",
+    ports: [], mounts: [], env: [], boot: true, restart: "on-failure", cpuLim: "", memLim: "", startNow: true };
+  if (!c) base.startNow = true;
+  ED = { orig: c ? clone(c) : null, draft: base, mode: c ? "edit" : "create", step: "form", focus, opener: document.activeElement, startAfter: false };
+  drawSheet(); $("sheet").showModal();
+  const target = focus && $("sheet").querySelector(`[data-sec="${focus}"]`);
+  (target ? target.querySelector("input,select,button") : $("sheet").querySelector(".body input:not([readonly]), .body select"))?.focus();
+}
+$("sheet").addEventListener("close", () => { const o = ED && ED.opener; ED = null; if (o && o.isConnected) o.focus(); });
+function portProblems(d) {
+  const out = [];
+  const seen = new Set();
+  d.ports.forEach((p, i) => {
+    const bad = (m) => out.push({ i, m });
+    if (!(p.host >= 1 && p.host <= 65535) || !(p.ctr >= 1 && p.ctr <= 65535)) bad("Port 1–65535 olmalı.");
+    const key = p.scope + ":" + p.host + "/" + p.proto;
+    if (seen.has(key)) bad("Aynı erişimde bu port iki kez var."); seen.add(key);
+    if (RESERVED.includes(Number(p.host))) bad(`${p.host} sunucuda kullanılıyor (Konsol/sistem). Başka bir port seçin.`);
+    C.forEach((o) => { if (o.id !== d.id && o.ports.some((q) => q.host === Number(p.host) && q.proto === p.proto && (q.scope === p.scope || q.scope === "public" || p.scope === "public"))) bad(`${p.host}/${p.proto} ${o.name} tarafından kullanılıyor.`); });
+  });
+  return out;
+}
+function changes(o, d) {
+  const out = [];
+  const pk = (p) => `${SCOPES[p.scope]} ${SCOPE_ADDR[p.scope]}:${p.host} → ${p.ctr}/${p.proto}`;
+  const mk = (m) => `${m.kind === "volume" ? "birim " : ""}${m.src} → ${m.dst}${m.ro ? " (salt okunur)" : ""}`;
+  if (!o) {
+    out.push(["add", "İmaj", d.image || "—"]);
+    d.ports.forEach((p) => out.push(["add", "Port", pk(p)])); d.mounts.forEach((m) => out.push(["add", "Bağlama", mk(m)]));
+    d.env.forEach((e) => out.push(["add", "Ortam", e.k + (e.secret ? " (gizli)" : "")])); return out;
+  }
+  if (o.net === "host" && d.listener.port !== o.listener.port) out.push(["chg", "Arayüz", `${o.listener.port} → ${d.listener.port} (uygulama ayarı, Caddy ve sağlık denetimi birlikte)`]);
+  const ps = new Set(o.ports.map(pk)), pd = new Set(d.ports.map(pk));
+  o.ports.map(pk).filter((x) => !pd.has(x)).forEach((x) => out.push(["del", "Port", x])); d.ports.map(pk).filter((x) => !ps.has(x)).forEach((x) => out.push(["add", "Port", x]));
+  const ms = new Set(o.mounts.map(mk)), md = new Set(d.mounts.map(mk));
+  o.mounts.map(mk).filter((x) => !md.has(x)).forEach((x) => out.push(["del", "Bağlama", x])); d.mounts.map(mk).filter((x) => !ms.has(x)).forEach((x) => out.push(["add", "Bağlama", x]));
+  const ek = (e) => e.k + "=" + (e.secret ? (e.v ? "yeni gizli değer" : "değişmedi") : e.v);
+  const es = new Set(o.env.map(ek)), ed = new Set(d.env.map(ek));
+  o.env.map(ek).filter((x) => !ed.has(x)).forEach((x) => out.push(["del", "Ortam", x.replace(/=.*/, "")])); d.env.map(ek).filter((x) => !es.has(x)).forEach((x) => out.push(["add", "Ortam", x.includes("gizli") ? x.replace(/=.*/, " (yeni gizli değer)") : x]));
+  if (o.boot !== d.boot) out.push(["chg", "Açılışta", d.boot ? "başlar" : "başlamaz"]);
+  if (o.restart !== d.restart) out.push(["chg", "Politika", { always: "her zaman", "on-failure": "hata olursa", no: "hayır" }[d.restart]]);
+  if (o.cpuLim !== d.cpuLim) out.push(["chg", "İşlemci", (o.cpuLim || "sınırsız") + " → " + (d.cpuLim || "sınırsız")]);
+  if (o.memLim !== d.memLim) out.push(["chg", "Bellek", (o.memLim || "sınırsız") + " → " + (d.memLim || "sınırsız")]);
+  return out;
+}
+const needsRecreate = (o, d) => !o || changes(o, d).some(([, k]) => ["Port", "Bağlama", "Ortam", "Arayüz", "İmaj"].includes(k));
+function drawSheet() {
+  const d = ED.draft, o = ED.orig, store = d.src === "store";
+  const steps = h("div", { class: "steps", "aria-label": "Adımlar" }, ["Düzenle", "Gözden geçir", "Uygula"].map((t, i) =>
+    h("span", { "aria-current": ["form", "review", "apply"][i] === ED.step ? "step" : null }, (i + 1) + ". " + t)));
+  const title = ED.mode === "create" ? "Yeni konteyner" : `${o.name} · düzenle`;
+  const sub = ED.mode === "create" ? "Konsol tanımı saklar ve systemd ile çalıştırır · demo" : store ? "App Store uygulaması: yalnız paketin izin verdiği alanlar · demo" : "Taslak; kaydetmeden önce değişiklikleri görürsünüz · demo";
+  const head = h("div", { class: "dlg-head" }, h("div", null, h("h3", { id: "sheet-title" }, title), h("p", null, sub)),
+    h("button", { type: "button", class: "ib", "aria-label": "Kapat", onclick: () => $("sheet").close() }, svg("x")));
+  let body, foot;
+  if (ED.step === "form") ({ body, foot } = formStep(d, o, store));
+  else if (ED.step === "review") ({ body, foot } = reviewStep(d, o));
+  else ({ body, foot } = applyStep(d, o));
+  $("sheet-body").replaceChildren(head, steps, body, foot);
+}
+function formStep(d, o, store) {
+  const errs = portProblems(d);
+  const set = (fn) => (e) => { fn(e.target); };
+  const nameOk = /^[a-z][a-z0-9-]{1,30}$/.test(d.name), nameTaken = ED.mode === "create" && C.some((c) => c.name === d.name);
+  const imageOk = /^[a-z0-9.-]+(:[0-9]+)?\/[a-z0-9._/-]+(:[A-Za-z0-9._-]+|@sha256:[0-9a-f]{64})$/.test(d.image);
+  const sections = [];
+  if (ED.mode === "create") sections.push(h("fieldset", { "data-sec": "imaj" }, h("legend", null, svg("layers"), "İmaj ve ad"),
+    h("label", { class: "field" }, h("span", null, "İmaj (tam ad ve etiket)"), h("input", { class: "inp mono", id: "f-image", value: d.image, placeholder: "docker.io/library/nginx:1.27-alpine",
+      "aria-invalid": d.image && !imageOk ? "true" : null, oninput: set((t) => { d.image = t.value.trim(); }), onchange: () => drawKeep() })),
+    d.image && !imageOk ? h("span", { class: "err" }, "Kayıt adresiyle birlikte tam ad yazın: ör. docker.io/library/nginx:1.27-alpine") : h("span", { class: "note" }, svg("info"), "Çekildiğinde özete (sha256) sabitlenir; güncelleme yalnız sizin onayınızla olur."),
+    h("label", { class: "field" }, h("span", null, "Ad"), h("input", { class: "inp mono", id: "f-name", value: d.name, placeholder: "ornek-uygulama", "aria-invalid": d.name && (!nameOk || nameTaken) ? "true" : null,
+      oninput: set((t) => { d.name = t.value.trim(); d.id = d.name; d.title = d.name; }), onchange: () => drawKeep() })),
+    nameTaken ? h("span", { class: "err" }, "Bu ad kullanılıyor.") : d.name && !nameOk ? h("span", { class: "err" }, "Küçük harf, rakam ve - ; harfle başlar, 2–31 karakter.") : h("span", { class: "note" }, svg("info"), "Ad sonradan değişmez (hizmet adı ve kimlik)."),
+  ));
+  // network
+  if (d.net === "host") sections.push(h("fieldset", { "data-sec": "ag" }, h("legend", null, svg("net"), "Ağ"),
+    h("div", { class: "hostnet" }, h("p", { class: "note" }, svg("info"), "Sunucu ağı (host): port eşlemesi yok. Değişen arayüz portu qBittorrent'in kendi ayarına, konteyner ortamına, Caddy yönlendirmesine ve sağlık denetimine birlikte uygulanır."),
+      h("label", { class: "field" }, h("span", null, "Uygulama arayüz portu (yalnız 127.0.0.1)"), h("input", { class: "inp mono", id: "f-listener", inputmode: "numeric", value: d.listener.port,
+        oninput: set((t) => { d.listener.port = Number(t.value) || t.value; }), onchange: () => drawKeep() })),
+      RESERVED.includes(Number(d.listener.port)) && d.listener.port !== o.listener.port ? h("span", { class: "err" }, "Bu port sunucuda kullanılıyor.") : null)));
+  else sections.push(h("fieldset", { "data-sec": "ag" }, h("legend", null, svg("net"), "Ağ ve portlar"),
+    h("p", { class: "note" }, svg("lock"), "Varsayılan özel: yeni port ", h("b", null, "Yalnız bu sunucu"), " ile başlar. İnternet seçeneği açık onay ister."),
+    d.ports.map((p, i) => {
+      const mine = errs.filter((x) => x.i === i);
+      return h("div", { class: "row-ed" },
+        h("label", { class: "field" }, h("span", null, "Erişim"), h("select", { class: "inp", id: `f-p${i}-scope`, onchange: set((t) => { p.scope = t.value; p.ack = false; drawKeep(); }) },
+          Object.entries(SCOPES).map(([k, v]) => h("option", { value: k, selected: p.scope === k }, v + (k === "public" ? " — dikkat" : ""))))),
+        h("label", { class: "field" }, h("span", null, "Sunucu portu"), h("input", { class: "inp mono", id: `f-p${i}-host`, inputmode: "numeric", value: p.host, "aria-invalid": mine.length ? "true" : null,
+          oninput: set((t) => { p.host = Number(t.value) || t.value; }), onchange: () => drawKeep() })),
+        h("label", { class: "field" }, h("span", null, "Konteyner portu"), h("input", { class: "inp mono", id: `f-p${i}-ctr`, inputmode: "numeric", value: p.ctr,
+          oninput: set((t) => { p.ctr = Number(t.value) || t.value; }), onchange: () => drawKeep() })),
+        h("label", { class: "field" }, h("span", null, "Protokol"), h("select", { class: "inp", id: `f-p${i}-proto`, onchange: set((t) => { p.proto = t.value; drawKeep(); }) }, ["tcp", "udp"].map((x) => h("option", { value: x, selected: p.proto === x }, x.toUpperCase())))),
+        h("button", { type: "button", class: "ib rm", id: `f-p${i}-rm`, "aria-label": `${i + 1}. portu kaldır`, title: "Kaldır", onclick: () => { d.ports.splice(i, 1); drawKeep("add-port"); } }, svg("trash")),
+        mine.length ? h("span", { class: "err", style: "grid-column:1/-1" }, mine.map((x) => x.m).join(" ")) : null,
+        p.scope === "public" ? h("label", { class: "opt", style: "grid-column:1/-1" }, h("input", { type: "checkbox", id: `f-p${i}-ack`, checked: !!p.ack, onchange: set((t) => { p.ack = t.checked; drawKeep(); }) }),
+          h("span", null, "Bu portun internetten herkese açık olacağını anlıyorum", h("small", null, "Güvenlik duvarında yalnız bu port açılır. Web uygulamaları için Ayarlar → Caddy HTTPS yayını daha güvenlidir."))) : null);
+    }),
+    h("div", null, h("button", { type: "button", class: "btn btn-quiet btn-sm", id: "add-port", onclick: () => { d.ports.push({ scope: "local", host: "", ctr: "", proto: "tcp" }); drawKeep(`f-p${d.ports.length - 1}-host`); } }, svg("plus"), "Port ekle"))));
+  // mounts
+  sections.push(h("fieldset", { "data-sec": "baglama" }, h("legend", null, svg("disk"), "Bağlamalar"),
+    h("p", { class: "note warn" }, svg("warn"), "Bir bağlamanın yolunu değiştirmek dosyaları taşımaz; yalnız eşlemeyi değiştirir. Taşıma ayrı ve açık bir işlemdir."),
+    d.mounts.map((m, i) => {
+      if (m.guard === "profile") return h("div", { class: "hostnet" }, h("span", null, h("b", null, "Uygulama verisi: "), h("span", { class: "mono" }, m.src + " → " + m.dst)), h("span", { class: "lock" }, svg("lock"), "Korunur; burada değiştirilemez. Profil taşıma ayrı bir işlemdir."));
+      if (m.guard === "app-folder") return h("div", { class: "hostnet" },
+        h("label", { class: "field" }, h("span", null, "İndirme klasörü (qBittorrent ayarıyla aynı değer)"), h("input", { class: "inp mono", id: `f-m${i}-src`, value: m.src, oninput: set((t) => { m.src = t.value; m.dst = t.value; }), onchange: () => drawKeep() })),
+        h("span", { class: "note" }, svg("info"), "Konteynerde aynı yolla görünür; uygulamanın kayıt yeri de birlikte değişir. Var olan dosyalar taşınmaz."));
+      return h("div", { class: "row-ed mnt" },
+        h("label", { class: "field" }, h("span", null, "Tür"), h("select", { class: "inp", id: `f-m${i}-kind`, onchange: set((t) => { m.kind = t.value; drawKeep(); }) },
+          h("option", { value: "volume", selected: m.kind === "volume" }, "Birim"), h("option", { value: "folder", selected: m.kind === "folder" }, "Klasör"))),
+        h("label", { class: "field" }, h("span", null, m.kind === "volume" ? "Birim adı" : "Sunucu klasörü"), h("input", { class: "inp mono", id: `f-m${i}-src`, value: m.src, list: m.kind === "volume" ? "vol-list" : null,
+          oninput: set((t) => { m.src = t.value; }), onchange: () => drawKeep() })),
+        h("label", { class: "field" }, h("span", null, "Konteynerde"), h("input", { class: "inp mono", id: `f-m${i}-dst`, value: m.dst, oninput: set((t) => { m.dst = t.value; }), onchange: () => drawKeep() })),
+        h("label", { class: "chk" }, h("input", { type: "checkbox", id: `f-m${i}-ro`, checked: m.ro, onchange: set((t) => { m.ro = t.checked; drawKeep(); }) }), "Salt okunur"),
+        h("button", { type: "button", class: "ib rm", id: `f-m${i}-rm`, "aria-label": `${i + 1}. bağlamayı kaldır`, title: "Kaldır", onclick: () => { d.mounts.splice(i, 1); drawKeep("add-mount"); } }, svg("trash")),
+        m.kind === "folder" && m.src && !/^\/srv\//.test(m.src) ? h("span", { class: "err", style: "grid-column:1/-1" }, "Yalnız kullanıcı alanı (/srv) altındaki klasörler; sistem klasörleri, çöp ve paylaşım kökü seçilemez.") : null);
+    }),
+    store ? null : h("div", null, h("button", { type: "button", class: "btn btn-quiet btn-sm", id: "add-mount", onclick: () => { d.mounts.push({ kind: "volume", src: "", dst: "", ro: false }); drawKeep(`f-m${d.mounts.length - 1}-src`); } }, svg("plus"), "Bağlama ekle")),
+    h("datalist", { id: "vol-list" }, VOLUMES.map((v) => h("option", { value: v.name })))));
+  // environment
+  sections.push(h("fieldset", { "data-sec": "ortam" }, h("legend", null, svg("key"), "Ortam"),
+    store ? h("p", { class: "note" }, svg("lock"), "Paket tarafından yönetilir (PUID, PGID, UMASK, WEBUI_PORT).") :
+    [d.env.map((e, i) => h("div", { class: "row-ed env" },
+      h("label", { class: "field" }, h("span", null, "Ad"), h("input", { class: "inp mono", id: `f-e${i}-k`, value: e.k, oninput: set((t) => { e.k = t.value; }), onchange: () => drawKeep() })),
+      h("label", { class: "field" }, h("span", null, "Değer"), e.secret
+        ? h("input", { class: "inp mono", id: `f-e${i}-v`, type: "password", value: e.v, placeholder: e.v ? "" : "kayıtlı · değişmedi", autocomplete: "new-password", oninput: set((t) => { e.v = t.value; }), onchange: () => drawKeep() })
+        : h("input", { class: "inp mono", id: `f-e${i}-v`, value: e.v, oninput: set((t) => { e.v = t.value; }), onchange: () => drawKeep() })),
+      h("label", { class: "chk" }, h("input", { type: "checkbox", id: `f-e${i}-sec`, checked: !!e.secret, onchange: set((t) => { e.secret = t.checked; drawKeep(); }) }), "Gizli"),
+      h("button", { type: "button", class: "ib rm", id: `f-e${i}-rm`, "aria-label": `${e.k || i + 1} değişkenini kaldır`, title: "Kaldır", onclick: () => { d.env.splice(i, 1); drawKeep("add-env"); } }, svg("trash")))),
+    h("div", null, h("button", { type: "button", class: "btn btn-quiet btn-sm", id: "add-env", onclick: () => { d.env.push({ k: "", v: "" }); drawKeep(`f-e${d.env.length - 1}-k`); } }, svg("plus"), "Değişken ekle")),
+    h("p", { class: "note" }, svg("lock"), "Boş bırakılan gizli değer korunur; kayıtlı gizli değerler tarayıcıya hiç gönderilmez.")]));
+  // startup + limits
+  sections.push(h("fieldset", { "data-sec": "sinir" }, h("legend", null, svg("clock"), "Başlatma ve sınırlar"),
+    h("label", { class: "opt" }, h("input", { type: "checkbox", id: "f-boot", checked: d.boot, onchange: set((t) => { d.boot = t.checked; drawKeep(); }) }), h("span", null, "Açılışta başlat", h("small", null, "Sunucu yeniden başlayınca hizmet de başlar."))),
+    h("label", { class: "field" }, h("span", null, "Yeniden başlatma"), h("select", { class: "inp", id: "f-restart", onchange: set((t) => { d.restart = t.value; drawKeep(); }) },
+      [["on-failure", "Hata olursa"], ["always", "Her zaman"], ["no", "Hayır"]].map(([k, v]) => h("option", { value: k, selected: d.restart === k }, v)))),
+    h("div", { class: "row-ed", style: "grid-template-columns:minmax(0,1fr) minmax(0,1fr)" },
+      h("label", { class: "field" }, h("span", null, "İşlemci sınırı (çekirdek)"), h("input", { class: "inp", id: "f-cpu", value: d.cpuLim, placeholder: "sınırsız", oninput: set((t) => { d.cpuLim = t.value; }), onchange: () => drawKeep() })),
+      h("label", { class: "field" }, h("span", null, "Bellek sınırı"), h("input", { class: "inp", id: "f-mem", value: d.memLim, placeholder: "sınırsız", oninput: set((t) => { d.memLim = t.value; }), onchange: () => drawKeep() })))));
+  if (ED.mode === "create") sections.push(h("label", { class: "opt" }, h("input", { type: "checkbox", id: "f-startnow", checked: d.startNow, onchange: set((t) => { d.startNow = t.checked; }) }), h("span", null, "Oluşturunca başlat")));
+  const why = ED.mode === "create" && (!imageOk || !nameOk || nameTaken) ? "İmajı ve adı düzeltin."
+    : errs.length ? "Port sorununu düzeltin." : d.ports.some((p) => p.scope === "public" && !p.ack) ? "İnternet portu için onay kutusunu işaretleyin."
+    : d.net === "host" && RESERVED.includes(Number(d.listener.port)) && d.listener.port !== o.listener.port ? "Arayüz portunu değiştirin." : "";
+  const blocking = !!why;
+  const nothing = ED.mode === "edit" && !changes(o, d).length;
+  const foot = h("div", { class: "foot" }, h("span", { class: "note", role: "status" }, svg("info"), nothing ? "Değişiklik yok." : why || "Henüz hiçbir şey uygulanmadı."),
+    h("div", { class: "dlg-foot" }, h("button", { type: "button", class: "btn btn-quiet", onclick: () => $("sheet").close() }, "Vazgeç"),
+      h("button", { type: "button", class: "btn btn-primary", id: "to-review", "aria-disabled": blocking || nothing ? "true" : "false",
+        onclick: () => { if (blocking || nothing) return; ED.step = "review"; drawSheet(); $("sheet").querySelector("#review-title")?.focus(); } }, "Değişiklikleri gözden geçir")));
+  return { body: h("div", { class: "body" }, sections), foot };
+}
+// Redraws the form to refresh validation. Focus goes to the element the operator is on after the event
+// (Tab after editing a field moves on; it is not pulled back), or to an explicit target (add/remove).
+function drawKeep(focusId) {
+  setTimeout(() => {
+    if (!ED || ED.step !== "form") return;
+    const sc = $("sheet").querySelector(".body")?.scrollTop || 0;
+    const active = focusId || (document.activeElement && $("sheet").contains(document.activeElement) ? document.activeElement.id : "");
+    drawSheet(); const b = $("sheet").querySelector(".body"); if (b) b.scrollTop = sc;
+    const el = active && $(active); if (el) el.focus({ preventScroll: true });
+  }, 0);
+}
+function reviewStep(d, o) {
+  const list = changes(o, d), recreate = needsRecreate(o, d), stopped = o && !running(o);
+  const conseq = [];
+  if (ED.mode === "create") {
+    conseq.push(["info", "İmaj çekilir ve özete sabitlenir; tanım Konsol'a kaydedilir, systemd hizmeti yazılır."]);
+    conseq.push(d.startNow ? ["ok", "Oluşturulunca başlar."] : ["info", "Oluşturulur ama başlatılmaz."]);
+  } else if (recreate) {
+    conseq.push(["warn", stopped ? "Kaydedilir. Konteyner durmuş olduğu için kesinti yok; durmuş olarak kalır." : "Konteyner durdurulup yeni ayarlarla yeniden oluşturulur: kısa kesinti (~10 sn)."]);
+    conseq.push(["bad", "Bağlanmamış yollardaki dosyalar (konteynerin yazılabilir katmanı) silinir. Kalıcı veriler bağlamalarda durur."]);
+    if (list.some(([, k]) => k === "Bağlama")) conseq.push(["warn", "Bağlama değişikliği dosya taşımaz; eski klasör/birim olduğu gibi kalır."]);
+  } else conseq.push(["ok", list.some(([, k]) => k === "İşlemci" || k === "Bellek") ? "Sınırlar canlı uygulanır; yeniden oluşturma ve kesinti yok." : "Hizmet tanımı güncellenir; çalışan konteyner etkilenmez."]);
+  if (o && o.src === "store") conseq.push(["info", "App Store kaydı ve Genel bakış aynı değeri gösterir."]);
+  const body = h("div", { class: "body" },
+    h("h4", { id: "review-title", tabindex: "-1", style: "margin:4px 0 0;font-size:15px" }, ED.mode === "create" ? "Oluşturulacak" : `${list.length} değişiklik`),
+    h("div", { class: "diff" }, list.map(([kind, k, v]) => h("div", { class: kind }, h("b", null, { add: "+ ", del: "− ", chg: "~ " }[kind] + k), h("span", { class: kind === "del" ? "mono" : null }, kind === "del" ? h("del", null, v) : v)))),
+    h("ul", { class: "conseq" }, conseq.map(([i, t]) => h("li", { class: i }, svg(i === "ok" ? "check" : i === "info" ? "info" : "warn"), h("span", null, t)))),
+    stopped && recreate ? h("label", { class: "opt" }, h("input", { type: "checkbox", checked: ED.startAfter, onchange: (e) => { ED.startAfter = e.target.checked; } }), h("span", null, "Kaydettikten sonra başlat", h("small", null, "İşaretlemezseniz durmuş kalır."))) : null);
+  const label = ED.mode === "create" ? (d.startNow ? "Oluştur ve başlat" : "Oluştur") : recreate && !stopped ? "Uygula ve yeniden oluştur" : "Kaydet";
+  const foot = h("div", { class: "foot" }, h("button", { type: "button", class: "btn btn-quiet", onclick: () => { ED.step = "form"; drawSheet(); } }, svg("back"), "Geri"),
+    h("div", { class: "dlg-foot" }, h("button", { type: "button", class: "btn btn-quiet", onclick: () => $("sheet").close() }, "Vazgeç"),
+      h("button", { type: "button", class: "btn btn-primary", id: "apply", onclick: () => { ED.step = "apply"; ED.prog = 0; drawSheet(); runApply(); } }, label)));
+  return { body, foot };
+}
+function applySteps() {
+  const d = ED.draft, o = ED.orig;
+  if (ED.mode === "create") return ["Girdiler doğrulanıyor", "İmaj çekiliyor (özete sabitleniyor)", "Tanım kaydediliyor ve hizmet yazılıyor", ...(d.startNow ? ["Başlatılıyor", "Çalıştığı doğrulanıyor"] : [])];
+  if (!needsRecreate(o, d)) return ["Girdiler doğrulanıyor", "Kaydediliyor", ...(changes(o, d).some(([, k]) => k === "İşlemci" || k === "Bellek") && running(o) ? ["Sınırlar canlı uygulanıyor"] : [])];
+  const startAfter = running(o) || ED.startAfter;
+  return ["Girdiler ve port çakışmaları doğrulanıyor", ...(running(o) ? ["Durduruluyor"] : []), "Tanım kaydediliyor", "Konteyner yeniden oluşturuluyor", ...(startAfter ? ["Başlatılıyor", "Çalıştığı doğrulanıyor"] : [])];
+}
+function applyStep() {
+  const steps = applySteps(), done = ED.prog >= steps.length;
+  const body = h("div", { class: "body" },
+    h("ol", { class: "prog", "aria-live": "polite" }, steps.map((t, i) => h("li", { class: i < ED.prog ? "done" : i === ED.prog ? "run" : "" },
+      h("span", { class: "st" }, i < ED.prog ? svg("check") : i === ED.prog ? h("span", { class: "spin", "aria-hidden": "true" }) : "·"), t))),
+    done ? h("p", { class: "note" }, svg("check"), "Tamam (demo). Gerçek sunucuda hiçbir şey değişmedi.") : h("p", { class: "note" }, svg("info"), "Sayfayı kapatsanız da işlem sunucuda sürer (gerçek üründe). Bu bir canlandırma."));
+  const foot = h("div", { class: "foot" }, h("span"), h("div", { class: "dlg-foot" }, h("button", { type: "button", class: "btn btn-primary", id: "apply-done", "aria-disabled": done ? "false" : "true",
+    onclick: () => { if (done) $("sheet").close(); } }, done ? "Kapat" : "Uygulanıyor…")));
+  return { body, foot };
+}
+function runApply() {
+  const steps = applySteps();
+  const tick = () => {
+    if (!ED || ED.step !== "apply") return;
+    ED.prog++;
+    if (ED.prog >= steps.length) { commit(); drawSheet(); $("apply-done")?.focus(); return; }
+    drawSheet(); setTimeout(tick, 650);
+  };
+  setTimeout(tick, 650);
+}
+function commit() {
+  const d = ED.draft, o = ED.orig;
+  if (ED.mode === "create") {
+    const c = Object.assign(d, { ref: "etiket · sha256:demo…", state: d.startNow ? "running" : "stopped", live: !!d.startNow, cpu: d.startNow ? "0,2 %" : "—", mem: d.startNow ? "24 MB" : "—", spark: [1,2,1,2,2,1,2,1,2,1,1,2], up: "şimdi", unit: d.name + ".service", health: null });
+    delete c.startNow; C.push(c); S.tab = "konteynerler"; S.detail = null; render(); toast(`${d.name} oluşturuldu (demo).`); return;
+  }
+  const c = byId(o.id); const keepState = running(o) || ED.startAfter;
+  Object.assign(c, clone(d)); c.env.forEach((e) => { if (e.secret) e.v = ""; });
+  if (needsRecreate(o, d)) { c.state = keepState ? "running" : "stopped"; c.live = keepState; }
+  render(); toast(`${c.name}: değişiklikler uygulandı (demo).`);
+}
+
+/* ---------------- remove / adopt dialogs ---------------- */
+function openDialog(title, sub, content, buttons, opts = {}) {
+  const opener = document.activeElement;
+  const btns = buttons.map((b) => h("button", { type: "button", class: "btn " + (b.danger ? "btn-danger" : b.primary ? "btn-primary" : "btn-quiet"), id: b.id || null,
+    "aria-disabled": b.off ? "true" : null, onclick: (e) => { if (e.currentTarget.getAttribute("aria-disabled") === "true") return; $("dlg").close(); if (b.run) b.run(); } }, b.label));
+  $("dlg-body").replaceChildren(h("div", { class: "dlg-head" }, h("div", null, h("h3", { id: "dlg-title" }, title), sub ? h("p", null, sub) : null),
+    h("button", { type: "button", class: "ib", "aria-label": "Kapat", onclick: () => $("dlg").close() }, svg("x"))), ...content, h("div", { class: "dlg-foot" }, btns));
+  $("dlg").showModal(); (opts.focus ? $(opts.focus) : btns[0]).focus();
+  $("dlg").addEventListener("close", () => { if (opener && opener.isConnected) opener.focus(); }, { once: true });
+  return btns;
+}
+function openRemove(c) {
+  S.menu = null; render();
+  const vols = c.mounts.filter((m) => m.kind === "volume");
+  if (c.src === "store") {
+    const box = h("input", { type: "checkbox", id: "rm-data" });
+    openDialog(`${c.title} kaldırılsın mı?`, "Bu bir App Store uygulaması",
+      [h("ul", { class: "conseq" },
+        h("li", { class: "warn" }, svg("warn"), h("span", null, "Uygulama App Store'dan da kaldırılır: Genel bakış karesi, kenar menüsü, adı (torrent.ornek) ve yayın satırı gider.")),
+        h("li", null, svg("folder"), h("span", null, "İndirilen dosyalara dokunulmaz.")),
+        h("li", null, svg("info"), h("span", null, "Aynı işlem App Store → Kaldır ile aynıdır; iki yer çakışmaz."))),
+       h("label", { class: "opt", for: "rm-data" }, box, h("span", null, "Profili, torrent listesini ve imajı da sil", h("small", null, "İşaretlemezseniz profil korunur; yeniden kurunca kaldığı yerden devam eder.")))],
+      [{ label: "Vazgeç" }, { label: "Uygulamayı kaldır", danger: true, run: () => removeSim(c, box.checked ? "profil ve imajla birlikte" : "profil korunarak") }]);
+    return;
+  }
+  if (c.src === "dis") {
+    const word = h("input", { class: "inp", id: "rm-word", autocomplete: "off", "aria-describedby": "rm-word-hint" });
+    const btns = openDialog(`${c.name} kaldırılsın mı?`, "Konsol bu konteyneri oluşturmadı",
+      [h("ul", { class: "conseq" }, h("li", { class: "bad" }, svg("warn"), h("span", null, "Onu oluşturan araç (betik, başka bir panel) bozulabilir ya da konteyneri yeniden oluşturabilir.")),
+        h("li", null, svg("info"), h("span", null, "Yalnız konteyner silinir; imaj ve birimler kalır."))),
+       h("label", { class: "word" }, h("span", { id: "rm-word-hint" }, "Onaylamak için ", h("b", null, "onayla"), " yazın"), word)],
+      [{ label: "Vazgeç" }, { label: "Kaldır", danger: true, id: "rm-go", off: true, run: () => removeSim(c, "") }], { focus: "rm-word" });
+    word.addEventListener("input", () => btns[1].setAttribute("aria-disabled", word.value.trim().toLocaleLowerCase("tr") === "onayla" ? "false" : "true"));
+    return;
+  }
+  const unused = vols.map((m) => VOLUMES.find((v) => v.name === m.src)).filter((v) => v && v.used.length === 1);
+  const checks = unused.map((v) => h("input", { type: "checkbox", "data-vol": v.name }));
+  openDialog(`${c.name} kaldırılsın mı?`, running(c) ? "Önce durdurulur" : "Durmuş konteyner",
+    [h("ul", { class: "conseq" },
+      h("li", null, svg("box"), h("span", null, "Konteyner ve hizmet tanımı kaldırılır.")),
+      h("li", { class: "ok" }, svg("check"), h("span", null, "Adlı birimler ve sunucu klasörleri varsayılan olarak ", h("b", null, "kalır"), ".")),
+      c.mounts.some((m) => m.kind === "folder") ? h("li", null, svg("folder"), h("span", null, "Sunucu klasörlerine hiçbir zaman dokunulmaz: " + c.mounts.filter((m) => m.kind === "folder").map((m) => m.src).join(", "))) : null),
+     unused.length ? h("fieldset", null, h("legend", null, svg("disk"), "Yalnız bu konteynerin kullandığı birimler"),
+      unused.map((v, i) => h("label", { class: "opt" }, checks[i], h("span", null, h("span", { class: "mono" }, v.name), " · " + v.size, h("small", null, "İşaretlerseniz birim ve içindeki veri kalıcı olarak silinir.")))) ) : null],
+    [{ label: "Vazgeç" }, { label: "Kaldır", danger: true, run: () => { const gone = checks.filter((x) => x.checked).map((x) => x.dataset.vol); removeSim(c, gone.length ? "birimler silindi: " + gone.join(", ") : "birimler korundu"); } }]);
+}
+function removeSim(c, detail) {
+  S.busy[c.id] = "Kaldırılıyor…"; S.detail = null; render();
+  setTimeout(() => { delete S.busy[c.id]; C = C.filter((x) => x.id !== c.id); render(); toast(`${c.name || c.title} kaldırıldı${detail ? " (" + detail + ")" : ""} — demo, sunucuda değişiklik yok.`); }, 1200);
+}
+function openAdopt(c) {
+  S.menu = null;
+  openDialog(`${c.name} sahiplenilsin mi?`, "Konsol bu konteynerin tanımını devralır",
+    [h("ul", { class: "conseq" },
+      h("li", null, svg("info"), h("span", null, "Ayarları okunur ve Konsol tanımına dönüştürülür; desteklenen alanlar: imaj, portlar, bağlamalar, ortam, başlatma.")),
+      h("li", { class: "warn" }, svg("warn"), h("span", null, "Konteyner bir kez Konsol hizmetiyle yeniden oluşturulur (kısa kesinti); yazılabilir katman silinir.")),
+      h("li", { class: "bad" }, svg("warn"), h("span", null, "Bu konteyner herkese açık 8088 portu yayımlıyor: sahiplenince varsayılan özel erişime çekilir, isterseniz açıkça geri açarsınız.")),
+      h("li", null, svg("x"), h("span", null, "Desteklenmeyen seçenek bulunursa (ör. Compose, Kubernetes pod'u, başka kullanıcının deposu) sahiplenme durur ve neden söylenir.")))],
+    [{ label: "Vazgeç" }, { label: "Sahiplen", primary: true, run: () => { c.src = "konsol"; c.unit = c.name + ".service"; c.pinned = "etiket→özet"; c.ports.forEach((p) => { if (p.scope === "public") p.scope = "local"; }); render(); toast(`${c.name} artık Konsol'da (demo).`); } }]);
+}
+
+/* ---------------- resource tabs ---------------- */
+function imagesPanel() {
+  const unused = IMAGES.filter((i) => !i.used.length);
+  return [h("div", { class: "toolbar" },
+    h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: openPull }, svg("down"), "İmaj çek"),
+    h("button", { type: "button", class: "btn btn-quiet btn-sm", onclick: () => openDialog("Kullanılmayan imajlar temizlensin mi?", `${unused.length} imaj · 43 MB`,
+      [h("ul", { class: "conseq" }, unused.map((i) => h("li", null, svg("layers"), h("span", { class: "mono" }, i.repo + ":" + i.tag))),
+        h("li", { class: "ok" }, svg("check"), h("span", null, "Bir konteynerin ya da App Store paketinin kullandığı imajlara dokunulmaz.")))],
+      [{ label: "Vazgeç" }, { label: "Temizle", danger: true, run: () => toast("Temizlendi (demo).") }]) }, svg("trash"), "Kullanılmayanları temizle")),
+    h("section", { class: "glass", style: "border-radius:var(--radius);overflow:hidden" }, h("table", { class: "rtable" },
+      h("thead", null, h("tr", null, h("th", null, "İmaj"), h("th", null, "Özet"), h("th", null, "Boyut"), h("th", null, "Kullanan"), h("th", { class: "r" }, ""))),
+      h("tbody", null, (S.empty ? [] : IMAGES).map((i) => h("tr", null,
+        h("td", null, h("span", { class: "mono" }, i.repo), " ", h("span", { class: "hm" }, i.tag), i.pkg ? h("span", { class: "src store", style: "margin-left:6px" }, svg("store"), "paket") : null),
+        h("td", { "data-l": "özet" }, h("span", { class: "mono" }, "sha256:" + i.dig)), h("td", { "data-l": "boyut" }, i.size),
+        h("td", { "data-l": "kullanan" }, i.used.length ? i.used.join(", ") : h("span", { class: "hm" }, "kullanılmıyor")),
+        h("td", { class: "r" }, h("button", { type: "button", class: "ib", "aria-label": `${i.repo}:${i.tag} imajını sil`, title: i.used.length ? "Kullanımda: önce konteyneri kaldırın" : "Sil",
+          "aria-disabled": i.used.length ? "true" : "false", onclick: () => toast(i.used.length ? "Kullanımda: önce " + i.used.join(", ") + " kaldırılmalı." : "Silindi (demo).") }, svg("trash")))))))),
+    h("p", { class: "note card" }, svg("info"), "App Store paketlerinin imajları paket özetiyle sabittir; güncellemeleri kurulumla gelir. Konsol konteynerlerinde “Güncelleme denetle” yeni özeti gösterir, uygulamak yeniden oluşturur.")];
+}
+function openPull() {
+  const inp = h("input", { class: "inp mono", id: "pull-ref", placeholder: "docker.io/library/redis:7.4-alpine", style: "width:100%" });
+  openDialog("İmaj çek", "Tam ad ve etiket; çekilince özete sabitlenir", [h("label", { class: "field" }, h("span", null, "İmaj"), inp),
+    h("p", { class: "note" }, svg("info"), "İndirme sunucuda sürer; sayfayı kapatabilirsiniz (gerçek üründe).")],
+    [{ label: "Vazgeç" }, { label: "Çek", primary: true, run: () => toast((inp.value || "İmaj") + " çekiliyor… (demo)") }], { focus: "pull-ref" });
+}
+function volumesPanel() {
+  return [h("div", { class: "toolbar" }, h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: () => toast("Yeni birim formu (demo).") }, svg("plus"), "Yeni birim")),
+    h("section", { class: "glass", style: "border-radius:var(--radius);overflow:hidden" }, h("table", { class: "rtable" },
+      h("thead", null, h("tr", null, h("th", null, "Birim"), h("th", null, "Boyut"), h("th", null, "Kullanan"), h("th", { class: "r" }, ""))),
+      h("tbody", null, (S.empty ? [] : VOLUMES).map((v) => h("tr", null, h("td", null, h("span", { class: "mono" }, v.name)), h("td", { "data-l": "boyut" }, v.size),
+        h("td", { "data-l": "kullanan" }, v.used.length ? v.used.join(", ") : h("span", { class: "hm warn" }, "kullanılmıyor")),
+        h("td", { class: "r" }, h("button", { type: "button", class: "ib", "aria-label": `${v.name} birimini sil`, title: v.used.length ? "Kullanımda" : "Sil", "aria-disabled": v.used.length ? "true" : "false",
+          onclick: () => v.used.length ? toast(`${v.name} kullanımda: ${v.used.join(", ")}. Önce konteyneri kaldırın.`)
+            : openDialog(`${v.name} silinsin mi?`, v.size + " · kullanılmıyor", [h("p", { class: "note bad" }, svg("warn"), "Birimdeki bütün veri kalıcı olarak silinir. Geri alınamaz.")],
+              [{ label: "Vazgeç" }, { label: "Birimi sil", danger: true, run: () => toast("Silindi (demo).") }]) }, svg("trash")))))))),
+    h("p", { class: "note card" }, svg("info"), "Birimler konteynerden bağımsızdır: konteyner kaldırılınca kalır. Sunucu klasörleri (/srv/…) burada listelenmez; Dosyalar'dadır.")];
+}
+function networksPanel() {
+  return [h("div", { class: "toolbar" }, h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: () => toast("Yeni köprü ağı formu (demo).") }, svg("plus"), "Yeni ağ")),
+    h("section", { class: "glass", style: "border-radius:var(--radius);overflow:hidden" }, h("table", { class: "rtable" },
+      h("thead", null, h("tr", null, h("th", null, "Ağ"), h("th", null, "Sürücü"), h("th", null, "Alt ağ"), h("th", null, "Konteynerler"), h("th", { class: "r" }, ""))),
+      h("tbody", null, NETWORKS.map((n) => h("tr", null, h("td", null, h("span", { class: "mono" }, n.name), n.sys ? h("span", { class: "hm", style: "margin-left:6px" }, "sistem") : null),
+        h("td", { "data-l": "sürücü" }, n.driver), h("td", { "data-l": "alt ağ" }, h("span", { class: "mono" }, n.subnet)),
+        h("td", { "data-l": "konteyner" }, S.empty ? "—" : n.used.length ? n.used.join(", ") : "—"),
+        h("td", { class: "r" }, h("button", { type: "button", class: "ib", "aria-label": `${n.name} ağını sil`, title: n.sys ? "Sistem ağı silinmez" : n.used.length ? "Kullanımda" : "Sil",
+          "aria-disabled": n.sys || n.used.length ? "true" : "false", onclick: () => toast(n.sys ? "Sistem ağı silinmez." : "Silindi (demo).") }, svg("trash")))))))),
+    h("p", { class: "note card" }, svg("info"), "Sunucu ağını (host) kullanan konteynerler port eşlemesi kullanmaz; güvenlik duvarı ve Caddy kuralları geçerlidir. Köprü ağlarındaki portlar Erişim seçimine göre açılır.")];
+}
+
+/* ---------------- render ---------------- */
+function render(focusKey) {
+  const v = $("view");
+  const c = S.detail && byId(S.detail);
+  let kids;
+  if (c) kids = detailView(c);
+  else {
+    const panel = { konteynerler: containersPanel, imajlar: imagesPanel, birimler: volumesPanel, aglar: networksPanel }[S.tab]();
+    kids = [topbar("Konteynerler", "Podman · bu sunucu", [h("button", { type: "button", class: "btn btn-quiet", onclick: () => toast("Yenilendi (demo).") }, svg("restart"), "Yenile"),
+      h("button", { type: "button", class: "btn btn-primary", id: "new-btn", onclick: () => openEditor(null) }, svg("plus"), "Yeni konteyner")]),
+      summary(), tabs(), h("div", { id: "panel", role: "tabpanel", "aria-labelledby": "tab-" + S.tab, class: "stack" }, panel)];
+  }
+  v.replaceChildren(...kids.flat().filter(Boolean));
+  if (focusKey) {
+    const el = $(focusKey) || v.querySelector(`[data-k="${focusKey}"]`);
+    if (el) { el.focus({ preventScroll: true }); if (el.tagName === "INPUT" && el.type === "search") el.setSelectionRange(el.value.length, el.value.length); }
+  }
+}
+document.addEventListener("click", (e) => {
+  if (S.menu && !e.target.closest(".acts")) { S.menu = null; render(); }
+  if (e.target.closest("[data-dead]")) { e.preventDefault(); toast("Bu demoda yalnız Konteynerler sayfası var."); }
+});
+document.querySelectorAll("[data-theme-set]").forEach((b) => b.addEventListener("click", () => {
+  const t = b.dataset.themeSet; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  document.querySelectorAll("[data-theme-set]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+}));
+document.querySelectorAll("[data-sample]").forEach((b) => b.addEventListener("click", () => {
+  S.empty = b.dataset.sample === "bos"; if (!S.empty && !C.length) sample(); S.detail = null; render();
+  document.querySelectorAll("[data-sample]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+}));
+$("menu-toggle").addEventListener("click", (e) => { const open = !$("side").classList.contains("open"); $("side").classList.toggle("open", open); e.currentTarget.setAttribute("aria-expanded", String(open)); });
+render();
+})();
+</script>
+</body>
+</html>

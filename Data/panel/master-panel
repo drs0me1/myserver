@@ -1,0 +1,2309 @@
+#!/usr/bin/env python3
+# Konsol'un root arka ucu (DD-133, DD-140, DD-196). Ağ portu açmaz: yalnız bir
+# Unix soketinde dinler (DD-180); Caddy tailnet'e (http://panel.<alan>) ve isteğe bağlı genel HTTPS
+# adına (DD-195) açar: her ikisinde /api/konsol/* ve /api/uygulama/<id>/*. Statik sayfaları
+# Caddy sunar; burası root çalışır ve sayfa dosyası servis etmez. Hiçbir uygulamayı tanımaz
+# (DD-200): kurulu bir paketin bildirdiği API modülü (PAKET_API) paket klasöründen yüklenir ve
+# /api/uygulama/<id>/* istekleri aynı kapılardan geçtikten sonra ona verilir; paket kaldırılınca
+# modül bırakılır. Yalnız Python standart kütüphanesi.
+#
+#   master-panel serve --listen unix:SOKET [--socket-group GRUP] --state FILE
+#                         --master-modul PATH [--allow-host HOST]
+#   master-panel check --url URL --host HOST [--socket SOKET]   /api/konsol/kaynaklar denetimi
+#
+# DD-180: sunucudaki başka bir hesap (ör. indirme hesabıyla çalışan bir paket servisi) yerel
+# ağdan bu root arka uca istek atamasın diye TCP yoktur. Sokete dosya izni (0660, root ve
+# Caddy'nin grubu) ve çekirdeğin bildirdiği bağlanan kimlik (SO_PEERCRED) birlikte bakar.
+#
+# Güvenlik: Caddy tailnet adresinde ve yalnız açıkça yayınlanınca bir genel HTTPS adında dinler;
+# DD-194'ten beri her panel isteği için
+# bu arka uca oturum sorar (/oturum-denetle; hesap ve oturumlar master_auth.py'de); DD-205: Tailscale
+# sitesinde yanıt hep "geç"tir (cihazı Tailscale doğrular), internet sitesi oturum ister. Ayrıca:
+# /api/* için X-Konsol başlığı ve aynı köken (başka bir sitenin tarayıcı üzerinden istek
+# atması, CSRF), Host denetimi (DNS rebinding), sıkı CSP, no-store. Gizli anahtar taşıyan
+# yanıtlar (profil, QR) yalnız açıkça istenince verilir ve günlüğe içerik yazılmaz.
+import argparse
+import contextlib
+import datetime
+import errno
+import grp
+import hashlib
+import http.client
+import importlib.util
+import http.server
+import ipaddress
+import json
+import os
+import platform
+from pathlib import Path
+import pwd
+import re
+import socket
+import socketserver
+import stat
+import struct
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import master_auth
+import master_containers
+import master_container_manager
+import master_settings
+import master_shares
+import master_publications
+
+# DD-148: modül kimliği ve Konsol'dan istenebilen eylemler (master-modul ile aynı küme).
+MODULE_ID_RE = re.compile(r"^[a-z]{2,16}$")
+MODULE_ACTIONS = ("kur", "baslat", "durdur", "yeniden-baslat", "kaldir")
+# DD-200: paketin bildirdiği Konsol dosyaları (düz dosya adları; klasör yolu kabul edilmez).
+API_FILE_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}\.py$")
+PAGE_FILE_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,40}\.(js|css)$")
+KONSOL_JSON_LIMIT = 65536
+SAMPLE_SECONDS = float(os.environ.get("PANEL_SAMPLE_SECONDS", "10"))
+MAX_BODY = 65536
+# Geri alınamaz işlemler için yazılan kelime (Konsol, paket API'leri ve paketlerin Mac araçları aynı).
+CONFIRM_WORD = "onayla"
+API_HEADER = "X-Konsol"
+# Günlükte işlemi yapan: hesap yok, istek Konsol'dan gelir (adres ayrıca yazılır).
+ACTOR = "konsol"
+CSP = ("default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+# Sidebar resource sampling: bounded history, SAMPLE_SECONDS between samples.
+SYS_POINTS = 12
+# Son işlemler: iki arka ucun günlük satırları; journalctl her istekte çalışmaz.
+ACTIONS_CACHE_SECONDS = 15
+# DD-182: Sağlık kartı. Salt okunur; sekme açıkken 30 sn'de bir hesaplanır.
+HEALTH_CACHE_SECONDS = 30
+# Always-on core; the settings guard timer deliberately sleeps while idle (DD-181).
+HEALTH_UNITS = ("tailscaled.service", "caddy.service", "dnsmasq.service",
+                "master-firewall.service", "master-panel.service",
+                "master-files-panel.service", "master-paylasim.service",
+                "refresh-tailnet-config.timer", "master-share-network.timer")
+# Tailscale düğüm anahtarının süresi bu kadar gün kala uyarılır.
+KEY_EXPIRY_WARN_DAYS = 14
+CERT_EXPIRY_WARN_DAYS = 14
+ACTIONS_LIMIT = 40
+# Ayarlar okuması: aynı anda gelen yenilemeler iptables'ı yormasın (DD-155, DD-156).
+SETTINGS_CACHE_SECONDS = 5
+SETTINGS_TEXT_LIMIT = 65536
+IPT_COUNTER_RE = re.compile(r" -c (\d+) (\d+)")
+ACTION_RE = re.compile(r"^(panel|dosya): (\S+) (\S+) (\S+) (.*) -> (ok|hata)$")
+# Settings service-port metadata: produced from configuration, no scanning.
+# Temel satırlar (state.env anahtarı, ad, protokol, kapsam, varsayılan); paketlerinkiler
+# bildirimlerinden gelir (DD-198: PAKET_PORTLAR, yalnız kayıtlı paketler için).
+PORT_ROWS = (
+    ("TAILSCALE_UDP_PORT", "Tailscale", "udp", "internet", 0),
+    ("SSH_PUBLIC_PORT", "SSH", "tcp", "internet", 0),
+    ("CADDY_HTTP_PORT", "Caddy — panel ve öbür adresler", "tcp", "tailscale", 80),
+    ("DNS_PORT", "dnsmasq — yerel adlar", "udp+tcp", "tailscale", 53),
+)
+PORT_SCOPES = ("internet", "tailscale", "loopback")
+
+
+def manifest_ports(manifest):
+    """PAKET_PORTLAR entries "KEY:proto:scope:name" separated by ';'; malformed entries are skipped."""
+    rows = []
+    for entry in (manifest.get("PAKET_PORTLAR") or "").split(";"):
+        parts = entry.strip().split(":", 3)
+        if len(parts) != 4:
+            continue
+        key, proto, scope, name = (part.strip() for part in parts)
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or proto not in ("tcp", "udp", "udp+tcp") or scope not in PORT_SCOPES or not name:
+            continue
+        rows.append((key, name, proto, scope))
+    return rows
+
+
+# DD-180: Caddy'nin Tailscale sitesinden gelen istek yalnız başka bir Tailscale cihazından
+# kabul edilir. DD-195: internet sitesini Caddy X-Konsol-Kanal: internet ile işaretler.
+CHANNEL_HEADER = "X-Konsol-Kanal"
+PUBLIC_CACHE_SECONDS = 5
+TAILNET_RANGES = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+# DD-206: Genel bakış'ın ağ kartı. WAN arayüzünün bayt sayaçları dosyadan okunur (dış komut yok):
+# arka plan örnekleyicisi her SAMPLE_SECONDS'te, kart açıkken her istekte en çok NET_STEP_SECONDS
+# arayla bir hız noktası ekler; son NET_WINDOW_SECONDS saniye geri verilir. Uygulama toplamlarını
+# paketlerin kendi modülleri (PAKET_TRAFIK) ölçer; en çok TRAFFIC_CACHE_SECONDS'te bir okunur.
+NET_STEP_SECONDS = 1.5
+NET_WINDOW_SECONDS = 120
+NET_POINTS = 160
+TRAFFIC_CACHE_SECONDS = 2
+IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,15}$")
+# DD-206: Genel bakış düzeni (kare sırası, widget genişliği ve görünürlüğü) KONSOL_AUTH_DIR/duzen.json.
+# Yalnız biçim denetlenir: anahtarlar Konsol'un ve paketlerin kare ve widget adlarıdır, tanımadığını
+# kabuk yok sayar. Dosya yoksa varsayılan düzen geçerlidir.
+LAYOUT_FILE = "duzen.json"
+LAYOUT_KEY_RE = re.compile(r"^[a-z]{2,16}$")
+LAYOUT_MAX_TILES = 32
+LAYOUT_MAX_WIDGETS = 8
+LAYOUT_SPANS = (1, 2, 3, 4)
+
+
+def clean_layout(value):
+    """DD-206: the overview layout as stored; ValueError (Turkish, for the operator) when malformed."""
+    if not isinstance(value, dict) or not set(value) <= {"schema", "kareler", "widgetlar"} or value.get("schema", 1) != 1:
+        raise ValueError("Düzen kaydı geçersiz.")
+    tiles, widgets = value.get("kareler", []), value.get("widgetlar", [])
+    if (not isinstance(tiles, list) or len(tiles) > LAYOUT_MAX_TILES or len(set(map(str, tiles))) != len(tiles)
+            or not all(isinstance(k, str) and LAYOUT_KEY_RE.fullmatch(k) for k in tiles)):
+        raise ValueError("Kare sırası geçersiz.")
+    if not isinstance(widgets, list) or len(widgets) > LAYOUT_MAX_WIDGETS:
+        raise ValueError("Widget listesi geçersiz.")
+    seen, clean = set(), []
+    for item in widgets:
+        if (not isinstance(item, dict) or set(item) != {"id", "genislik", "gizli"} or not isinstance(item["id"], str)
+                or not LAYOUT_KEY_RE.fullmatch(item["id"]) or item["id"] in seen
+                or type(item["genislik"]) is not int or item["genislik"] not in LAYOUT_SPANS or type(item["gizli"]) is not bool):
+            raise ValueError("Widget ayarı geçersiz.")
+        seen.add(item["id"])
+        clean.append({"id": item["id"], "genislik": item["genislik"], "gizli": item["gizli"]})
+    return {"schema": 1, "kareler": list(tiles), "widgetlar": clean}
+
+
+def own_address(ip):
+    """Sunucunun kendi adresi mi? Sıradan bir soket yalnız yerel bir adrese bağlanabilir.
+    Yalnız "adres yerel değil" (EADDRNOTAVAIL) dışarıdan sayılır; başka her hata (port ya da
+    dosya tanıtıcısı tükenmesi) isteği reddettirir. Port ayrılmaz: IP_BIND_ADDRESS_NO_PORT."""
+    if ip.is_loopback or ip.is_link_local or ip.is_unspecified:
+        return True
+    try:
+        with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET, socket.SOCK_STREAM) as probe:
+            with contextlib.suppress(OSError):
+                probe.setsockopt(socket.IPPROTO_IP, getattr(socket, "IP_BIND_ADDRESS_NO_PORT", 24), 1)
+            probe.bind((str(ip), 0))
+    except OSError as err:
+        return err.errno != errno.EADDRNOTAVAIL
+    return True
+
+
+def remote_tailnet(value):
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return any(ip in net for net in TAILNET_RANGES) and not own_address(ip)
+
+
+def fail(msg, code=1):
+    print("HATA: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+class UnixConnection(http.client.HTTPConnection):
+    """check --socket: Caddy'yi atlayıp arka ucun kendi soketine sorar (kurulum, testler)."""
+    def __init__(self, path, timeout):
+        super().__init__("localhost", timeout=timeout)
+        self.socket_path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.socket_path)
+
+
+def cmd_check(args):
+    headers = {"Host": args.host, API_HEADER: "1"}
+    try:
+        if args.socket:
+            conn = UnixConnection(args.socket, 15)
+            try:
+                conn.request("GET", urllib.parse.urlsplit(args.url).path or "/", headers=headers)
+                resp = conn.getresponse()
+                body = resp.read()
+            finally:
+                conn.close()
+            if resp.status != 200:
+                fail("panel HTTP %d verdi" % resp.status)
+            data = json.loads(body.decode())
+        else:
+            req = urllib.request.Request(args.url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as err:
+        fail("panel HTTP %d verdi" % err.code)
+    except (urllib.error.URLError, http.client.HTTPException, ValueError, OSError, RecursionError) as err:
+        fail("panel yanıt vermedi (%s)" % err)
+    # DD-196/200: kurulumun yoklaması paketten bağımsız sistem uç noktasıdır; başka yol yok.
+    if not isinstance(data, dict) or not isinstance(data.get("version"), str) \
+            or not isinstance(data.get("read_at"), (int, float)):
+        fail("panel yanıtı beklenen biçimde değil")
+    print("sürüm %s" % data["version"])
+
+
+# --------------------------------------------------------------- sunucu
+def read_env(path):
+    out = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                key, sep, value = line.rstrip("\n").partition("=")
+                if sep and re.match(r"^[A-Z][A-Z0-9_]*$", key):
+                    if len(value) >= 2 and value[0] == value[-1] == '"':
+                        value = value[1:-1]
+                    out[key] = value
+    except OSError:
+        pass
+    return out
+
+
+
+# ------------------------------------------------------- ayarlar (DD-155)
+def read_text(path):
+    """Yapılandırma dosyası: yalnız metin, sınırlı boy; okunamazsa None."""
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return fh.read(SETTINGS_TEXT_LIMIT)
+    except OSError:
+        return None
+
+
+def rule_opts(spec):
+    """iptables -S kuralının seçenekleri: {"-i": "eth0", "--dport": "22", "-j": "ACCEPT", ...}."""
+    opts, tokens = {}, spec.split()
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("-") and i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+            if tok != "-m":
+                opts[tok] = tokens[i + 1]
+            i += 2
+        else:
+            i += 1
+    return opts
+
+
+def same_net(a, b):
+    """İki yazım aynı ağ mı: kayıt "…::0:0/112" yazar, ip6tables "…::/112" gösterir."""
+    try:
+        return bool(a and b) and ipaddress.ip_network(a, strict=False) == ipaddress.ip_network(b, strict=False)
+    except ValueError:
+        return False
+
+
+def classify_rules(chain_kind, rules, env, networks):
+    """Projenin zincirlerindeki kuralları sayfanın gruplarına ayırır. Tanınmayan kural "other"
+    grubuna düşer (elle eklenmiş ya da kaymış): Konsol onu gizlemez, uyarıyla gösterir."""
+    wan = env.get("WAN_INTERFACE", "")
+    ts_if = env.get("TAILSCALE_IF", "tailscale0")
+    ssh = str(env.get("SSH_PUBLIC_PORT", ""))
+    ts_port = str(env.get("TAILSCALE_UDP_PORT", ""))
+    by_iface = {n["iface"]: n for n in networks}
+    by_port = {str(n["port"]): n for n in networks}
+    out = []
+    for rule in rules:
+        o, spec, pkts = rule_opts(rule["spec"]), rule["spec"], rule["pkts"]
+        j, i_if, o_if = o.get("-j", ""), o.get("-i", ""), o.get("-o", "")
+        e = {"pkts": pkts, "spec": spec}
+        if j == "RETURN" and not i_if and not o_if:
+            continue
+        if chain_kind == "input":
+            if i_if == "lo" and j == "ACCEPT":
+                e.update(group="self", kind="lo")
+            elif "ESTABLISHED" in o.get("--ctstate", "") and not i_if and j == "ACCEPT":
+                e.update(group="self", kind="established")
+            elif o.get("-p") == "ipv6-icmp" and j == "ACCEPT":
+                e.update(group="self", kind="icmp6")
+            elif i_if == ts_if and j == "ACCEPT" and "-p" not in o:
+                e.update(group="ts", kind="all")
+            elif i_if == wan and j == "DROP" and "-p" not in o:
+                e.update(group="wan", kind="drop")
+            elif spec.strip() == "-j DROP":
+                e.update(group="self", kind="default-drop")
+            elif i_if == wan and j == "ACCEPT" and o.get("--dport"):
+                port, proto = o["--dport"], o.get("-p", "")
+                if port == ssh and proto == "tcp":
+                    e.update(group="wan", kind="ssh", port=int(port), proto=proto)
+                elif port == ts_port and proto == "udp":
+                    e.update(group="wan", kind="tailscale", port=int(port), proto=proto)
+                elif port in by_port and proto == "udp":
+                    net = by_port[port]
+                    e.update(group="wan", kind="vpn", port=int(port), proto=proto,
+                             iface=net["iface"], label=net["label"], app=net.get("app", ""))
+                else:
+                    e.update(group="other", kind="unknown")
+            elif i_if in by_iface and j == "DROP":
+                e.update(group="wg:" + i_if, kind="drop")
+            else:
+                e.update(group="other", kind="unknown")
+        elif chain_kind == "forward":
+            if i_if in by_iface and o_if == wan and j == "ACCEPT":
+                e.update(group="wg:" + i_if, kind="egress")
+            elif i_if in by_iface and j == "DROP":
+                e.update(group="wg:" + i_if, kind="fwd-drop")
+            elif o_if in by_iface and j == "ACCEPT" and "ESTABLISHED" in o.get("--ctstate", ""):
+                e.update(group="wg:" + o_if, kind="fwd-return")
+            elif o_if in by_iface and j == "DROP":
+                e.update(group="wg:" + o_if, kind="fwd-in-drop")
+            else:
+                e.update(group="other", kind="unknown")
+        else:  # nat
+            src = o.get("-s", "")
+            net = next((n for n in networks if same_net(src, n.get("subnet4")) or same_net(src, n.get("subnet6"))), None)
+            if net and o_if == wan and j == "MASQUERADE":
+                e.update(group="wg:" + net["iface"], kind="nat", subnet=src)
+            else:
+                e.update(group="other", kind="unknown")
+        out.append(e)
+    return out
+
+
+def caddy_line(raw):
+    return raw.split("#", 1)[0].strip() if raw.lstrip().startswith("#") else raw.strip()
+
+
+def split_snippets(text):
+    """(ad) { ... } parçalarını ayırır: (parçasız satırlar, {ad: satırlar}). DD-195: Konsol'un
+    yolları bir parçadadır; Tailscale ve internet siteleri onu `import konsol <kanal>` ile alır."""
+    lines, snippets, depth, name = [], {}, 0, None
+    for raw in (text or "").splitlines():
+        line = caddy_line(raw)
+        start = re.fullmatch(r"\(([A-Za-z0-9_-]+)\)\s*\{", line) if depth == 0 else None
+        if start:
+            name, depth = start.group(1), 1
+            snippets[name] = []
+            continue
+        if line.endswith("{"):
+            depth += 1
+        elif line == "}":
+            depth = max(0, depth - 1)
+            if name is not None and depth == 0:
+                name = None
+                continue
+        (snippets[name] if name is not None else lines).append(raw)
+    return lines, snippets
+
+
+def expand_imports(lines, snippets):
+    out = []
+    for raw in lines:
+        tokens = caddy_line(raw).split()
+        if len(tokens) >= 2 and tokens[0] == "import" and tokens[1] in snippets:
+            args = tokens[2:]
+            out += [re.sub(r"\{args\[(\d+)\]\}", lambda m: args[int(m[1])] if int(m[1]) < len(args) else "", inner)
+                    for inner in snippets[tokens[1]]]
+        else:
+            out.append(raw)
+    return out
+
+
+def parse_caddy(text, ts_ip, source, snippets=None):
+    """Kurulumun işlediği Caddy dosyalarından siteler: adresler ve her yolun nereye gittiği.
+    Genel bir Caddyfile ayrıştırıcısı değildir; şablonlarımızın biçimini okur. Parçalar
+    (snippet) bu dosyadan ve verilen ana dosyadan açılır."""
+    lines, own = split_snippets(text)
+    lines = expand_imports(lines, {**(snippets or {}), **own})
+    sites, cur, depth, ctx, matchers = [], None, 0, [""], {}
+    for raw in lines:
+        line = raw.split("#", 1)[0].strip() if raw.lstrip().startswith("#") else raw.strip()
+        if not line:
+            continue
+        if depth == 0 and line.endswith("{") and line.startswith(("http://", "https://")):
+            scheme = line.split("://", 1)[0]
+            addrs = [re.sub(r"^https?://", "", a.strip()).replace("{$TAILSCALE_IPV4}", ts_ip)
+                     for a in line[:-1].split(",") if a.strip()]
+            cur = {"addresses": addrs, "routes": [], "source": source, "scheme": scheme}
+            sites.append(cur)
+            depth, ctx, matchers = 1, [""], {}
+            continue
+        if line.endswith("{"):
+            head = line[:-1].strip()
+            if cur is not None and head.startswith("reverse_proxy "):
+                cur["routes"].append({"path": ctx[-1], "kind": "proxy", "to": head.split()[1]})
+            if cur is not None and head.startswith("handle"):
+                arg = head[len("handle"):].strip()
+                ctx.append(matchers.get(arg[1:], arg) if arg.startswith("@") else arg)
+            else:
+                ctx.append(ctx[-1])
+            depth += 1
+            continue
+        if line == "}":
+            depth = max(0, depth - 1)
+            if len(ctx) > 1:
+                ctx.pop()
+            if depth == 0:
+                cur = None
+            continue
+        if cur is None:
+            continue
+        tokens = line.split()
+        if tokens[0].startswith("@") and len(tokens) >= 3 and tokens[1] == "path":
+            matchers[tokens[0][1:]] = " ".join(tokens[2:])
+        elif tokens[0] == "reverse_proxy" and len(tokens) >= 2:
+            cur["routes"].append({"path": ctx[-1], "kind": "proxy", "to": tokens[1]})
+        elif tokens[0] == "file_server":
+            cur["routes"].append({"path": ctx[-1], "kind": "files", "to": ""})
+        elif tokens[0] == "respond":
+            cur["routes"].append({"path": ctx[-1], "kind": "respond", "to": " ".join(tokens[1:]).split('"')[1] if '"' in line else ""})
+        elif tokens[0] == "redir" and len(tokens) >= 2:
+            cur["routes"].append({"path": ctx[-1], "kind": "redirect", "to": tokens[1]})
+    return sites
+
+
+def parse_dnsmasq(text, source):
+    """dnsmasq ayarlarından yalnız sayfanın gösterdikleri: dinlenen arayüzler, alan, adlar, DHCP."""
+    got = {"listen": [], "domains": [], "names": [], "dhcp": False}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key == "interface":
+            got["listen"].append(value)
+        elif key == "local" and value.startswith("/") and value.endswith("/"):
+            got["domains"].append(value.strip("/"))
+        elif key == "interface-name" and "," in value:
+            record = master_settings.dns_interface(value)
+            if record:
+                got["names"].append({**record, "source": source})
+        elif key == "host-record" and "," in value:
+            name, _, address = value.partition(",")
+            try:
+                ip = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            got["names"].append({"name": name, "iface": "", "family": ip.version,
+                                 "address": str(ip), "source": source})
+        elif key == "dhcp-range":
+            got["dhcp"] = True
+    return got
+
+
+
+class Panel:
+    def __init__(self, args):
+        self.args = args
+        self.lock = threading.Lock()
+        # DD-200: kurulu paketlerin yüklenmiş API modülleri: id → (dosya anahtarı, nesne).
+        self.apis = {}
+        self.apis_lock = threading.Lock()
+        self.konsol_cache = {}
+        # DD-210: one install-form preparation and engine start at a time (the seed file is per package).
+        self.install_lock = threading.Lock()
+        self.sys_lock = threading.Lock()
+        self.samples = []
+        self.cpu_prev = None
+        self.actions_cache = (0.0, [])
+        self.settings_cache = (0.0, None)
+        self.settings_lock = threading.Lock()
+        self.settings_runs = 0
+        self.health_cache = (0.0, None)
+        self.health_lock = threading.Lock()
+        # DD-194: sign-in failures per client address (DD-195: plus one public budget).
+        self.attempts = master_auth.Attempts()
+        self.public_cache = (-PUBLIC_CACHE_SECONDS, False)
+        self.public_lock = threading.Lock()
+        # DD-206: WAN hız noktaları ve paketlerin trafik toplamları (kısa önbellek).
+        self.net_lock = threading.Lock()
+        self.net_prev = None
+        self.net_points = []
+        self.traffic_lock = threading.Lock()
+        self.traffic_cache = (-TRAFFIC_CACHE_SECONDS, None)
+        self.traffic_errors = set()
+        self.containers = master_container_manager.Service(self)
+
+    def public_open(self):
+        """DD-195: is Konsol published on the internet right now (name, WAN IPv4, account)?
+        Read at most every few seconds; a removed account or publication closes the door."""
+        now = time.monotonic()
+        with self.public_lock:
+            at, value = self.public_cache
+            if now - at >= PUBLIC_CACHE_SECONDS:
+                try:
+                    value = master_publications.panel_active(read_env(self.args.state))
+                except (OSError, ValueError, KeyError, master_settings.SettingsError):
+                    value = False
+                self.public_cache = (now, value)
+            return value
+
+    def auth(self):
+        directory = read_env(self.args.state).get("KONSOL_AUTH_DIR")
+        if not directory:
+            raise master_auth.AuthError("Konsol hesap ayarı eksik; kurulumu yeniden çalıştırın.", 503)
+        return master_auth.Store(directory)
+
+    # -- paket araçları (DD-200): paketin API modülü kendi aracını bu yoldan çalıştırır.
+    def tool_dir(self):
+        return os.path.dirname(os.path.abspath(self.args.master_modul))
+
+    def run_tool(self, argv, binary=False, timeout=120):
+        try:
+            proc = subprocess.run(list(argv), capture_output=True, timeout=timeout, env=self.env(), stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            return 1, b"" if binary else "", "%s çalıştırılamadı (%s)" % (os.path.basename(str(argv[0])), err.__class__.__name__)
+        err_lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+        message = err_lines[-1] if err_lines else ""
+        if message.startswith("HATA: "):
+            message = message[6:]
+        out = proc.stdout if binary else proc.stdout.decode("utf-8", "replace")
+        return proc.returncode, out, message
+
+    # -- paket API modülleri (DD-200)
+    def package_api(self, mid, env=None, manifest=None, stopped=False):
+        """Kurulu (calisiyor) ve PAKET_API bildiren paketin yüklenmiş API nesnesi; yoksa None.
+        Dosya paket klasöründen düz dosya olarak, mtime ile önbellekli yüklenir; paket kalkınca
+        ya da dosyası değişince eski nesne durdurulur. Bozuk bir modül yalnız kendi paketini kapatır.
+        DD-210: stopped=True (yalnız paketin kendi istekleri) durdurulmuş (durduruldu) paketi de verir ki
+        ayarları durmuşken değişebilsin; o nesnenin start()'ı çağrılmaz ve arka plan çağıranlarına
+        (örnekleyici, VPN ağları) verilmez. Durum değişince nesne yeniden kurulur."""
+        env = env if env is not None else read_env(self.args.state)
+        if manifest is None:
+            manifest = master_settings.read_manifests(env).get(mid, {})
+        name = manifest.get("PAKET_API", "")
+        state = self.module_state(mid, env)
+        running = state == "calisiyor"
+        installed = running or state == "durduruldu"
+        with self.apis_lock:
+            current = self.apis.get(mid)
+            path = os.path.join(env.get("MODULES_DIR", ""), mid, name) if name and env.get("MODULES_DIR") else ""
+            key = None
+            if installed and path and API_FILE_RE.match(name):
+                try:
+                    st = os.stat(path, follow_symlinks=False)
+                    if stat.S_ISREG(st.st_mode):
+                        key = (path, st.st_mtime_ns, st.st_size, running)
+                except OSError:
+                    key = None
+            if current is not None and current[0] == key:
+                return current[1] if running or stopped else None
+            if current is not None:
+                del self.apis[mid]
+                self.api_stop(mid, current[1])
+            if key is None or not (running or stopped):
+                return None
+            try:
+                spec = importlib.util.spec_from_file_location("magaza_api_" + mid, path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                api = module.create(PackageContext(self, mid))
+                if running and callable(getattr(api, "start", None)):
+                    api.start()
+            except Exception as err:  # paketin dosyası bizim için veridir; bozuksa yalnız o paket kapanır
+                print("panel: %s uygulama API'si yüklenemedi (%s)" % (mid, err.__class__.__name__), flush=True)
+                return None
+            self.apis[mid] = (key, api)
+            return api
+
+    @staticmethod
+    def api_stop(mid, api):
+        try:
+            if callable(getattr(api, "stop", None)):
+                api.stop()
+        except Exception as err:
+            print("panel: %s uygulama API'si durdurulamadı (%s)" % (mid, err.__class__.__name__), flush=True)
+
+    def package_apis(self, env=None):
+        """[(id, api)] for every registered package with an API; loads new ones, drops removed ones."""
+        env = env if env is not None else read_env(self.args.state)
+        manifests = master_settings.read_manifests(env)
+        result = []
+        for mid in sorted(set(manifests) | set(self.apis)):
+            api = self.package_api(mid, env, manifests.get(mid, {}))
+            if api is not None:
+                result.append((mid, api))
+        return result
+
+    def package_networks(self, env=None):
+        """DD-200: VPN ağları, yalnız paket API'lerinin networks() bildiriminden; alanlar denetlenir."""
+        rows = []
+        for mid, api in self.package_apis(env):
+            if not callable(getattr(api, "networks", None)):
+                continue
+            try:
+                nets = api.networks()
+            except Exception as err:
+                print("panel: %s ağ listesi okunamadı (%s)" % (mid, err.__class__.__name__), flush=True)
+                continue
+            for net in nets if isinstance(nets, list) else []:
+                if not isinstance(net, dict) or not re.fullmatch(r"[a-z][a-z0-9]{0,14}", str(net.get("iface", ""))):
+                    continue
+                if not isinstance(net.get("port"), int) or not 0 < net["port"] < 65536:
+                    continue
+                rows.append({"app": str(net.get("app") or mid), "iface": net["iface"], "port": net["port"],
+                             "label": str(net.get("label", "")), "active": bool(net.get("active")),
+                             "server4": str(net.get("server4", "")), "subnet4": str(net.get("subnet4", "")),
+                             "server6": str(net.get("server6", "")), "subnet6": str(net.get("subnet6", ""))})
+        return rows
+
+    def vpn_apps(self, env=None):
+        """Names of the installed packages that declare VPN networks (Settings labels its tab by them)."""
+        return [str(getattr(api, "APP_NAME", mid)) for mid, api in self.package_apis(env)
+                if callable(getattr(api, "networks", None))]
+
+    def konsol_meta(self, env, mid, manifest):
+        """DD-200: paketin App Store metinleri ve sayfa bildirimi (PAKET_KONSOL, JSON nesnesi);
+        kurulu olsun olmasın okunur, düz dosya ve sınırlı boy, mtime ile önbellekli."""
+        name = manifest.get("PAKET_KONSOL", "")
+        if not name or not re.fullmatch(r"[a-z][a-z0-9_.-]{0,40}\.json", name) or not env.get("MODULES_DIR"):
+            return None
+        path = os.path.join(env["MODULES_DIR"], mid, name)
+        try:
+            raw, info = master_settings.read_regular(path, KONSOL_JSON_LIMIT)
+        except (OSError, ValueError, master_settings.SettingsError):
+            return None
+        key = (path, info.st_mtime_ns, info.st_size)
+        cached = self.konsol_cache.get(mid)
+        if cached and cached[0] == key:
+            return cached[1]
+        try:
+            meta = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        if not isinstance(meta, dict):
+            return None
+        self.konsol_cache[mid] = (key, meta)
+        return meta
+
+    # -- modüller (DD-148)
+    def env(self):
+        env = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8"}
+        if self.args.state_env:
+            env["STATE_FILE"] = self.args.state
+            # Test: sahte systemd-run/systemctl master-modul ile aynı dizinde durur.
+            env["PATH"] = os.path.dirname(os.path.abspath(self.args.master_modul)) + ":" + env["PATH"]
+        return env
+
+    def modul(self, *argv, timeout=30):
+        try:
+            proc = subprocess.run([self.args.master_modul] + list(argv), capture_output=True, timeout=timeout,
+                                  env=self.env(), stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            return 1, "", "master-modul çalıştırılamadı (%s)" % err.__class__.__name__
+        err_lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+        message = err_lines[-1][6:] if err_lines and err_lines[-1].startswith("HATA: ") else (err_lines[-1] if err_lines else "")
+        return proc.returncode, proc.stdout.decode("utf-8", "replace"), message
+
+    @staticmethod
+    def module_unit(mid):
+        return "master-modul-%s.service" % mid
+
+    def busy_units(self):
+        """Süren modül işlemlerinin birimleri. `is-active` bitmiş (toplanmış) geçici birimi
+        yüklemeye çalışır ve her sorguda systemd günlüğüne "Failed to open
+        /run/systemd/transient/…" yazdırır; list-units yalnız bellekteki birimlere bakar (v2-120)."""
+        try:
+            proc = subprocess.run(["systemctl", "list-units", "--plain", "--no-legend", "--no-pager",
+                                   "--state=active,activating,deactivating,reloading",
+                                   self.module_unit("*")],
+                                  timeout=10, env=self.env(), stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return set()
+        return {line.split()[0] for line in proc.stdout.decode("utf-8", "replace").splitlines() if line.split()}
+
+    def module_busy(self, mid, busy=None):
+        return self.module_unit(mid) in (self.busy_units() if busy is None else busy)
+
+    def modules(self):
+        rc, out, message = self.modul("liste")
+        if rc != 0:
+            raise RuntimeError(message or "modül listesi okunamadı")
+        items = []
+        busy = self.busy_units()
+        env = read_env(self.args.state)
+        manifests = master_settings.read_manifests(env)
+        for line in out.splitlines():
+            f = line.split("\t")
+            if len(f) != 8 or not MODULE_ID_RE.match(f[0]):
+                continue
+            mid, runtime, reg, live, action, step, total, text = f
+            progress = None
+            if action != "-":
+                progress = {"action": action, "step": step, "total": num_or(total, 0), "text": "" if text == "-" else text}
+            manifest = manifests.get(mid, {})
+            item = {"id": mid, "runtime": runtime, "installed": reg in ("calisiyor", "durduruldu"),
+                    "state": reg if reg in ("calisiyor", "durduruldu") else "", "live": live,
+                    "busy": self.module_busy(mid, busy), "progress": progress,
+                    "durdurulabilir": manifest.get("PAKET_DURDURULABILIR") == "1"}
+            # DD-200: App Store metinleri ve sayfa bildirimi paketten; sayfa dosyaları yalnız kuruluyken.
+            meta = self.konsol_meta(env, mid, manifest)
+            if meta is not None:
+                item["konsol"] = meta
+            if item["installed"]:
+                pages = [f for f in manifest.get("PAKET_SAYFA", "").split() if PAGE_FILE_RE.match(f)]
+                if pages:
+                    item["sayfa"] = pages
+                urls = self.package_urls(mid)
+                if urls:
+                    item["urls"] = urls
+            items.append(item)
+        return items
+
+    def package_urls(self, mid):
+        """DD-195/199: a package with a publication row has a tailnet name and, while its row is
+        on and verified, its own public name; Konsol picks by the address the browser used."""
+        env = read_env(self.args.state)
+        info = master_publications.packages(env).get(mid)
+        if not info:
+            return None
+        urls = {"tailscale": "http://%s.%s" % (info["local"], env["LOCAL_DOMAIN"]) if env.get("LOCAL_DOMAIN") else None,
+                "internet": None}
+        try:
+            rows = master_publications.config(env)
+            if master_publications.package_active(env, mid, rows):
+                port = int(env["SHARE_HTTPS_PORT"])
+                urls["internet"] = "https://%s%s" % (rows[mid]["domain"], "" if port == 443 else ":%d" % port)
+        except (master_settings.SettingsError, OSError, ValueError, KeyError):
+            pass  # a broken publication record never hides the module list or its tailnet name
+        return urls
+
+    def module_install(self, mid, form):
+        """DD-210: a package that declares PAKET_KUR_AYAR is installed only with its form. Its worker
+        (in the package folder, root, JSON on stdin) validates the choices and writes a private seed
+        with the password's hash; the engine starts only after that and removes the seed at the end."""
+        env = read_env(self.args.state)
+        manifest = master_settings.read_manifests(env).get(mid, {})
+        script_name = manifest.get("PAKET_KUR_AYAR", "")
+        if not script_name:
+            if form is not None:
+                return 400, "bu uygulama kurulum bilgisi almaz"
+            return self.module_spawn(mid, "kur", False)
+        if not isinstance(form, dict):
+            return 400, "Kurulum bilgileri gerekli; App Store'daki pencereden kurun."
+        here = os.path.realpath(os.path.join(env.get("MODULES_DIR", ""), mid))
+        script = os.path.join(here, script_name)
+        if not API_FILE_RE.match(script_name) or not os.path.realpath(script).startswith(here + os.sep) or not env.get("RUNTIME_DIR"):
+            return 500, "paketin kurulum çalışanı geçersiz"
+        seed = os.path.join(env["RUNTIME_DIR"], "modul-%s.kur" % mid)
+        with self.install_lock:
+            if self.module_busy(mid):
+                return 409, "bu modülde bir işlem sürüyor"
+            if any(m.get("id") == mid and m.get("installed") for m in self.modules()):
+                return 409, "modül zaten kurulu"
+            code, result = self.run_worker(["/usr/bin/python3", script, "--lib", self.tool_dir(), "--state", self.args.state,
+                                            "kur-hazirla", "--tohum", seed], form,
+                                           "Kurulum bilgileri doğrulanamadı; yeniden deneyin.")
+            if code != 200:
+                return code, (result.get("error") if isinstance(result, dict) else "") or "Kurulum bilgileri doğrulanamadı."
+            code, message = self.module_spawn(mid, "kur", False)
+            if code != 202:
+                with contextlib.suppress(OSError):
+                    os.unlink(seed)
+            return code, message
+
+    def module_spawn(self, mid, action, with_data):
+        """master-modul'ü ayrı bir systemd birimi olarak başlatır: işlem sayfa kapansa da sürer."""
+        if self.module_busy(mid):
+            return 409, "bu modülde bir işlem sürüyor"
+        argv = ["systemd-run", "--unit=" + self.module_unit(mid), "--collect", "--quiet",
+                "--description=Konsol modül işlemi: %s %s" % (mid, action)]
+        if self.args.state_env:
+            argv.append("--setenv=STATE_FILE=%s" % self.args.state)
+        argv += [self.args.master_modul, action, mid] + (["--veri"] if action == "kaldir" and with_data else [])
+        try:
+            proc = subprocess.run(argv, capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            return 502, "işlem başlatılamadı (%s)" % err.__class__.__name__
+        if proc.returncode != 0:
+            lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+            return 502, "işlem başlatılamadı: %s" % (lines[-1] if lines else "systemd-run %d" % proc.returncode)
+        return 202, ""
+
+    def sample_resources_forever(self):
+        """Host resource sampling; also loads the APIs of newly installed packages so a
+        package sampler runs before any page asks (DD-137 counters, DD-200)."""
+        while True:
+            try:
+                self.sample_system()
+                self.net_sample(read_env(self.args.state))
+                self.package_apis()
+            except Exception as err:
+                print("panel: sistem ölçülemedi (%s)" % err, flush=True)
+            time.sleep(SAMPLE_SECONDS)
+
+    # -- sistem
+    def sample_system(self):
+        """İşlemci ve bellek kullanımı; grafiğe son SYS_POINTS örnek girer."""
+        try:
+            with open("/proc/stat", "rb") as fh:
+                # guest/guest_nice are already included in user/nice.
+                fields = [int(x) for x in fh.readline().split()[1:9]]
+            if len(fields) < 4:
+                return
+        except (OSError, ValueError, IndexError):
+            return
+        total = sum(fields)
+        idle = fields[3] + (fields[4] if len(fields) > 4 else 0)
+        previous, self.cpu_prev = self.cpu_prev, (total, idle)
+        if previous is None:
+            return
+        span, span_idle = total - previous[0], idle - previous[1]
+        if span <= 0:
+            return
+        cpu = max(0.0, min(100.0, 100.0 * (span - span_idle) / span))
+        mem_total, mem_used = self.meminfo()
+        mem = round(100.0 * mem_used / mem_total, 1) if mem_total else 0.0
+        with self.sys_lock:
+            self.samples.append({"t": int(time.time()), "cpu": round(cpu, 1), "mem": mem})
+            del self.samples[:-SYS_POINTS]
+
+    # -- ağ (DD-206)
+    @staticmethod
+    def net_counters(iface):
+        """WAN arayüzünün alınan ve gönderilen bayt sayaçları (çekirdeğin sysfs dosyalarından)."""
+        values = []
+        for name in ("rx_bytes", "tx_bytes"):
+            with open("/sys/class/net/%s/statistics/%s" % (iface, name), "rb") as fh:
+                values.append(int(fh.read(32).strip()))
+        return values
+
+    def net_sample(self, env):
+        """Adds a rate point (bytes/s) when at least NET_STEP_SECONDS passed since the last reading;
+        returns the measured interface name ("" when state.env names none)."""
+        iface = env.get("WAN_INTERFACE", "")
+        if not IFACE_RE.fullmatch(iface) or iface in (".", ".."):
+            return ""
+        try:
+            rx, tx = self.net_counters(iface)
+        except (OSError, ValueError):
+            return iface
+        mono = time.monotonic()
+        with self.net_lock:
+            prev = self.net_prev
+            if prev is not None and prev[0] == iface:
+                span = mono - prev[1]
+                if span < NET_STEP_SECONDS:
+                    return iface
+                # A baseline older than three background samples (a stalled sampler) gives no point.
+                if span <= 3 * max(SAMPLE_SECONDS, NET_STEP_SECONDS):
+                    self.net_points.append({"t": int(time.time()), "rx": int(max(0, rx - prev[2]) / span),
+                                            "tx": int(max(0, tx - prev[3]) / span)})
+                    del self.net_points[:-NET_POINTS]
+            elif prev is not None:
+                self.net_points = []  # another interface: its history does not belong here
+            self.net_prev = (iface, mono, rx, tx)
+        return iface
+
+    def network(self):
+        """GET /api/konsol/ag: WAN rate history (last NET_WINDOW_SECONDS) and the packages' totals."""
+        env = read_env(self.args.state)
+        iface = self.net_sample(env)
+        now = int(time.time())
+        with self.net_lock:
+            points = [p for p in self.net_points if p["t"] >= now - NET_WINDOW_SECONDS]
+        last = points[-1] if points else None
+        return {"read_at": now, "iface": iface, "window": NET_WINDOW_SECONDS,
+                "sampled_at": last["t"] if last else None, "rx": last["rx"] if last else None,
+                "tx": last["tx"] if last else None, "points": [[p["t"], p["rx"], p["tx"]] for p in points],
+                "apps": self.traffic(env)}
+
+    def traffic(self, env):
+        """DD-206: per installed package that declares PAKET_TRAFIK, its own module's totals:
+        {"down", "up"} as the application's users see them, "since" (counting start) or "at" (when
+        the application last saved all-time figures), epoch seconds. A failing module leaves only
+        its own numbers empty; the error is printed once per package and kind."""
+        now = time.monotonic()
+        with self.traffic_lock:
+            at, cached = self.traffic_cache
+            if cached is not None and now - at < TRAFFIC_CACHE_SECONDS:
+                return cached
+            items = []
+            for mid, manifest in master_settings.read_manifests(env).items():
+                name, state = manifest.get("PAKET_TRAFIK", ""), self.module_state(mid, env)
+                if not name or not state or manifest.get("PAKET_YERLESIK") == "1":
+                    continue
+                label = (manifest.get("PAKET_AD") or mid) + " trafik ölçümü"
+                item = {"id": mid, "name": manifest.get("PAKET_AD") or mid, "state": state, "down": None, "up": None, "since": None, "at": None}
+                if state == "calisiyor":
+                    try:
+                        module = master_settings.load_package_module(env, mid, name, "trafik", label)
+                        value = module.trafik(dict(env))
+                        if value is not None and not isinstance(value, dict):
+                            raise TypeError("trafik() sözlük döndürmeli")
+                        for key in ("down", "up", "since", "at"):
+                            v = (value or {}).get(key)
+                            if type(v) is int and v >= 0:
+                                item[key] = v
+                    except Exception as err:  # the package's module is data for us
+                        mark = (mid, type(err).__name__)
+                        if mark not in self.traffic_errors:
+                            self.traffic_errors.add(mark)
+                            print("panel: %s okunamadı (%s)" % (label, type(err).__name__), flush=True)
+                items.append(item)
+            self.traffic_cache = (now, items)
+            return items
+
+    # -- Genel bakış düzeni (DD-206)
+    def layout(self):
+        """The saved overview layout, or None for the defaults (also when the record is damaged)."""
+        try:
+            value = self.auth().read(LAYOUT_FILE)
+            return clean_layout(value) if value is not None else None
+        except (master_auth.AuthError, ValueError, OSError):
+            return None
+
+    def save_layout(self, data):
+        """POST /api/konsol/duzen: {"duzen": {...}} saves, {"sifirla": true} returns to the defaults."""
+        store = self.auth()
+        if data == {"sifirla": True}:
+            with store.locked():
+                store.remove(LAYOUT_FILE)
+            return "sifirla", None
+        if set(data) != {"duzen"}:
+            raise ValueError("Düzen isteği geçersiz.")
+        value = clean_layout(data["duzen"])
+        with store.locked():
+            store.write(LAYOUT_FILE, value)
+        return "kaydet", value
+
+    def meminfo(self):
+        info = {}
+        try:
+            with open("/proc/meminfo", "rb") as fh:
+                for line in fh:
+                    key, _, rest = line.decode("utf-8", "replace").partition(":")
+                    parts = rest.split()
+                    if parts and parts[0].isdigit():
+                        info[key] = int(parts[0]) * 1024
+        except OSError:
+            return 0, 0
+        total = info.get("MemTotal", 0)
+        return total, max(0, total - info.get("MemAvailable", 0))
+
+    def os_name(self):
+        try:
+            with open("/etc/os-release", encoding="utf-8") as fh:
+                for line in fh:
+                    key, _, value = line.rstrip("\n").partition("=")
+                    if key == "PRETTY_NAME":
+                        return value.strip('"')
+        except OSError:
+            pass
+        return "Linux"
+
+    def module_state(self, mid, env=None):
+        """Modül kaydındaki durum (calisiyor | durduruldu); kurulu değilse ""."""
+        env = env if env is not None else read_env(self.args.state)
+        path = env.get("MODULES_FILE", "")
+        if not path:
+            return ""
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    f = line.rstrip("\n").split("\t")
+                    if len(f) == 2 and f[0] == mid and f[1] in ("calisiyor", "durduruldu"):
+                        return f[1]
+        except OSError:
+            pass
+        return ""
+
+    def ports(self, env, networks=()):
+        """Kullanımdaki portlar: state.env, paket API'lerinin bildirdiği VPN ağları ve kayıtlı
+        paketlerin bildirimleri; hiçbir yeri taramaz."""
+        rows = []
+        for net in networks:
+            rows.append({"port": net["port"], "proto": "udp", "scope": "internet", "vpn": True,
+                         "name": "%s %s%s" % (net.get("app", "VPN"), net["iface"], " · %s" % net["label"] if net.get("label") else "")})
+        for key, name, proto, scope, default in PORT_ROWS:
+            port = num_or(env.get(key), default)
+            if port:
+                rows.append({"port": port, "proto": proto, "scope": scope, "name": name})
+        # DD-198: a package's ports exist only while it is registered (built-ins included).
+        for mid, manifest in master_settings.read_manifests(env).items():
+            if not self.module_state(mid, env):
+                continue
+            own = None
+            # DD-217: a package on its own bridge reaches the internet through its Quadlet's IPv4
+            # publication and the container guard (forward path); a MASTER-INPUT rule cannot change it.
+            bridge = bool(manifest.get("PAKET_KONTEYNER_AG"))
+            for key, name, proto, scope in manifest_ports(manifest):
+                if key not in env and own is None:
+                    own = master_settings.package_env(env, mid)  # DD-203: the package's own setting
+                port = num_or(env.get(key, (own or {}).get(key)), 0)
+                if port:
+                    row = {"port": port, "proto": proto, "scope": scope, "name": name}
+                    if bridge and scope == "internet":
+                        row.update(families=(4,), fixed=True)
+                    rows.append(row)
+        return rows
+
+    @staticmethod
+    def disk(root):
+        if not root:
+            return None
+        try:
+            vfs = os.statvfs(root)
+        except OSError:
+            return None
+        return {"total": vfs.f_blocks * vfs.f_frsize, "free": vfs.f_bavail * vfs.f_frsize}
+
+    def system(self):
+        env = read_env(self.args.state)
+        with self.sys_lock:
+            samples = list(self.samples)
+        mem_total, mem_used = self.meminfo()
+        try:
+            with open("/proc/uptime", "rb") as fh:
+                uptime = int(float(fh.read().split()[0]))
+        except (OSError, ValueError, IndexError):
+            uptime = 0
+        return {
+            "host": socket.gethostname().split(".")[0],
+            "version": env.get("V2_VERSION", ""),
+            "domain": env.get("LOCAL_DOMAIN", ""),
+            "os": self.os_name(),
+            "kernel": platform.release(),
+            "uptime": uptime,
+            "cores": os.cpu_count() or 1,
+            "interval": int(SAMPLE_SECONDS),
+            "read_at": int(time.time()),
+            "sampled_at": samples[-1]["t"] if samples else None,
+            "cpu": [s["cpu"] for s in samples],
+            "mem": {"total": mem_total, "used": mem_used, "graph": [s["mem"] for s in samples]},
+            "net": {
+                "wan": env.get("WAN_IPV4", ""), "wan6": env.get("WAN_IPV6", ""),
+                "iface": env.get("WAN_INTERFACE", ""), "tailscale": env.get("TAILSCALE_IPV4", ""),
+                "tailscale6": env.get("TAILSCALE_IPV6", ""),
+            },
+            # DD-150: disk kartı Dosya yöneticisi kurulu değilken de dolsun (kullanıcı alanının diski).
+            "root": env.get("SERVER_ROOT", ""),
+            "disk": self.disk(env.get("SERVER_ROOT", "")),
+        }
+
+    # -- ayarlar (DD-155): salt okunur; hiçbir şeyi değiştirmez, yalnız istenince okur
+    def iptables_chain(self, binary, chain, table=None):
+        """Projenin bir zinciri, sayaçlarıyla: (kurallar, ham -S metni); okunamazsa (None, "")."""
+        cmd = [binary, "-w", "5"] + (["-t", table] if table else []) + ["-v", "-S", chain]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=15, env=self.env(), stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return None, ""
+        if proc.returncode != 0:
+            return None, ""
+        rules, raw = [], []
+        for line in proc.stdout.decode("utf-8", "replace").splitlines():
+            m = IPT_COUNTER_RE.search(line)
+            plain = IPT_COUNTER_RE.sub("", line)
+            raw.append(plain)
+            prefix = "-A %s " % chain
+            if plain.startswith(prefix):
+                rules.append({"spec": plain[len(prefix):], "pkts": int(m.group(1)) if m else 0})
+        return rules, "\n".join(raw)
+
+    def firewall_view(self, env, networks):
+        chains = (("input", env.get("CHAIN_INPUT", ""), None), ("forward", env.get("CHAIN_FORWARD", ""), None),
+                  ("nat", env.get("CHAIN_NAT", ""), "nat"))
+        view = {}
+        for fam, binary in (("v4", "iptables"), ("v6", "ip6tables")):
+            entries, raws, readable = [], [], True
+            for kind, chain, table in chains:
+                if not chain:
+                    continue
+                rules, raw = self.iptables_chain(binary, chain, table)
+                if rules is None:
+                    # No registered networks: DD-175 deliberately omits our WG
+                    # forwarding/NAT chains. --check still detects real drift.
+                    if kind == "input" or networks:
+                        readable = False
+                    continue
+                entries += classify_rules(kind, rules, env, networks)
+                raws.append("# %s%s -S %s\n%s" % (binary, " -t nat" if table else "", chain, raw))
+            view[fam] = {"readable": readable, "entries": entries, "raw": "\n\n".join(raws)}
+        try:
+            proc = subprocess.run(["master-firewall", "--check"], capture_output=True, timeout=30,
+                                  env=self.env(), stdin=subprocess.DEVNULL)
+            lines = [l for l in (proc.stdout + proc.stderr).decode("utf-8", "replace").splitlines() if l.strip()]
+            view["ok"], view["check"] = proc.returncode == 0, (lines[-1] if lines else "")
+        except (OSError, subprocess.TimeoutExpired):
+            view["ok"], view["check"] = False, "denetim çalıştırılamadı"
+        return view
+
+    def health(self):
+        """DD-182: tek bakışta sunucunun sağlığı. Hiçbir şeyi değiştirmez."""
+        with self.health_lock:
+            stamp, data = self.health_cache
+            if data is None or time.time() - stamp >= HEALTH_CACHE_SECONDS:
+                data = self.health_compute()
+                self.health_cache = (time.time(), data)
+            return data
+
+    def health_cmd(self, argv, timeout=10):
+        try:
+            proc = subprocess.run(argv, capture_output=True, timeout=timeout, env=self.env(), stdin=subprocess.DEVNULL)
+            return proc.returncode, proc.stdout.decode("utf-8", "replace")
+        except (OSError, subprocess.TimeoutExpired):
+            return None, ""
+
+    def health_units(self, env):
+        """Check desired state, including inactive units absent from --failed."""
+        required, networks, unknown, problems = list(HEALTH_UNITS), [], [], []
+        try:
+            raw, _ = master_settings.read_regular(env["MODULES_FILE"], SETTINGS_TEXT_LIMIT)
+            modules = {}
+            for line in raw.decode("utf-8").splitlines():
+                fields = line.split("\t")
+                if len(fields) != 2 or not MODULE_ID_RE.fullmatch(fields[0]) or fields[0] in modules or fields[1] not in ("calisiyor", "durduruldu"):
+                    raise ValueError("module registry")
+                modules[fields[0]] = fields[1]
+        except (OSError, ValueError, KeyError, master_settings.SettingsError):
+            unknown.append("Modül kaydı okunamadı")
+        # DD-198: the packages name their own units through master-modul saglik
+        # ("id<TAB>unit<TAB>gerekli|ag"); a hook that cannot read its registry fails the call.
+        rc, out = self.health_cmd([self.args.master_modul, "saglik"])
+        if rc != 0:
+            unknown.append("Paket servisleri okunamadı")
+        else:
+            for line in out.splitlines():
+                fields = line.split("\t")
+                if len(fields) != 3 or not re.fullmatch(r"[A-Za-z0-9@._-]+\.(service|timer|socket)", fields[1]) or fields[2] not in ("gerekli", "ag"):
+                    unknown.append("Paket servis listesi okunamadı")
+                    break
+                (networks if fields[2] == "ag" else required).append(fields[1])
+
+        rc, out = self.health_cmd(["systemctl", "list-units", "--failed", "--plain", "--no-legend", "--no-pager"])
+        if rc != 0:
+            unknown.append("Başarısız servisler okunamadı")
+        else:
+            problems.extend(line.split()[0] for line in out.splitlines() if line.strip())
+        rc, out = self.health_cmd(["systemctl", "show", "--no-pager",
+                                   "--property=Id,LoadState,ActiveState,UnitFileState", *required, *networks])
+        units = {}
+        if rc == 0:
+            for block in out.strip().split("\n\n"):
+                props = dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+                if props.get("Id"):
+                    units[props["Id"]] = props
+        for unit in required + networks:
+            props = units.get(unit, {})
+            if not props.get("LoadState") or not props.get("ActiveState"):
+                unknown.append(unit)
+                continue
+            if props["LoadState"] != "loaded":
+                problems.append(unit)
+                continue
+            if unit in networks:
+                enabled = props.get("UnitFileState")
+                if enabled == "disabled":
+                    continue  # Konsol's network off switch disables the unit.
+                if enabled not in ("enabled", "enabled-runtime"):
+                    unknown.append(unit)
+                    continue
+            if props["ActiveState"] != "active":
+                problems.append(unit)
+        parts = []
+        if problems:
+            parts.append("Çalışmayan/başarısız: " + ", ".join(dict.fromkeys(problems)))
+        if unknown:
+            parts.append("Doğrulanamadı: " + ", ".join(unknown))
+        return ("bad" if problems else "warn" if unknown else "ok",
+                " · ".join(parts) if parts else "Gerekli servisler çalışıyor; başarısız servis yok")
+
+    def health_reboot(self, root=Path("/")):
+        """Distribution default boot links, not the newest installed package name.
+
+        Debian maintains /vmlinuz; Ubuntu also uses /boot/vmlinuz (link_in_boot).
+        Missing/broken links or incomplete boot artifacts are unknown. A custom
+        bootloader without these links needs an operator check, not a version guess.
+        Use the nonempty image/initrd pair: ProtectKernelModules deliberately
+        hides /lib/modules in this service, so its absence is not boot evidence.
+        """
+        try:
+            (root / "run/reboot-required").stat()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return "warn", "Yeniden başlatma gereksinimi okunamadı"
+        else:
+            text = read_text(str(root / "run/reboot-required.pkgs")) or ""
+            pkgs = sorted({line.strip() for line in text.splitlines() if line.strip()})
+            return "warn", "Güncellemeler yeniden başlatma bekliyor" + (" (%s)" % ", ".join(pkgs[:3]) if pkgs else "")
+
+        running = platform.release()
+        # Preserve the full flavor (generic, cloud-amd64, aws, etc.).
+        release_re = r"\d[\w.+~]*(?:-\d[\w.+~]*)?-([a-zA-Z][\w-]*)"
+        current = re.fullmatch(release_re, running)
+        unknown = ("warn", "Açılış çekirdeği doğrulanamadı; yeniden başlatma gereksinimi bilinmiyor")
+        if current is None:
+            return unknown
+        for location in ("vmlinuz", "boot/vmlinuz"):
+            link = root / location
+            try:
+                info = link.lstat()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return unknown
+            try:
+                if not stat.S_ISLNK(info.st_mode):
+                    return unknown
+                image = link.resolve(strict=True)
+                match = re.fullmatch(r"vmlinuz-(" + release_re + r")", image.name)
+                if match is None or match[2] != current[1] or image.parent != (root / "boot").resolve():
+                    return unknown
+                release = match[1]
+                for artifact in (image, image.parent / ("initrd.img-" + release)):
+                    info = artifact.stat()
+                    if not stat.S_ISREG(info.st_mode) or info.st_size == 0:
+                        return unknown
+            except (OSError, RuntimeError):
+                return unknown
+            if release != running:
+                return "warn", "Açılış bağlantısındaki çekirdek farklı: %s → %s; yeniden başlatma bekliyor" % (running, release)
+            return "ok", "Yeniden başlatma işareti yok; çalışan ve açılış bağlantısındaki çekirdek aynı (%s)" % running
+        return unknown
+
+    def health_compute(self):
+        env = read_env(self.args.state)
+        checks = []
+
+        def add(key, name, status, detail):
+            checks.append({"id": key, "name": name, "status": status, "detail": detail})
+
+        add("units", "Servisler", *self.health_units(env))
+
+        rc, out = self.health_cmd(["tailscale", "status", "--json"])
+        try:
+            ts = json.loads(out) if rc == 0 else None
+        except (ValueError, RecursionError):
+            ts = None
+        if not isinstance(ts, dict) or not isinstance(ts.get("Self"), dict):
+            add("tailscale", "Tailscale", "bad", "Durum okunamadı")
+        else:
+            me = ts.get("Self") or {}
+            running, online = ts.get("BackendState") == "Running", me.get("Online") is True
+            status, parts = ("ok" if running and online else "bad"), ["çalışıyor" if running else "durum: %s" % ts.get("BackendState", "?"),
+                                                                  "çevrimiçi" if online else "çevrimdışı"]
+            expiry = me.get("KeyExpiry")
+            if expiry is not None:
+                try:
+                    days = (datetime.datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+                            - datetime.datetime.now(datetime.timezone.utc)).days
+                    parts.append("anahtar %d gün sonra doluyor" % days)
+                    if days < KEY_EXPIRY_WARN_DAYS and status == "ok":
+                        status = "warn"
+                except (ValueError, TypeError, AttributeError, OverflowError):
+                    parts.append("anahtar süresi okunamadı")
+                    if status == "ok":
+                        status = "warn"
+            else:
+                parts.append("anahtar süresi dolmuyor")
+            add("tailscale", "Tailscale", status, " · ".join(parts))
+
+        rc, out = self.health_cmd(["master-firewall", "--check"], timeout=30)
+        add("firewall", "Güvenlik duvarı", "ok" if rc == 0 else "bad",
+            "Kurallar beklenen biçimde" if rc == 0 else "Denetim başarısız; 5 dk içinde yeniden uygulanır")
+
+        add("reboot", "Yeniden başlatma", *self.health_reboot())
+
+        rc, out = self.health_cmd(["timedatectl", "show", "-p", "NTPSynchronized", "--value"])
+        synced = rc == 0 and out.strip() == "yes"
+        add("clock", "Saat", "ok" if synced else "warn",
+            "Eşitlenmiş" if synced else "Eşitlenmemiş; paylaşım süreleri ve güncellemeler etkilenebilir"
+            if rc == 0 and out.strip() == "no" else "Saat eşitleme durumu okunamadı")
+
+        seen = set()
+        for label, path in (("Sistem diski", "/"), ("Kullanıcı alanı", env.get("SERVER_ROOT", ""))):
+            try:
+                st, dev = os.statvfs(path), os.stat(path).st_dev
+            except (OSError, TypeError, ValueError):
+                add("disk:" + path, label, "warn", "Disk ölçümü okunamadı")
+                continue
+            if dev in seen:
+                continue
+            seen.add(dev)
+            total, free = st.f_blocks * st.f_frsize, st.f_bavail * st.f_frsize
+            # Yüklemelerin bıraktığı pay (DD-180): altına inince yükleme reddedilir.
+            reserve = min(5 * 1024 ** 3, total // 10)
+            inodes = 100 * st.f_favail / st.f_files if st.f_files > 0 else None
+            status = "bad" if free < reserve or inodes == 0 else "warn" if total <= 0 or free < 2 * reserve or inodes is None or inodes < 5 else "ok"
+            add("disk:" + path, label, status, "%s boş (%%%d) · %s" % (
+                human_bytes(free), round(100 * free / total) if total else 0, path)
+                + (" · inode ölçümü okunamadı" if inodes is None else " · inode %%%d boş" % inodes))
+
+        https = None
+        try:
+            managed = master_settings.Manager(self.args.state).status()
+            https = managed.get("https")
+            pending = managed["pending"]
+            if pending is None:
+                add("settings", "Ayar işlemi", "ok", "Bekleyen işlem yok")
+            elif pending["phase"] == "stuck":
+                add("settings", "Ayar işlemi", "bad", "Geri alma takıldı; Ayarlar'da yeniden deneyin ya da bırakın")
+            else:
+                add("settings", "Ayar işlemi", "warn", "Onay ya da geri alma bekleniyor")
+        except (master_settings.SettingsError, OSError, KeyError, ValueError, TypeError, AttributeError, RecursionError):
+            add("settings", "Ayar işlemi", "warn", "Ayar işlemi durumu okunamadı")
+
+        https_configured = False
+        try:
+            shares = master_shares.Manager(self.args.state)
+            wan = shares.wan_info()
+            https_configured = wan.get("mode") == "https"
+            wanted = any(i["connections"]["wan"]["enabled"] for i in shares.read()["items"])
+            if (wanted or https_configured) and not wan["available"]:
+                add("wan", "İnternet paylaşımı", "warn", wan["reason"])
+        except master_shares.ShareError as err:
+            # The share manager's reason is operator-facing (e.g. unsupported registry).
+            add("wan", "İnternet paylaşımı", "warn", "Paylaşım durumu okunamadı: " + str(err))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError):
+            add("wan", "İnternet paylaşımı", "warn", "Paylaşım durumu okunamadı")
+
+        # The settings status uses master_https's local, chain/hostname-verified probe.
+        # A configured HTTPS listener also renews certificates without active shares.
+        if https is not None or https_configured:
+            try:
+                mode = https["mode"]
+                if mode not in ("http", "https", "off"):
+                    raise ValueError("HTTPS mode")
+                if mode == "https":
+                    status = "ok" if https["status"] == "ready" else "warn"
+                    if not isinstance(https["domain"], str) or not https["domain"]:
+                        raise ValueError("HTTPS domain")
+                    parts = [https["domain"], https.get("message") or
+                             ("Sertifika yerelde doğrulandı" if status == "ok" else "Sertifika henüz hazır değil")]
+                    if status == "ok":
+                        expiry = https["expires"]
+                        if type(expiry) not in (int, float):
+                            raise ValueError("certificate expiry")
+                        until = datetime.datetime.fromtimestamp(expiry, datetime.timezone.utc)
+                        remaining = expiry - time.time()
+                        if remaining <= CERT_EXPIRY_WARN_DAYS * 86400:
+                            status = "warn"
+                        parts.append("Sertifikanın süresi dolmuş" if remaining <= 0 else
+                                     "Sertifika %d gün sonra doluyor (%s UTC)" %
+                                     (int(remaining // 86400), until.strftime("%d.%m.%Y")))
+                    parts.append("Yerel sertifika denetimi; internetten erişim sınanmadı")
+                    add("https", "İnternet paylaşımı · HTTPS", status, " · ".join(parts))
+            except (KeyError, ValueError, TypeError, OverflowError, OSError):
+                add("https", "İnternet paylaşımı · HTTPS", "warn", "Sertifika durumu veya süresi okunamadı")
+
+        order = {"ok": 0, "warn": 1, "bad": 2}
+        worst = max((c["status"] for c in checks), key=order.get, default="ok")
+        return {"status": worst, "checks": checks, "read_at": int(time.time())}
+
+    def web_view(self, env, networks):
+        ts_ip = env.get("TAILSCALE_IPV4", "")
+        files = [(env.get("CADDYFILE", ""), "base")]
+        mod_dir = env.get("CADDY_MODULES_DIR", "")
+        if mod_dir and os.path.isdir(mod_dir):
+            files += [(os.path.join(mod_dir, n), n[:-len(".caddy")]) for n in sorted(os.listdir(mod_dir))
+                      if n.endswith(".caddy") and not n.startswith(".")]
+        entries, raws = [], []
+        snippets = split_snippets(read_text(files[0][0]))[1]
+        for path, source in files:
+            text = read_text(path)
+            if text is None:
+                continue
+            raws.append({"file": path, "text": text})
+            for site in parse_caddy(text, ts_ip, source, snippets):
+                for addr in site["addresses"]:
+                    public_share = source.endswith("-wan")  # generated public sites (DD-191/195/199)
+                    if public_share and addr.startswith(":"):
+                        addr = env.get("WAN_IPV4", "") + addr
+                    entries.append({"address": addr, "routes": site["routes"], "source": source,
+                                    "access": "wan" if public_share else "tailscale", "scheme": site["scheme"]})
+        return {"entries": entries, "raw": raws}
+
+    def dns_view(self, env):
+        conf_dir = env.get("DNSMASQ_CONF_DIR", "")
+        view = {"listen": [], "domains": [], "names": [], "dhcp": False, "raw": []}
+        names = sorted(os.listdir(conf_dir)) if conf_dir and os.path.isdir(conf_dir) else []
+        for name in names:
+            if not name.endswith(".conf") or name.startswith("."):
+                continue
+            path = os.path.join(conf_dir, name)
+            text = read_text(path)
+            if text is None:
+                continue
+            source = name[len("modul-"):-len(".conf")] if name.startswith("modul-") else "base"
+            got = parse_dnsmasq(text, source)
+            view["raw"].append({"file": path, "text": text})
+            view["listen"] += [x for x in got["listen"] if x not in view["listen"]]
+            view["domains"] += [x for x in got["domains"] if x not in view["domains"]]
+            view["names"] += got["names"]
+            view["dhcp"] = view["dhcp"] or got["dhcp"]
+        ts_if = env.get("TAILSCALE_IF", "tailscale0")
+        for n in view["names"]:
+            if n["iface"]:
+                families = (n["family"],) if n["family"] else (4, 6)
+                addresses = [env.get("TAILSCALE_IPV%d" % family, "") for family in families] if n["iface"] == ts_if else []
+                n["address"] = ", ".join(a for a in addresses if a)
+        return view
+
+    def settings(self, fresh=False):
+        """DD-155: Ayarlar sayfası. Salt okunur: kurallar canlı (sayaçlarıyla), yapılandırma dosyaları
+        olduğu gibi; hesap, parola ya da anahtar taşıyan hiçbir dosya okunmaz. "Yenile" önbelleği atlar."""
+        # DD-181: aynı anda gelen yenilemeler tek hesaplamayı paylaşır (iptables/ss/firewall --check).
+        # "Yenile" önbelleği atlar; yalnız beklerken biten bir hesaplama varsa onu kullanır.
+        runs = self.settings_runs
+        with self.settings_lock:
+            stamp, data = self.settings_cache
+            if data is not None and (self.settings_runs != runs if fresh else time.time() - stamp < SETTINGS_CACHE_SECONDS):
+                return data
+            data = self.settings_compute()
+            self.settings_runs += 1
+            return data
+
+    def settings_compute(self):
+        now = time.time()
+        env = read_env(self.args.state)
+        # DD-200: VPN ağları yalnız kurulu paketlerin API bildiriminden gelir (anahtar taşımaz).
+        networks = self.package_networks(env)
+        vpn_apps = self.vpn_apps(env)
+        data = {
+            "read_at": int(now), "version": env.get("V2_VERSION", ""), "domain": env.get("LOCAL_DOMAIN", ""),
+            "tailscale": env.get("TAILSCALE_IPV4", ""), "tailscale6": env.get("TAILSCALE_IPV6", ""),
+            "ts_if": env.get("TAILSCALE_IF", ""),
+            "wan": {"iface": env.get("WAN_INTERFACE", ""), "ipv4": env.get("WAN_IPV4", ""), "ipv6": env.get("WAN_IPV6", "")},
+            "firewall": self.firewall_view(env, networks),
+            "web": self.web_view(env, networks),
+            "dns": self.dns_view(env),
+        }
+        # Presentation metadata only; no peer identities or firewall mutations.
+        data["firewall"]["vpn_installed"] = bool(vpn_apps)
+        data["firewall"]["vpn_name"] = vpn_apps[0] if vpn_apps else ""
+        data["firewall"]["networks"] = [{k: net.get(k, "") for k in ("app", "iface", "label", "active", "server4", "server6")}
+                                        for net in networks]
+        if env.get("SETTINGS_FILE"):
+            try:
+                data["manage"] = master_settings.Manager(self.args.state).status()
+                data["firewall"]["rules"] = self.all_firewall_rules(env)
+                data["firewall"]["listeners"] = self.listeners(env, networks)
+                data["firewall"]["ports"] = self.settings_ports(env, networks, data["firewall"]["listeners"])
+            except (master_settings.SettingsError, OSError, ValueError, KeyError) as err:
+                data["manage"] = {"error": str(err) if isinstance(err, master_settings.SettingsError) else "Ayar yönetimi okunamadı; kurulumu yenileyin."}
+        self.settings_cache = (now, data)
+        return data
+
+    def all_firewall_rules(self, env):
+        rows, errors = [], []
+        ours = {env.get(k) for k in ("CHAIN_INPUT", "CHAIN_FORWARD", "CHAIN_NAT", "CHAIN_SETTINGS")}
+        for family, binary in ((4, "iptables-save"), (6, "ip6tables-save")):
+            try:
+                p = subprocess.run([binary, "-c"], capture_output=True, timeout=10, env=self.env())
+                if p.returncode:
+                    raise OSError()
+                table, seq = "", {}
+                for line in p.stdout.decode("utf-8", "replace").splitlines():
+                    if line.startswith("*"):
+                        table = line[1:]
+                        continue
+                    policy = re.fullmatch(r":(\S+) (\S+) \[(\d+):(\d+)\]", line)
+                    if policy:
+                        chain, action, packets, size = policy.groups()
+                        rows.append({"family": family, "table": table, "chain": chain, "position": "—",
+                                     "packets": int(packets), "bytes": int(size), "spec": "Politika: " + action if action != "-" else "Özel zincir",
+                                     "owner": "Tailscale" if chain.startswith("ts-") else "Konsol" if chain in ours else "Sistem / üçüncü taraf"})
+                        continue
+                    match = re.match(r"\[(\d+):(\d+)\] -A (\S+) (.*)", line)
+                    if match:
+                        packets, size, chain, spec = match.groups()
+                        seq[(table, chain)] = seq.get((table, chain), 0) + 1
+                        rows.append({"family": family, "table": table, "chain": chain, "position": seq[(table, chain)],
+                                     "packets": int(packets), "bytes": int(size), "spec": spec,
+                                     "owner": "Tailscale" if chain.startswith("ts-") else "Konsol" if chain in ours else "Sistem / üçüncü taraf"})
+            except (OSError, subprocess.TimeoutExpired):
+                errors.append("IPv%d kuralları okunamadı" % family)
+        return {"rows": rows, "errors": errors}
+
+    @staticmethod
+    def binding_scope(address, env, networks):
+        """Classify a local socket binding, not packet reachability or firewall permission."""
+        host, _, zone = address.partition("%")
+        if host == "*":
+            return "any"
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return "unknown"
+        if ip.is_unspecified:
+            return "any"
+        if ip.is_loopback:
+            return "lo"
+        addresses = [("tail", env.get("TAILSCALE_IF", "tailscale0"),
+                      [env.get("TAILSCALE_IPV4", ""), env.get("TAILSCALE_IPV6", "")]),
+                     ("wan", env.get("WAN_INTERFACE", ""),
+                      [env.get("WAN_IPV4", ""), env.get("WAN_IPV6", "")])]
+        addresses += [(n["iface"], n["iface"], [n["server4"], n["server6"]]) for n in networks]
+        for scope, iface, values in addresses:
+            if zone:
+                if iface and zone == iface:
+                    return scope
+                continue
+            for value in values:
+                try:
+                    if ip == ipaddress.ip_address(value.split("%", 1)[0]):
+                        return scope
+                except ValueError:
+                    continue
+        return "unknown"
+
+    def listeners(self, env, networks):
+        rows = []
+        for family in (4, 6):
+            try:
+                p = subprocess.run(["ss", "-H", "-lntu", "-" + str(family)], capture_output=True, timeout=10, env=self.env())
+                if p.returncode:
+                    return None
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            for line in p.stdout.decode().splitlines():
+                f = line.split()
+                if len(f) < 5 or f[0] not in ("tcp", "udp"):
+                    continue
+                addr, _, port = f[4].rpartition(":")
+                if port.isdigit():
+                    # ss may print [fe80::1]%tailscale0, not [fe80::1%tailscale0].
+                    addr = addr.replace("[", "").replace("]", "")
+                    rows.append({"proto": f[0], "family": family, "port": int(port), "address": addr,
+                                 "scope": self.binding_scope(addr, env, networks)})
+        return rows
+
+    def settings_ports(self, env, networks, listeners=None):
+        rows = []
+        tailnet = master_settings.tailnet_ports(env)
+        tail_keys = {(r["family"], r["proto"], r["port"]) for r in tailnet}
+        tail_keys.update((f, "udp", n["port"]) for n in networks for f in (4, 6))
+        try:
+            shares = master_shares.Manager(self.args.state)
+            if shares.wan_active():
+                wan = shares.wan_info()
+                rows.append({"name": "Paylaşım WebDAV %s · WAN" % wan["scheme"].upper(), "family": 4, "proto": "tcp",
+                             "port": int(wan["port"]), "scope": "wan", "baseline": True})
+        except (OSError, ValueError, KeyError, master_shares.ShareError):
+            pass
+        try:
+            # Published packages and Konsol (DD-195/199) share WebDAV's HTTPS port and budgets.
+            apps = master_publications.https_apps_active(env)
+            if apps:
+                port = int(env["SHARE_HTTPS_PORT"])
+                shared = next((r for r in rows if r["scope"] == "wan" and r["port"] == port), None)
+                if shared:
+                    shared["name"] = "Caddy HTTPS · %s + WebDAV · WAN" % " + ".join(apps)
+                else:
+                    rows.append({"name": "Caddy HTTPS · %s · WAN" % " + ".join(apps), "family": 4, "proto": "tcp",
+                                 "port": port, "scope": "wan", "baseline": True})
+        except (OSError, ValueError, KeyError, master_settings.SettingsError):
+            pass
+        for p in self.ports(env, networks):
+            scope = {"internet": "wan", "tailscale": "tail", "loopback": "lo"}[p["scope"]]
+            for family in p.get("families", (4, 6)):
+                for proto in p["proto"].split("+"):
+                    # WAN IPv6 has no VPN endpoint permission (DD-198 vpn rows are IPv4 UDP).
+                    if not (scope == "wan" and family == 6 and p.get("vpn")):
+                        row = {"name": p["name"], "family": family, "proto": proto, "port": p["port"],
+                               "scope": scope, "baseline": True}
+                        if p.get("fixed"):
+                            row["fixed"] = True
+                        rows.append(row)
+                    if p.get("vpn") and scope == "wan":
+                        rows.append({"name": p["name"], "family": family, "proto": proto, "port": p["port"],
+                                     "scope": "tail", "baseline": True})
+        # DD-173: generate the tailnet catalogue from configured permissions,
+        # never from arbitrary sockets. Keep raw listeners/technical rules intact.
+        rows = [r for r in rows if r["scope"] != "tail" or (r["family"], r["proto"], r["port"]) in tail_keys]
+        seen = {(r["family"], r["proto"], r["port"], r["scope"]) for r in rows}
+        names = {(r["proto"], r["port"]): r["name"] for r in rows}
+        names.update({(r["proto"], r["port"]): r["name"] for r in tailnet if r["name"] == "Tailscale PeerAPI"})
+        for listener in [*(listeners or []), *tailnet]:
+            # Local inventory stays complete; sockets create no remote access rows.
+            key = (listener["family"], listener["proto"], listener["port"], "lo")
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({"name": names.get((listener["proto"], listener["port"]), "Diğer dinleyici"),
+                         "family": listener["family"], "proto": listener["proto"],
+                         "port": listener["port"], "scope": "lo", "baseline": True})
+        for port in tailnet:
+            key = (port["family"], port["proto"], port["port"], "tail")
+            if key not in seen:
+                seen.add(key)
+                rows.append({**port, "scope": "tail", "baseline": True})
+        return rows
+
+    def run_worker(self, argv, data, failure):
+        """A root worker as its own transient unit (outside this backend's sandbox), JSON on stdin,
+        JSON object on stdout; stdin is private, so no password reaches argv, environment or journal."""
+        full = ["systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+                "--property=UMask=0077", "--property=RuntimeMaxSec=150",
+                "--setenv=PYTHONDONTWRITEBYTECODE=1", *argv]
+        try:
+            p = subprocess.run(full, input=json.dumps(data), capture_output=True, text=True, timeout=155, env=self.env())
+            result = json.loads(p.stdout)
+            if not isinstance(result, dict):
+                raise ValueError("worker response is not an object")
+            self.settings_cache = (0, None)
+            return (400 if p.returncode else 200), result
+        except (OSError, subprocess.TimeoutExpired, ValueError, RecursionError):
+            return 502, {"error": failure}
+
+    def settings_run(self, action, data, shares=False):
+        helper = os.path.join(os.path.dirname(self.args.master_modul), "master_shares.py" if shares else "master_settings.py")
+        failure = ("İşlem sonucu alınamadı. Tekrar kaydetmeden önce WebDAV listesini yenileyip durumu kontrol edin." if shares
+                   else "İşlem sonucu alınamadı. Ayarlar sayfasını yenileyin; onaysız işlem sunucuda geri alınır.")
+        return self.run_worker(["/usr/bin/python3", helper, "--state", self.args.state, action], data, failure)
+
+    def actions(self):
+        """Son işlemler: iki arka ucun audit satırları (journald), yeniden eskiye."""
+        now = time.time()
+        stamp, rows = self.actions_cache
+        if now - stamp < ACTIONS_CACHE_SECONDS:
+            return rows
+        cmd = ["journalctl", "-u", "master-panel.service", "-u", "master-files-panel.service",
+               "--since", "-7 days", "-n", "400", "-o", "short-unix", "--no-pager"]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=15, stdin=subprocess.DEVNULL,
+                                  env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"})
+            lines = proc.stdout.decode("utf-8", "replace").splitlines() if proc.returncode == 0 else []
+        except (OSError, subprocess.SubprocessError):
+            lines = []
+        rows = []
+        for line in lines:
+            stamp_text, _, rest = line.partition(" ")
+            body = rest.partition(": ")[2]
+            m = ACTION_RE.match(body.strip())
+            if not m:
+                continue
+            try:
+                when = int(float(stamp_text))
+            except ValueError:
+                continue
+            # Dosya arka ucu ayrıntıyı JSON olarak yazar; sayfada tırnaksız görünsün.
+            detail = m.group(5)
+            if detail.startswith('"') and detail.endswith('"'):
+                try:
+                    detail = json.loads(detail)
+                except (ValueError, RecursionError):
+                    pass
+            rows.append({"at": when, "source": m.group(1), "user": m.group(2), "client": m.group(3),
+                         "action": m.group(4), "detail": detail[:200], "ok": m.group(6) == "ok"})
+        rows = rows[-ACTIONS_LIMIT:][::-1]
+        self.actions_cache = (now, rows)
+        return rows
+
+
+
+def num_or(value, default):
+    return int(value) if value and str(value).isdigit() else default
+
+
+def human_bytes(n):
+    """Konsol'un bytes() biçimiyle aynı: 1024 tabanı, virgüllü tek basamak."""
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return ("%d %s" % (n, unit)) if unit == "B" else ("%.1f %s" % (n, unit)).replace(".", ",")
+        n /= 1024
+    return ("%.2f TB" % n).replace(".", ",")
+
+
+class ApiError(Exception):
+    """A package API's HTTP error answer (raised through PackageContext.error)."""
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class PackageContext:
+    """DD-200: what a package's API module may use of the backend. No socket, no handler,
+    no other package: its tool runs with the backend's environment, the port catalogue is
+    read-only and errors become JSON answers through ctx.error()."""
+    confirm_word = CONFIRM_WORD
+
+    def __init__(self, panel, mid):
+        self.panel = panel
+        self.mid = mid
+
+    def env(self):
+        return read_env(self.panel.args.state)
+
+    @staticmethod
+    def read_env(path):
+        """DD-201: a package's own KEY=value file (its rendered folder), same parser as state.env."""
+        return read_env(path)
+
+    def tool(self, name):
+        if not re.fullmatch(r"[a-z][a-z0-9_.-]{1,40}", name):
+            raise ValueError("tool name")
+        return os.path.join(self.panel.tool_dir(), name)
+
+    def run(self, argv, binary=False, timeout=120):
+        return self.panel.run_tool(argv, binary=binary, timeout=timeout)
+
+    def state_path(self):
+        return self.panel.args.state
+
+    def worker(self, argv, data):
+        """DD-202: a package's own worker as a transient root unit with JSON on stdin (the base
+        settings/share workers run the same way); the script must sit in the package's folder."""
+        here = os.path.realpath(os.path.join(self.env().get("MODULES_DIR", ""), self.mid))
+        script = next((a for a in argv if a.endswith(".py")), "")
+        if not here or not os.path.realpath(script).startswith(here + os.sep):
+            return 400, {"error": "paket çalışanı paket klasöründe değil"}
+        return self.panel.run_worker(argv, data, "İşlem sonucu alınamadı; sayfayı yenileyip durumu kontrol edin.")
+
+    def ports(self, env=None):
+        return self.panel.ports(env if env is not None else self.env())
+
+    @staticmethod
+    def error(code, message):
+        return ApiError(int(code), str(message))
+
+    def settings_changed(self):
+        self.panel.settings_cache = (0, None)
+
+    def log(self, message):
+        print("panel: %s: %s" % (self.mid, message), flush=True)
+
+
+class ApiRequest:
+    """One gated request handed to a package API: method, sub-path, query, JSON body, actor."""
+    def __init__(self, method, path, query, data, user, client, audit):
+        self.method = method
+        self.path = path
+        self.query = query
+        self.data = data
+        self.user = user
+        self.client = client
+        self.audit = audit
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "master-panel"
+    sys_version = ""
+    protocol_version = "HTTP/1.1"
+    panel = None
+
+    def log_message(self, fmt, *args):
+        # DD-181: istek satırı yazılmaz (dosya arka ucu gibi). Açık bir Konsol sekmesi her
+        # 10 sn istek atar; bu satırlar "Son işlemler"in okuduğu audit satırlarını itiyordu.
+        pass
+
+    def audit(self, user, action, detail, ok):
+        print("panel: %s %s %s %s -> %s" % (user, self.client(), action, detail, "ok" if ok else "hata"), flush=True)
+
+    def parse_request(self):
+        self.body_read = False
+        return super().parse_request()
+
+    def body_pending(self):
+        """DD-180: okunmamış bir gövde, Caddy'nin yeniden kullandığı bağlantıda bir sonraki
+        istek sanılmasın (gövdeye gizlenen istek CSRF kapısını ve adres kuralını aşardı)."""
+        return not self.body_read and bool(self.headers.get("Transfer-Encoding")
+                                           or (self.headers.get("Content-Length") or "0").strip() != "0")
+
+    def client(self):
+        # DD-180: sokete yalnız Caddy ve root bağlanabilir; istemcinin adresi Caddy'nin
+        # yazdığı X-Forwarded-For'dadır. Başlığı olmayan istek sunucunun kendisidir.
+        forwarded = self.headers.get("X-Forwarded-For", "") if self.headers else ""
+        return forwarded.split(",")[-1].strip()[:64] if forwarded else "yerel"
+
+    def channel(self):
+        """DD-195: hangi Caddy sitesinden gelindi? Başlığı yalnız Caddy yazar (istemcininki ezilir)."""
+        if self.headers.get("X-Forwarded-For") is None:
+            return "yerel"
+        return "internet" if self.headers.get(CHANNEL_HEADER) == "internet" else "tailscale"
+
+    # -- yanıt
+    def send(self, code, body=b"", ctype="application/json; charset=utf-8", extra=None):
+        if isinstance(body, str):
+            body = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", CSP)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        for k, v in (extra or {}).items():
+            self.send_header(k, v)
+        if self.close_connection or self.body_pending():
+            self.send_header("Connection", "close")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def json(self, code, obj):
+        self.send(code, json.dumps(obj, ensure_ascii=False))
+
+    def error(self, code, message):
+        # Dosya arka ucuyla aynı: hatadan sonra bağlantı kapanır.
+        self.close_connection = True
+        self.json(code, {"error": message})
+
+    # -- kapılar
+    def gate(self):
+        """Host ve (API için) köken denetimi. İşlemi yapanın günlük adı ya da None (yanıt gönderildi).
+        DD-194: oturumu Caddy her panel isteği için /oturum-denetle ile sorar; bu iki denetim
+        (DNS rebinding ve başka sitenin tarayıcıdan attığı istek) oturumdan bağımsız kalır."""
+        host = (self.headers.get("Host") or "").lower()
+        if host not in self.allowed_hosts():
+            self.error(403, "bu adresten erişilemez")
+            return None
+        # DD-180: Caddy her isteğe gerçek istemci adresini yazar (istemcinin yazdığını ezer).
+        # Sunucudaki bir program (ör. indirme hesabıyla çalışan bir paket servisi) Caddy'nin tailnet
+        # adresine bağlanıp buraya ulaşamasın: istemci başka bir Tailscale cihazı olmalı.
+        # Başlıksız istek soketin kendisinden gelir (yalnız root ve Caddy'nin grubu).
+        # DD-195: internet sitesi yalnız yayın açıkken (alan adı, WAN IPv4, Konsol hesabı) ve
+        # istemci sunucunun kendi adresi değilken kabul edilir.
+        channel = self.channel()
+        if channel == "internet":
+            if not self.panel.public_open() or not self.public_client():
+                self.error(403, "Konsol'un internet yayını kapalı")
+                return None
+        elif channel == "tailscale" and not remote_tailnet(self.client()):
+            self.error(403, "Konsol yalnız başka bir Tailscale cihazından kullanılır")
+            return None
+        if self.path.startswith("/api/"):
+            site = self.headers.get("Sec-Fetch-Site")
+            if self.headers.get(API_HEADER) != "1" or (site and site not in ("same-origin", "none")):
+                self.error(403, "istek reddedildi (yalnız panel sayfasından)")
+                return None
+        return ACTOR
+
+    def public_client(self):
+        try:
+            ip = ipaddress.ip_address(self.client())
+        except ValueError:
+            return False
+        return not own_address(getattr(ip, "ipv4_mapped", None) or ip)
+
+    # -- Konsol oturumu (DD-194)
+    def cookie_token(self):
+        for header in self.headers.get_all("Cookie") or []:
+            for part in header.split(";"):
+                name, sep, value = part.strip().partition("=")
+                if sep and name == master_auth.COOKIE:
+                    return value.strip()
+        return None
+
+    def session_cookie(self, token):
+        # HTTP inside the tailnet (Tailscale encrypts the transport), so no Secure flag there.
+        # DD-195: over HTTPS (the public address) the browser never sends it over plain HTTP.
+        value, age = (token, master_auth.SESSION_SECONDS) if token else ("", 0)
+        secure = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
+        return "%s=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d%s" % (master_auth.COOKIE, value, age, secure)
+
+    def session_gate(self):
+        """Caddy forward_auth target for every protected panel request (pages, files, API).
+        DD-205: the tailnet site asks for no sign-in — gate() already required another Tailscale
+        device (DD-180) — and sends its sign-in page back to Konsol. The internet site (and a
+        caller without Caddy's forwarding headers) needs a session, except for the sign-in page."""
+        page = (self.headers.get("X-Forwarded-Uri") or "").split("?", 1)[0]
+        if self.channel() == "tailscale":
+            if page == "/giris.html":
+                self.send(302, extra={"Location": "/"})
+            else:
+                self.send(204)
+            return
+        try:
+            user = self.panel.auth().user_for(self.cookie_token())
+        except master_auth.AuthError as err:
+            self.error(err.status, str(err))
+            return
+        except OSError:
+            self.error(503, "Konsol hesap kaydı okunamadı; kurulumu yeniden çalıştırın.")
+            return
+        if user or page == "/giris.html":
+            self.send(204)
+        elif page.startswith("/api/"):
+            self.close_connection = True
+            self.json(401, {"error": "Oturum gerekli; yeniden giriş yapın.", "giris": True})
+        else:
+            self.send(302, extra={"Location": "/giris.html"})
+
+    def account_post(self, path, data):
+        action = path.rsplit("/", 1)[-1]
+        name = {"kur": "hesap-kur", "giris": "giris", "cikis": "cikis", "parola": "parola-degis"}[action]
+        client = self.client()
+        public = self.channel() == "internet"
+        self.close_connection = True
+        try:
+            store = self.panel.auth()
+            if action == "cikis":
+                store.logout(self.cookie_token())
+                self.audit(ACTOR, name, "-", True)
+                self.send(200, json.dumps({"durum": "cikis"}), extra={"Set-Cookie": self.session_cookie(None)})
+                return
+            if public and action == "kur":
+                # DD-195/DD-205: the account is created only from a Tailscale device (gate() proved one).
+                raise master_auth.AuthError("Konsol hesabı yalnız Tailscale adresinden oluşturulur.", 403)
+            with self.panel.attempts.attempt(client, public):
+                try:
+                    token, result = None, "acik"
+                    if action == "kur":
+                        store.create(data.get("kullanici"), data.get("parola"))
+                        result = "kuruldu"
+                    elif action == "giris":
+                        token = store.login(data.get("kullanici"), data.get("parola"))
+                    elif public:
+                        # The internet address asks for the current password and keeps this browser's session.
+                        store.change_password(self.cookie_token(), data.get("eski"), data.get("yeni"))
+                        result = "degisti"
+                    else:
+                        # DD-205: the Tailscale device is the credential; no current password, every session ends.
+                        store.set_password(data.get("yeni"))
+                        result = "degisti"
+                except master_auth.AuthError as err:
+                    if err.status == 401:
+                        self.panel.attempts.failed(client, public)
+                    raise
+            self.audit(ACTOR, name, "-", True)
+            self.send(200, json.dumps({"durum": result}),
+                      extra={"Set-Cookie": self.session_cookie(token)} if token else None)
+        except master_auth.AuthError as err:
+            if err.status in (401, 429):
+                self.audit(ACTOR, name, "-", False)
+            self.send(err.status, json.dumps({"error": str(err)}, ensure_ascii=False),
+                      extra={"Retry-After": str(err.retry_after)} if err.retry_after else None)
+        except OSError:
+            self.error(503, "Konsol hesap kaydı okunamadı; kurulumu yeniden çalıştırın.")
+
+    def allowed_hosts(self):
+        env = read_env(self.panel.args.state)
+        hosts = set()
+        if env.get("LOCAL_DOMAIN"):
+            hosts.add("panel.%s" % env["LOCAL_DOMAIN"].lower())
+        hosts.update(h.lower() for h in self.panel.args.allow_host)
+        return hosts
+
+    def body_json(self):
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return None
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if length <= 0 or length > MAX_BODY:
+            return None
+        raw = self.rfile.read(length)
+        self.body_read = len(raw) == length
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, RecursionError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    # -- yöntemler
+    def do_GET(self):
+        user = self.gate()
+        if user is None:
+            return
+        path = urllib.parse.urlsplit(self.path).path
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        if path == "/oturum-denetle":
+            self.session_gate()
+            return
+        if path == "/api/konsol/oturum":
+            try:
+                # DD-205: the user name is shown to the tailnet (trusted device), not to an anonymous internet visitor.
+                self.json(200, dict(self.panel.auth().status(self.cookie_token(), reveal=self.channel() != "internet"), kanal=self.channel()))
+            except master_auth.AuthError as err:
+                self.error(err.status, str(err))
+            except OSError:
+                self.error(503, "Konsol hesap kaydı okunamadı; kurulumu yeniden çalıştırın.")
+            return
+        if path == "/api/konsol/paylasim":
+            try:
+                self.json(200, master_shares.Manager(self.panel.args.state).public())
+            except (master_shares.ShareError, OSError, ValueError, KeyError):
+                self.error(503, "Paylaşım kaydı okunamadı; kurulumu kontrol edin.")
+            return
+        if path == "/api/konsol/kaynaklar":
+            self.json(200, self.panel.system())
+            return
+        if path == "/api/konsol/ag":
+            self.json(200, self.panel.network())
+            return
+        if path == "/api/konsol/duzen":
+            self.json(200, {"duzen": self.panel.layout()})
+            return
+        if path == "/api/konsol/saglik":
+            self.json(200, self.panel.health())
+            return
+        m = re.match(r"^/api/konsol/konteynerler/(liste|ayrinti|gunluk|islem|guncellemeler)$", path)
+        if m:
+            try:
+                if m.group(1) == "islem":
+                    self.json(200, self.panel.containers.operation(query.get("id", [""])[0]))
+                    return
+                # DD-214: image update status from registry manifests; cached, ?yenile=1 asks again.
+                if m.group(1) == "guncellemeler":
+                    if not read_env(self.panel.args.state).get("KONTEYNER_STATE_DIR"):
+                        raise master_containers.ContainerError(503, "Konteyner yönetimi henüz hazır değil; kurulumu yeniden çalıştırın.")
+                    self.json(200, self.panel.containers.updates(force="yenile" in query))
+                    return
+                # Older state files retain their read-only view until the installer provisions
+                # the manager's private store and workers.
+                view = (self.panel.containers.view() if read_env(self.panel.args.state).get("KONTEYNER_STATE_DIR") else
+                        master_containers.Containers(lambda argv, timeout: self.panel.run_tool(argv, timeout=timeout)))
+                if m.group(1) == "liste":
+                    body = view.liste()
+                else:
+                    name = master_containers.name_of(query.get("ad", [""])[0])
+                    body = view.ayrinti(name) if m.group(1) == "ayrinti" else view.gunluk(name, query.get("satir", ["200"])[0])
+            except master_containers.ContainerError as err:
+                self.error(err.status, str(err))
+                return
+            self.json(200, body)
+            return
+        if path == "/api/konsol/ayarlar":
+            self.json(200, self.panel.settings(fresh="yenile" in query))
+            return
+        if path in ("/api/konsol/ayarlar/durum", "/api/konsol/ayarlar/klasorler"):
+            try:
+                manager = master_settings.Manager(self.panel.args.state)
+                self.json(200, {"items": manager.folders(query.get("path", [None])[0])} if path.endswith("klasorler") else manager.status())
+            except (master_settings.SettingsError, OSError, KeyError, ValueError) as err:
+                self.error(400, str(err) if isinstance(err, master_settings.SettingsError) else "Ayarlar okunamadı.")
+            return
+        if path == "/api/konsol/moduller":
+            try:
+                self.json(200, {"items": self.panel.modules()})
+            except RuntimeError as err:
+                self.error(502, str(err))
+            return
+        m = re.match(r"^/api/konsol/moduller/([a-z]{2,16})/gunluk$", path)
+        if m:
+            # DD-196: kurulu olmayan paketin günlüğü yoktur; istek paketin dosyalarına uzanmaz.
+            if not self.panel.module_state(m.group(1)):
+                self.error(404, "bu modül kurulu değil")
+                return
+            rc, out, message = self.panel.modul("gunluk", m.group(1), "80")
+            if rc != 0:
+                self.error(404 if "bilinmeyen modül" in message else 502, message or "günlük okunamadı")
+                return
+            self.send(200, out.encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        # DD-149: modül hesabı (root'a özel dosyadan). Parola yalnız ?parola=1 ile, açıkça
+        # istenince döner ve günlüğe yalnız "gösterildi" olarak geçer; değer hiçbir yere yazılmaz.
+        m = re.match(r"^/api/konsol/moduller/([a-z]{2,16})/hesap$", path)
+        if m:
+            # DD-200: hesap yalnız bildirimi PAKET_HESAP=1 olan kurulu pakette; satır biçimi motorun
+            # sözleşmesidir: kullanıcı, gecici|ayarli [, geçici parola]. Adres yayın bildiriminden.
+            mid = m.group(1)
+            env = read_env(self.panel.args.state)
+            manifest = master_settings.read_manifests(env).get(mid, {})
+            if manifest.get("PAKET_HESAP") != "1" or not self.panel.module_state(mid, env):
+                self.error(404, "bu modülde hesap yok")
+                return
+            reveal = query.get("parola") == ["1"]
+            rc, out, message = self.panel.modul("hesap", mid, *(["--parola"] if reveal else []))
+            fields = out.rstrip("\n").split("\t") if rc == 0 else []
+            temp = len(fields) >= 2 and fields[1] == "gecici"
+            if len(fields) not in (2, 3) or (reveal and temp and len(fields) != 3):
+                self.error(404, message or "hesap yok")
+                return
+            host = ""
+            info = master_publications.packages(env).get(mid)
+            if info and env.get("LOCAL_DOMAIN"):
+                host = "%s.%s" % (info["local"], env["LOCAL_DOMAIN"])
+            body = {"user": fields[0], "temp": temp, "host": host}
+            if reveal and temp:
+                body["pass"] = fields[2]
+                self.audit(user, "modul-hesap", mid, True)
+            self.json(200, body)
+            return
+        if path == "/api/konsol/islemler":
+            self.json(200, {"items": self.panel.actions()})
+            return
+        m = re.match(r"^/api/uygulama/([a-z]{2,16})(/.*)?$", path)
+        if m:
+            self.package_request(user, m.group(1), m.group(2) or "/", query, None)
+            return
+        self.error(404, "bulunamadı")
+
+    def package_request(self, user, mid, sub, query, data):
+        """DD-200: /api/uygulama/<id>/* → the installed package's API module, after the same
+        Host/CSRF/session gates as every other root route. Audit lines carry "<id>:<verb>"."""
+        env = read_env(self.panel.args.state)
+        manifest = master_settings.read_manifests(env).get(mid, {})
+        api = self.panel.package_api(mid, env, manifest, stopped=True)
+        if api is None:
+            name = manifest.get("PAKET_AD") or mid
+            if self.command == "POST":
+                self.error(409, "%s kurulu değil; Konsol → App Store'dan kurun" % name)
+            else:
+                self.error(404, "%s kurulu değil" % name)
+            return
+        request = ApiRequest(self.command, sub, query, data, user, self.client(),
+                             lambda verb, detail, ok: self.audit(user, "%s:%s" % (mid, verb), detail, ok))
+        try:
+            reply = api.handle(request)
+            if len(reply) == 2:
+                code, body = reply
+                self.json(int(code), body)
+            else:
+                code, body, ctype, headers = reply
+                self.send(int(code), body, ctype, headers or None)
+        except ApiError as err:
+            self.error(err.code, err.message)
+        except Exception as err:  # paketin hatası yalnız bu isteği düşürür
+            print("panel: %s API isteği başarısız (%s)" % (mid, err.__class__.__name__), flush=True)
+            self.error(502, "%s uygulaması isteği yanıtlayamadı" % (manifest.get("PAKET_AD") or mid))
+
+    def do_HEAD(self):
+        self.do_GET()
+
+
+    def do_POST(self):
+        user = self.gate()
+        if user is None:
+            return
+        path = urllib.parse.urlsplit(self.path).path
+        data = self.body_json()
+        if data is None:
+            self.error(400, "istek gövdesi JSON olmalı")
+            return
+        if path in ("/api/konsol/oturum/kur", "/api/konsol/oturum/giris",
+                    "/api/konsol/oturum/cikis", "/api/konsol/hesap/parola"):
+            self.account_post(path, data)
+            return
+        if path == "/api/konsol/duzen":
+            try:
+                detail, value = self.panel.save_layout(data)
+            except ValueError as err:
+                self.error(400, str(err))
+                return
+            except master_auth.AuthError as err:
+                self.error(err.status, str(err))
+                return
+            except OSError:
+                self.error(503, "Düzen kaydedilemedi; kurulumu yeniden çalıştırın.")
+                return
+            self.audit(user, "duzen", detail, True)
+            self.json(200, {"duzen": value})
+            return
+        if path == "/api/konsol/konteynerler/islem":
+            try:
+                result = self.panel.containers.submit(data)
+            except master_containers.ContainerError as err:
+                self.error(err.status, str(err))
+                return
+            self.audit(user, "konteyner-" + result["action"], result["name"], True)
+            self.json(202, result)
+            return
+        share_actions = {"kaydet": "save", "durum": "pause", "kaldir": "remove"}
+        if path in {"/api/konsol/paylasim/" + name for name in share_actions}:
+            code, result = self.panel.settings_run(share_actions[path.rsplit("/", 1)[-1]], data, shares=True)
+            self.audit(user, "paylasim-" + share_actions[path.rsplit("/", 1)[-1]], "klasör paylaşımı", code == 200)
+            self.close_connection = True
+            self.json(code, result)
+            return
+        # DD-182: "birak" ends a stuck rollback (typed "onayla"); the worker checks both.
+        actions = {"uygula": "apply", "onayla": "confirm", "geri-al": "rollback", "birak": "discard"}
+        if path in {"/api/konsol/ayarlar/" + name for name in actions}:
+            action = actions[path.rsplit("/", 1)[-1]]
+            if action == "confirm":
+                data["client"] = self.client()
+                # DD-195: Caddy pins Host to panel.<alan>; the name the browser used is
+                # X-Forwarded-Host, and the channel says which Caddy site carried it.
+                data["host"] = (self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "").lower()
+                data["kanal"] = self.channel()
+            code, result = self.panel.settings_run(action, data)
+            self.audit(user, "ayar-" + action, "ayarlar", code == 200)
+            self.close_connection = True
+            self.json(code, result)
+            return
+        m = re.match(r"^/api/konsol/moduller/([a-z]{2,16})/(%s)$" % "|".join(MODULE_ACTIONS), path)
+        if m:
+            mid, action = m.group(1), m.group(2)
+            known = [i["id"] for i in self.panel.modules()] if MODULE_ID_RE.match(mid) else []
+            if mid not in known:
+                self.error(404, "bilinmeyen modül")
+                return
+            if action == "kur":
+                code, message = self.panel.module_install(mid, data.get("form"))
+            else:
+                code, message = self.panel.module_spawn(mid, action, bool(data.get("veri")))
+            self.audit(user, "modul-" + action, mid + (" +veri" if action == "kaldir" and data.get("veri") else ""), code == 202)
+            if code != 202:
+                self.error(code, message)
+                return
+            self.json(202, {"id": mid, "action": action})
+            return
+        m = re.match(r"^/api/uygulama/([a-z]{2,16})(/.*)?$", path)
+        if m:
+            self.package_request(user, m.group(1), m.group(2) or "/", {}, data)
+            return
+        self.error(404, "bulunamadı")
+
+
+class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    """DD-180: yalnız Unix soketi. Bağlananı dosya izni ve çekirdeğin bildirdiği kimlik sınırlar."""
+    daemon_threads = True
+    request_queue_size = 128
+
+    def __init__(self, path, handler=None, group_gid=None):
+        self.group_gid = group_gid
+        self.uids = {0, os.geteuid()}
+        # Soket dosyası bind anında yalnız sahibine açık doğar; grup izni sonra verilir.
+        old = os.umask(0o177)
+        try:
+            super().__init__(path, handler or Handler)
+        finally:
+            os.umask(old)
+        if group_gid is not None:
+            os.chown(path, -1, group_gid)
+            os.chmod(path, 0o660)
+
+    def verify_request(self, request, client_address):
+        if not hasattr(socket, "SO_PEERCRED"):
+            return True  # Linux dışı (geliştirme): sınır dosya izni
+        size = struct.calcsize("3i")
+        _pid, uid, gid = struct.unpack("3i", request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size))
+        if uid in self.uids or (self.group_gid is not None and gid == self.group_gid):
+            return True
+        print("panel: soket reddedildi (uid %d gid %d)" % (uid, gid), file=sys.stderr, flush=True)
+        return False
+
+
+def cmd_serve(args):
+    kind, _, path = args.listen.partition(":")
+    if kind != "unix" or not path.startswith("/") or len(path.encode()) > 100:
+        fail("panel yalnız bir Unix soketinde dinler (unix:/run/.../api.sock)")
+    group_gid = None
+    if args.socket_group:
+        try:
+            group_gid = grp.getgrnam(args.socket_group).gr_gid
+        except KeyError:
+            fail("soket grubu yok: %s" % args.socket_group)
+    try:
+        if stat.S_ISSOCK(os.lstat(path).st_mode):
+            os.unlink(path)  # önceki çalışmadan kalan soket
+    except FileNotFoundError:
+        pass
+    Handler.panel = Panel(args)
+    httpd = Server(path, group_gid=group_gid)
+    threading.Thread(target=Handler.panel.sample_resources_forever, name="resource-sampler", daemon=True).start()
+    print("panel: %s dinleniyor" % path, flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="master-panel")
+    sub = parser.add_subparsers(dest="cmd")
+    s = sub.add_parser("serve")
+    s.add_argument("--listen", required=True)
+    s.add_argument("--socket-group", dest="socket_group", default="")
+    s.add_argument("--state", required=True)
+    s.add_argument("--master-modul", dest="master_modul", required=True)
+    s.add_argument("--allow-host", dest="allow_host", action="append", default=[])
+    s.add_argument("--state-env", dest="state_env", action="store_true",
+                   help="master-modul'e ve paket araçlarına STATE_FILE olarak --state verilir (test)")
+    c = sub.add_parser("check")
+    c.add_argument("--url", required=True)
+    c.add_argument("--host", required=True)
+    c.add_argument("--socket", default="")
+    args = parser.parse_args()
+    if args.cmd == "serve":
+        cmd_serve(args)
+    elif args.cmd == "check":
+        cmd_check(args)
+    else:
+        parser.print_usage()
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

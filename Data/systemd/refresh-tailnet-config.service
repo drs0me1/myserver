@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh master-stack Tailscale addresses in state.env
+After=network-online.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=oneshot
+Environment=STATE_FILE=/etc/master-stack/state.env
+Environment=REFRESH_TAILNET_WAIT_TIMEOUT=120s
+# wait 120s + state/Caddy restart için pay
+TimeoutStartSec=150s
+ExecStart=/usr/local/sbin/refresh-tailnet-config
+
+[Install]
+WantedBy=tailscaled.service

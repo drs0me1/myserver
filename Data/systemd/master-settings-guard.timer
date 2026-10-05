@@ -1,0 +1,10 @@
+[Unit]
+Description=Konsol settings rollback deadline
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=2s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

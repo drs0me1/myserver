@@ -1,0 +1,279 @@
+Master Stack — kullanım (yalnız macOS)
+
+Repo kökünde yalnız çift tıklanan dosyalar durur:
+  <sürüm>.command            güncel kurulum (2026.08.06-v2-153.command)
+  wireguard.command          WireGuard menüsü: ağ seç, listele, ekle, çıkar, QR, DNS, ağı yeniden üret (kurulumdan sonra)
+  kurulum/kurulum.env        kurulum girdileri: sunucu ve alan adı (git dışı)
+  kurulum/wireguard/         yalnız istediğinizde inen cihaz profilleri (.conf) ve QR resimleri (.png); kurulum buraya bakmaz (git dışı)
+Diğer her şey Data/ altındadır; elle çalıştırılmaz.
+
+Girdi dosyası (bir kez hazırlanır, her kurulumda aynısı kullanılır):
+  mkdir -p kurulum && cp Data/config/kurulum.env.example kurulum/kurulum.env
+  chmod 600 kurulum/kurulum.env
+  Dosyayı doldurun: SSH_HOST; alan adı boş kalırsa varsayılan kullanılır.
+  Tailscale: kurulum sırasında giriş bağlantısı gösterilir; tarayıcıda açıp onaylayın (auth key yok, v2-114).
+  Dosyada parola yoktur (v2-118): Konsol parola sormaz, klasör hesabını Dosyalar'da belirlersiniz,
+  qBittorrent'in ilk girişi kendi sayfasındaki İlk giriş bilgileri bölümünde görünür.
+
+WireGuard — kurulum ağ yaratmaz (v2-109) ve v2-117'den beri WireGuard'ın kendisini de kurmaz:
+  http://panel.ayc → App Store → WireGuard → Kur (paketler, çekirdek modülü, güvenlik duvarı);
+  sonra WireGuard → Yapılandır (wg0, 10.8.0.0/24, UDP 61001 önerilir).
+  Modülü kaldırmak bütün ağları kapatır; anahtarlar ve profiller kalır, yeniden kurunca ağlar geri gelir.
+  Sunucu yeniden kurulursa WireGuard boş gelir: ağı yeniden kurar, cihazları yeniden eklersiniz.
+  Peer'lar sunucuda üretilir; Konsol'dan ya da wireguard.command ile yönetilir:
+  Çift tık → 1) liste (son el sıkışma, trafik) 2) ekle 3) çıkar 4) QR göster 5) çıkış
+             6) ağ seç 7) DNS değiştir 8) ağı yeniden üret
+  Ekle: ad, DNS, keepalive, MTU sorulur (köşeli parantezdeki varsayılan için Enter).
+  Sunucu anahtarı ve IP'yi üretir, bağlantılar kopmadan uygular, QR kodu terminale basar,
+  profil kurulum/wireguard/<ad>.conf, QR resmi <ad>.png olarak Mac'e iner (cihaza dosyayı ya da QR'ı aktarın).
+  QR resmi de profil gibi gizli anahtarı taşır: kimseyle paylaşmayın.
+  6) ağ seç: sunucudaki ağlardan birini seçersiniz; sonraki işlemler o ağa uygulanır (v2-109).
+  Mac'te yedek tutulmaz: sunucu anahtarı ve peer listesi yalnız sunucuda yaşar; yeniden kurulumda
+  WireGuard boş gelir.
+  7) DNS değiştir: anahtar ve IP aynı kalır; yeni QR'ı cihazda okutun (eski tüneli silin).
+  8) ağı yeniden üret: seçili ağa yeni sunucu anahtarı; o ağdaki bütün peer'lar ve profiller silinir, geri alınamaz.
+     onayla yazınca çalışır (büyük/küçük harf fark etmez); cihazları 2) ekle ile yeniden ekleyin.
+  WireGuard yalnız internet erişimi sağlar. Sunucu servisleri, Tailscale ağı,
+  diğer VPN ağları ve özel IP hedefleri kapalıdır. qBittorrent'e Tailscale'den erişin.
+  Bu Mac WireGuard'a bağlıyken wireguard.command sunucuya ulaşamaz (SSH tünelden kapalı):
+  menüyü kullanmadan önce Mac'te WireGuard'ı kapatın.
+
+Konsol (tarayıcıdan; v2-105):
+  http://panel.ayc — tek yönetim sayfası; yalnız Tailscale'e bağlı cihazdan açılır (WireGuard'dan ve internetten kapalı).
+  Eski adresler (wg.ayc, dosya.ayc, file.ayc) v2-124'ten beri yok; yer imlerini panel.ayc yapın.
+  Parola sorulmaz (v2-114): yalnız Tailscale'deki cihazlar açabilir; erişimi daraltmak Tailscale ACL'iyle.
+  Ayarlar (v2-130): Sistem, Güvenlik Duvarı, Caddy, Dnsmasq ve Günlük sekmeleri.
+  qBittorrent kurulduğunda kendi sayfası sol menüye eklenir; hesap ve dizin ayarları oradadır.
+  Portları aç/kapatın, IPv4/IPv6 port kuralı ekleyin; tüm kurallar, sayaçlar ve dinleyiciler görünür.
+  Adreslerin altında nerede dinledikleri açıklanır. Üçüncü taraf kuralları salt okunurdur.
+  v2-134: Firewall gelen ağa göre sekmelidir: Tailscale (ilk görünüm), İnternet,
+  WireGuard (kuruluysa; ağ seçilebilir) ve Sunucu içi (korumalı).
+  VPN'in UDP bağlantı portu İnternet'tedir. WireGuard sekmesi internet-only politikasını gösterir;
+  bu sekmeden sunucu portu açılamaz.
+  Servis, port/protokol, kaynak IP/CIDR, dinleme/adres, firewall izni, aç/kapa ve işlemler
+  aynı satırdadır. Teknik kurallar, tüm ağların yönlendirme/NAT dahil ham kurallarını gösterir.
+  Dinleme durumu izinden ayrıdır; dışarıdan yapılan değişiklikleri Yenile ile okuyun.
+  Mobilde tabloyu yatay kaydırın. Anahtar yalnız taslağı değiştirir; inceleyip uygulayın.
+  İzinli port, erişilebilir servis demek değildir.
+  Caddy → Yerel alan adı → Güncelle (v2-127): ayc yerine örneğin ev kullanabilirsiniz.
+  Önce Tailscale Admin → DNS'te aynı sunucu IP'sine yeni alanı “Restrict to domain” ile ekleyin;
+  onay bitene kadar eski alanın eşleştirmesini de koruyun. Yeni panel adresini açıp 5 dakika içinde
+  onaylayın; açılmazsa eski ad kendiliğinden geri gelir. Dosya aktarımlarını önce bitirin.
+  Özel DNS kayıtlarının hedefleri/açık-kapalı durumu korunur; IP ile paylaşım adresi değişmez.
+  Onaylı alan adı sonraki kurulumlarda korunur; eski kurulum.env değeri onu geri değiştirmez.
+  health.ayc artık yoktur; kurulum gerçek paneli ve API'leri denetler.
+  Yerel adları aç/kapatın, yeni ad ekleyin; isterseniz genel sorguları seçtiğiniz public DNS'e yönlendirin.
+  Özel alanınızın bulunmayan/kapalı adları dışarı gönderilmez. Tailscale Admin DNS ayrıca ayarlanır.
+  qBittorrent kullanıcı/parolası ve yeni indirmelerin dizini değişebilir; mevcut dosyalar taşınmaz.
+  v2-133: Yalnız Dnsmasq değişikliklerinde Uygula doğrudan kaydeder; 1 dakikalık onay yoktur.
+  DNS doğrulaması/uygulaması başarısızsa eski ayarlar geri yüklenir. Panelin kendi DNS adı korunur.
+  v2-135: qBittorrent hesabında Hesabı kaydet doğrudan kaydeder; taslak ve süreli onay yoktur.
+  Başarı mesajını bekleyip yeni bilgilerle giriş yapın; diğer ayar taslakları uygulanmaz.
+  v2-136: Hesap kutuları eşit yükseklikte ve başlıklarla hizalıdır. İndirme yolu/klasör düğmesi
+  geniş ekranda aynı satırda, mobilde alt altadır. Kayıt ve onay davranışları değişmedi.
+  Firewall/qBittorrent dizini ve karma taslaklarda: İncele ve uygula → Sunucuda uygula → 60 saniyede onay.
+  Onay verilmezse sayfa kapansa bile sunucu eski ayarları geri alır; kendi panel adını/erişimini
+  kapatan değişiklik kalıcılaştırılamaz. Onaylı firewall/DNS tercihleri kurulum tekrarında korunur.
+  Genel bakış ve Uygulamalar sayfaları kaldırıldı. İşlemci/RAM/disk sol menünün altındadır.
+  Güncel veri yoksa yüzde yerine — görünür. Son işlemler Ayarlar → Günlük'tedir.
+  Port ayrıntıları Ayarlar → Güvenlik Duvarı'ndadır; kullanıcılar WireGuard'da görünür.
+  WireGuard sayfası:
+  v2-151: Tüm ağlar ve cihazlar yalnız internete çıkar; local erişim seçeneği kaldırıldı.
+  Güncelleme mevcut ağları da bu politikaya geçirir; eski WG servis izinleri kaldırılır.
+  Ağ kartındaki Arayüz ayarları simgesinden yalnız varsayılan DNS değişir.
+  Ayarları kaydet doğrudan uygular; mevcut anahtarlar, cihaz profilleri, portlar ve adresler korunur.
+  Varsayılan DNS yalnız yeni eklenecek cihazlara önerilir; mevcut cihaz için Düzenle → DNS kullanın.
+  Kapalı ağ bu işlemle açılmaz. Anahtarı yeniden üret ayrı bir işlemdir; onayla yazmayı gerektirir
+  ve o ağın tüm cihaz profillerini siler. Bekleyen Ayarlar işlemini önce onaylayın veya geri alın.
+  Peer listesi (bağlı/boşta, el sıkışma, trafik), ekle, çıkar, QR göster (60 sn sonra gizlenir),
+  profil ve QR resmi indir, DNS değiştir, ağı yeniden üret (onayla yazınca).
+  Arayüz ekle (v2-101): wg1…wg9 — her ağın sekmesi, anahtarı, UDP portu ve adresleri ayrı
+  (wg1: 10.8.1.x). Yalnız internet erişimi vardır; ağlar birbirini görmez.
+  Her ağ kaldırılabilir (onayla), wg0 dahil (v2-110): ağ kartındaki çöp kutusu düğmesi. Son ağ da
+  kaldırılınca sayfa "Yapılandır"a döner, altyapı durur, istediğinizde yeni ağ kurarsınız.
+  wireguard.command da aynı ağlarla çalışır: 6) ağ seç ile hangisini yöneteceğinizi seçersiniz.
+  Bağlı (v2-102): son 45 sn içinde cihazdan veri geldi; kapanan cihaz ~50 sn içinde Boşta olur.
+  Aç-kapa (v2-105): cihazın yanındaki düğme bağlantıyı keser; anahtarı, adresi ve profili durur,
+  açınca birkaç saniyede geri gelir. Ağ kartındaki dikey anahtar bütün ağı kapatır (sunucu yeniden
+  başlasa da kapalı kalır; kapalı ağı kurulumu yeniden çalıştırmak da açar).
+  Düzenle (v2-105): üç noktadan DNS (Cloudflare, Aile, Quad9, AdGuard, Google ya da kendi adresiniz)
+  ve keepalive değişir; sonra cihazda yeni QR'ı okutun.
+  Uç nokta (v2-103): sunucunun IPv4'ü (uç nokta) ve varsa IPv6'sı (kayıt) kurulumda sunucuda tespit edilir, elle yazılmaz.
+  Sunucunun IP'si değişirse kurulumu yeniden çalıştırın ve cihazlara yeni profil verin.
+
+Klasör WebDAV (v2-128; v2-129'dan beri yerleşik):
+  Dosyalar → klasörün Ayrıntılar düğmesi → WebDAV ile paylaş. Ayrı uygulama kurulmaz.
+  Dosyalar → Paylaşımlar sekmesinde tüm hesaplar topluca görünür.
+  Erişim ve Süre açılır alanlarından seçim yapınca kaydedilir; gün seçenekleri bugünden başlar.
+  Yönet: klasör, kullanıcı adı, parola ve Tailscale/WAN ağ seçimi; erişim/süreyi değiştirmez.
+  v2-153: Tailscale, WAN (internet) veya ikisini seçebilirsiniz. Eski/yeni paylaşımlar
+  varsayılan Tailscale'dedir. WAN yalnız genel IPv4 üzerinden aynı WebDAV portunu kullanır.
+  WAN HTTP şifrelemez: parola ve dosya içeriği açık taşınır; açarken ayrıca onay verilir.
+  WAN: 60 saniyede 5 hatalı parola → 5 dakika engel; IP başına 4, toplam 8 eşzamanlı istek.
+  Ön kapıda TCP sınırı IP başına 16, toplam 64'tür. Hız/bant genişliği sınırı değildir.
+  Son WAN paylaşımı duraklatılır/kaldırılırsa dinleyici ve izin kapanır; süre bitiminde
+  erişim hemen, ağ temizliği normalde 30 saniyelik zamanlayıcının sonraki turunda kapanır.
+  Mevcut firewall engelleri/sağlayıcı kuralları korunur; panel ve diğer servisler internete açılmaz.
+  Her klasörün kullanıcı adı, parolası ve /s/<id>/ adresi ayrıdır. Parola en az 8 karakter.
+  Salt okunur varsayılandır. Okuma ve yazma silme/üzerine yazmayı kapsar; ayrıca onay gerekir.
+  WebDAV ile silinen dosya Çöp'e gitmez. Süre: 1/7/30 gün veya süresiz. Duraklat hesabı korur;
+  paylaşımı kaldır yalnız erişimi kapatır. Düzenle'de boş parola mevcut parolayı korur.
+  Parola sonradan gösterilemez. Kaydetmek servisi yeniler; tüm süren WebDAV aktarımları kesilir.
+  Taşınan/değiştirilen klasörde erişim kapanır; Düzenle'den yeni yolunu seçerek aynı adresi koruyun.
+  Eski ortak hesap ve kök kaldırıldı: istemciye yeni klasör hesabını ve tam adresi girin.
+  Alıcı yalnız WebDAV portuna erişmeli; Konsol parolasız yönetim panelidir. Tailscale ACL/grants
+  tarafında panel ve SSH yöneticiye özel kalmalı; kurulum bu kuralları değiştirmez.
+  Finder/Infuse ayrıca sınanmalı: dosya kilidi, PROPPATCH ve klasör COPY desteklenmez.
+
+Konsol Model A · App Store (v2-131):
+  Açılış sayfası Dosyalar. Tek sol menü: Dosyalar, App Store, kurulu uygulamalar, Ayarlar.
+  Masaüstü uygulama dock'u ve pencere düğmeleri yoktur; dosya seçince işlem dock'u açılır.
+  Mobilde aynı menü Menü düğmesiyle açılır.
+  Bu bir KDE veya işletim sistemi oturumu değil, sunucu yönetim panelidir.
+  Dosyalar, WebDAV ve arşiv araçları yerleşiktir. Tailscale, DNS/Caddy ve güvenlik duvarı korunur.
+  App Store'dan WireGuard ve qBittorrent kurulup kaldırılır; qBittorrent durdurulup başlatılabilir.
+  Sade liste: kısa açıklama, durum ve Kur/Aç. Ayrıntı düğmesi teknik bilgileri,
+  Günlük, Durdur/Başlat ve Kaldır seçeneklerini açar; aynı anda tek ayrıntı görünür.
+  Kurulum ilerlemesi ve hatalar ayrıntı kapalıyken de satırda görünür.
+  Sayfa kapansa da kurulum sürer. Dosyalar/WebDAV için kaldır düğmesi veya modül işlemi yoktur.
+  Mevcut klasör hesapları kurulum tekrarında korunur; eksik/kapalı yerleşik servisler açılır.
+
+Dosyalar · Arşiv oluştur / Arşiv açıcı:
+  Dosya ve klasörleri seç → Arşiv oluştur (ZIP); tek arşiv/parça seç → Arşiv açıcı.
+  Hedef varsayılan olarak downloads klasörüdür; klasör seçiciyle başka bir yer seçilebilir.
+  İç içe arşivler otomatik açılır; katman seçeneği yoktur, beş katman güvenlik sınırı arka plandadır.
+  Parçalı RAR: tüm .rar/.r00/.r01… veya .part01.rar/.part02.rar… aynı klasörde olmalıdır.
+  İlk parçayı seçin; sonraki parça seçilirse ilk parça otomatik bulunur. Kaynak parçalar silinmez.
+  Aynı adlı sonuç varsa yeniden adlandır, atla veya dur seçenekleri; üzerine yazma yoktur.
+  İşler sunucuda sürer; Dosyalar → Arşiv işleri sekmesinden izle, iptal et veya sonucu aç.
+  ZIP Store/Deflate ve RAR3/RAR5 desteklenir; şifreli arşiv, çok parçalı/büyük ZIP64 ve 7z desteklenmez.
+  Resmi unrar ve python3-rarfile kurulur; gerekirse Debian non-free / Ubuntu universe-multiverse deposu eklenir.
+  İş başına toplam 2 GiB işlenen veri, 10.000 öge ve 15 dakika sınırı vardır; aynı anda tek iş.
+  Hata/iptalde yarım sonuç yayımlanmaz. Sunucu yeniden başlarsa yarım iş sürdürülmez.
+  Son 20 iş hatırlanır; bu dosya yedeği değildir. Kaynak arşivler silinmez.
+
+Konsol · Dosyalar sekmesi (v2-104, v2-105):
+  /srv kullanıcı alanı; Dosyalar, Paylaşımlar, Arşiv işleri ve Çöp sekmeleri.
+  Klasöre gir, yeni klasör, yeniden adlandır, taşı, indir.
+  Sil: öge çöpe gider (aynı diskte, yer açmaz). Çöp sekmesinden geri yükle ya da kalıcı sil; çöpü boşaltmak için onayla yazın.
+  v2-137: Çöp listesinde uzun adlar ve kaynak yolları satıra bölünür; dar ekranda işlem düğmeleri alta geçer.
+  v2-138: Paylaşım adresini kopyalama simgesi, listede ve klasör ayrıntısında adresin hemen yanındadır.
+  Metin dosyaları (.txt .log .nfo .srt …) tıklayınca açılır; Türkçe altyazı bozuk görünürse Kodlama'dan Türkçe seçin.
+  Hiçbir işlem aynı adlı bir dosyanın üzerine yazmaz.
+  incomplete klasörünü yarım indirmeler için kullanıyorsanız oradaki dosyayı taşımak ya da silmek indirmeyi bozar.
+  FileBrowser kaldırıldı (v2-114): dosyaları Konsol yönetir.
+
+qBittorrent (v2-118; modül, sunucuda Debian paketi):
+  Konsol → App Store → qBittorrent → Kur. Arayüz: http://torrent.ayc (yalnız Tailscale'den).
+  İlk giriş: Konsol → qBittorrent → İlk giriş bilgileri; geçici parola göz düğmesiyle görünür.
+  Girince Tools → Options → Web UI'dan kendi parolanızı koyun; geçici parola her
+  yeniden başlatmada değişir. Kart bundan sonra "arayüzde ayarlandı" der.
+  v2-130: Konsol → qBittorrent üzerinden kullanıcı/parola ve yeni indirmelerin dizinini değiştirin.
+  Hesabı kaydet ile tek adımda kalıcı kayıt yapılır. Yeni parola en az 8 karakter olmalıdır.
+  Boş parola kayıtlı parolayı korur; geçici ilk giriş parolası yeniden başlatmada değişebilir.
+  Dizin seçimi downloads/media içindedir; inceleme ve süreli onay akışı korunur.
+  v2-152: İlk profil yalnız panel entegrasyonuyla hazırlanır: /srv/downloads, parola isteyen
+  loopback web arayüzü ve servisin etkileşimsiz başlaması için gereken onay.
+  UPnP, otomatik port yönlendirme, yerel eş keşfi ve ayrı geçici klasör seçimi kullanıcıya aittir;
+  kurulum bunları açmaz veya kapatmaz. Siz değiştirene kadar qBittorrent varsayılanları geçerlidir.
+  Mevcut profillerde eski kurulum değerleri dahil tüm tercihler korunur; bunları değiştirmek
+  isterseniz qBittorrent'in kendi ayarlarını kullanın. Yeniden kurulum tercihleri sıfırlamaz.
+  Gelen bağlantı portu açılmaz: qBittorrent yalnız dışa bağlanır.
+  Kaldır: servis durur, paket sunucuda kalır. "Profili ve torrent listesini de sil" seçilirse ayarlar
+  ve liste silinir; indirilen dosyalar hiçbir durumda silinmez.
+  Dozzle kaldırıldı (v2-118): App Store → Ayrıntı içinde Günlük vardır.
+
+A) Temiz kurulum — v2-153
+  0. Sunucuyu sıfırlamak ayrı bir işlemdir; kurulum betiği sunucuyu silmez.
+     Sıfırlamada korunması gereken veriyi önceden kendiniz yedekleyin.
+     SSH host anahtarı değişmişse yeni parmak izini sağlayıcı konsolundan doğrulayın;
+     sonra yalnız o sunucunun eski known_hosts kaydını değiştirin. SSH doğrulamasını kapatmayın.
+  1. Güncel .command ve kurulum/ aynı klasörde olmalı. Var olan kurulum.env'yi üzerine yazmayın.
+     İzin 600 veya 400; yalnız SSH_HOST ve isteğe bağlı LOCAL_DOMAIN.
+  2. 2026.08.06-v2-153.command → sunucu/özeti kontrol edin → E.
+     Tailscale giriş bağlantısı gelirse tarayıcıdan onaylayın.
+  3. Tailscale Admin: exit-node onayı, restricted DNS alanı ve yeni sunucunun Tailscale IP'si.
+     Sunucuyu sıfırlamak aynı Tailscale IP'sini garanti etmez.
+  4. http://panel.ayc (alanı değiştirdiyseniz panel.<alan>) → Dosyalar açılır.
+     Başlangıçta Dosyalar, App Store ve Ayarlar vardır; WebDAV/ZIP ayrıca kurulmaz.
+  5. Gerekiyorsa App Store'dan qBittorrent/WireGuard kurun.
+     WireGuard → Yapılandır ile ilk ağı oluşturun, sonra cihazları ekleyin.
+     qBittorrent hesabını kendi sayfasından; klasör paylaşım hesaplarını Dosyalar'dan ayarlayın.
+
+B) Tekrar çalıştırma ve sınama
+  Var olan sunucuda aynı kurulum, temiz kurulum değildir: mevcut profil, paylaşım hesapları,
+  dosyalar ve onaylı panel ayarları korunur. Betik yedekten veri geri yüklemez.
+  Temiz sunucuda eski qBittorrent ayarları, WireGuard anahtarları veya kullanıcılar gelmez.
+  wireguard.command → 6) ağ seçer; yedek almaz. Mac'teki profiller kendiliğinden yüklenmez.
+  Başarılı kurulumdan sonra Files/WebDAV/ZIP, App Store, Ayarlar ve kaynak göstergelerini sınayın.
+  Ardından aynı sürümü tekrar çalıştırma ve sunucuyu yeniden başlatma kontrolü yapılmalıdır.
+  Ayrıntılı kabul listesi: Data/docs/model-a-clean-install.md
+
+v2-149: Firewall kaynak temizliği; modül kaydı yoksa saklı WireGuard ağları
+kendiliğinden açılmaz. Ağ yoksa boş yönlendirme/NAT zincirleri üretilmez.
+Gereksiz son RETURN satırları kaldırıldı; fazla/eski kurallar denetimde yakalanır.
+Kullanıcının oluşturduğu tüm WireGuard ağlarının gerekli portları korunur.
+
+v2-148: İnternet ve WireGuard port listelerindeki gereksiz kapalı örnek satırlar
+kaldırıldı. İnternet'te SSH, Tailscale ve yapılandırılmış VPN bağlantı portları;
+WireGuard'ın eski servis izinleri v2-151'de tamamen kaldırılmıştır.
+Kullanıcının eklediği izin/engel kuralları, ağlar ve teknik kayıtlar korunur.
+
+v2-147: Tailscale port listesi yalnız yapılandırılmış servisleri ve WireGuard
+ağlarını içerir; sunucu içi portlar otomatik olarak bu listeye kopyalanmaz.
+Özel kullanıcı kuralları korunur. Listelenmeyen portlar varsayılan olarak kapalıdır;
+sunucu içi servisler ve teknik güvenlik duvarı kayıtları değişmez.
+
+v2-146: Tailscale üzerinden yeni bağlantılar gerekli servis portlarıyla sınırlandı.
+SSH, DNS, Caddy, WebDAV, Tailscale PeerAPI ve kullanıcı tanımlı WireGuard portları
+korunur. Diğer portlar yalnız açık bir kullanıcı kuralıyla açılır. İnternet/VPN
+çıkışı ve kurulmuş bağlantılar değişmez; port tablosu aynı politikayı gösterir.
+
+v2-145: Kullanılmayan eski paylaşım/modül kodları ve arayüz kalıntıları temizlendi.
+Yeni kurulum .pay/w veya durum işareti oluşturmaz. Var olan eski veriler silinmez,
+izinleri değiştirilmez ve erişime açılmaz. Güncel klasör hesapları aynen korunur.
+Mac WireGuard menüsü otomatik yedek/eşitleme yapmaz; indirilmiş profil kopyaları ayrıdır.
+
+v2-144: Dock, seçilen ikinci taslaktaki simgeli görünümdedir: eşit aralıklı simgeler
+ve altında kısa etiketler; seçim sayısı ve kapatma ayrı satırdadır. Uygun olmayan
+işlemler aynı yerde soluk kalır. Telefonda 3×2 düzenine geçer; adres çubuğu değişmez.
+
+v2-143: Dosya seçimi işlemleri alttaki dock'tadır; adres çubuğu yerinde kalır.
+Arşiv açıcı iç içe arşivleri ve aynı klasördeki parçaları otomatik açar.
+Hedef başlangıçta downloads; Değiştir ile sunucudan başka klasör seçilebilir.
+Arşiv oluştur kendiliğinden ZIP üretir. Katman seçimi ve uzun açıklamalar kaldırıldı;
+mevcut veri/süre ve 5 katman güvenlik sınırı arka planda sürer. Kaynaklar silinmez.
+
+v2-142: Çöpe taşıma kısa onay ekranıdır; dosya adı düğmeleri dışarı itmez.
+Paylaşımlar sütunlara ayrıldı. Erişim ve süre doğrudan listeden değiştirilir.
+Yazma/silme yetkisi açılırken onay korunur. Kalıcı silme ve Çöpü boşalt korumaları değişmedi.
+Yeni görünüm için paneli yenileyin.
+
+v2-141: qBittorrent ve WebDAV yeni parola alt sınırı arayüzde ve sunucuda 8 karakterdir.
+Boş bırakılan parola alanı mevcut hesabı korur; uzun rastgele parola üretimi değişmedi.
+nrm güncellendi; mevcut hesap dosyaları aynı kaldı. WebDAV kısa süre yeniden başlatıldı;
+qBittorrent yeniden başlatılmadı. Yeni sınır için panel sayfasını yenileyin.
+
+Önceki doğrulamalar:
+v2-140 nrm üzerindeki Debian kurulumuna güncelleme olarak yüklendi; sunucu sıfırlanmadı.
+Bu eski sürümde varsayılan DNS ve Local erişim kaydediliyordu; Local erişim v2-151'de kaldırıldı.
+Gerçek WireGuard bağlantısıyla erişim aç/kapa, kapalı ağı koruma ve art arda 14 değişiklik sınandı.
+Masaüstü/mobil kayıt testleri geçti; mevcut ağlar, cihaz profilleri ve hesaplar korundu.
+WebDAV ve qBittorrent yeniden başlatılmadı. Yeni seçenek için panel sayfasını yenileyin.
+v2-139 RAR desteği korunur:
+unrar kuruldu; parçalı RAR3/RAR5 ve iç içe ZIP/RAR testleri geçti.
+17 parçalık rg-42386 arşivi panelden 16 saniyede açıldı; sonuç aynı yerde rg-42386-acilan-test klasöründe.
+Tüm kaynak parçaların dosya özetleri değişmedi; çıktı boyutu ve CRC doğrulandı.
+Sayfayı yenileyip ilk .rar/part01.rar dosyasının ayrıntılarından Arşivi aç seçeneğini kullanın.
+Şifreli arşivler desteklenmez; mevcut iş başına 2 GiB sınırı korunur.
+Paylaşım kopyalama simgesi adresin yanına taşındı; masaüstü/mobil boyutta adres ve pano metni aynı çıktı.
+Paylaşım ve qBittorrent hesapları korundu; bu iki servis yeniden başlatılmadı.
+Çöp listesinin sütunları düzeltildi; yedi ekran genişliğinde ve açık/koyu temada kontrol edildi.
+Çöpteki ögeler korunmuştur; gerçek ögeler geri yüklenmedi veya kalıcı silinmedi.
+v2-136'daki qBittorrent form hizalaması korunur; masaüstü/mobil kontrolleri geçti.
+Kayıtlı hesap ve parola korundu, qBittorrent yeniden başlatılmadı. Yeni görünüm için sayfayı yenileyin.
+Hesabı kaydet tek adımda çalışır. v2-135'te yeni bilgilerle giriş, yeniden başlatmada kalıcılık ve
+hatalı kayıtta geri dönüş ayrı bir geçici qBittorrent profiliyle sınandı.
+Firewall sekmeleri ve süreli onay korundu; mevcut DNS, firewall ve paylaşım tercihleri değişmedi.
+Yeni sürümün gerçek temiz Debian/Ubuntu kurulumu ve yeniden başlatma kabulü ayrıca yapılacaktır.
+kurulum/ kurulum girdileridir; sunucu yedeği değildir.

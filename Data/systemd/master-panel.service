@@ -1,0 +1,45 @@
+[Unit]
+Description=Konsol root backend (master-stack, DD-133, DD-140, DD-196)
+# DD-180: ağ portu yok; yalnız Unix soketi (0660, root ve Caddy grubu). Caddy panel.<alan>
+# altında /api/konsol/* ve /api/uygulama/* için buraya gelir. DD-200: kurulu paketlerin API
+# modülleri paket klasöründen yüklenir; uygulama değişikliklerini paketin kendi aracı yapar.
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master-panel serve --listen unix:__PANEL_SOCKET__ --socket-group __CADDY_GROUP__ --state __STATE_FILE__ --master-modul __SBIN_DIR__/master-modul
+# Soketin klasörü; Caddy geçebilsin diye 0755, soketin kendisi 0660.
+RuntimeDirectory=__PANEL_RUNTIME__
+RuntimeDirectoryMode=0755
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+# DD-195: her istek bir iş parçacığı ve birkaç dosya tanıtıcısı tutar; Caddy her sitede en
+# çok 16 bağlantı açar. Tanıtıcı sınırı yine de dolmasın: kendi adresi denetimi dolunca
+# kapalı kalır ve Tailscale'i de reddederdi.
+LimitNOFILE=8192
+# Paket araçları root ister. Yazabildiği kalıcı yerler paketlerin bildirdiği yollar
+# (PAKET_ARKAUC_YOLLAR, kurulum doldurur; DD-203) ve Konsol hesap klasörü (DD-194); /run (kilit)
+# ProtectSystem=full altında yazılabilir kalır. Klasörleri kurulum ya da paket açar; yoksa atlanır
+# ('-') ve giriş "kurulumu yeniden çalıştırın" der.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=__PANEL_WRITE_PATHS__ -__KONSOL_AUTH_DIR__
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target

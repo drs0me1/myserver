@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# DD-194/DD-205: Konsol hesabı (root). Komutlar: durum | sifirla | oturum-ac [--sure N] | oturum-kapat
+#   sudo master-konsol sifirla   hesabı ve tüm oturumları siler; internet adresi kapanır, yeni hesap Konsol'dan
+set -euo pipefail
+exec /usr/bin/python3 "$(dirname -- "$(readlink -f -- "$0")")/master_auth.py" "$@"

@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Konsol — CasaOS teması taslağı (v01)</title>
+<style>
+/* ---------- Mevcut Konsol token'ları (konsol.css ile aynı adlar) ---------- */
+:root {
+  color-scheme: light;
+  --ground: #EEF2F5; --surface: #FFFFFF; --surface-2: #EEF2F4; --ink: #1B2430; --muted: #5C6B7A; --line: #D7DFE6;
+  --accent: #1F6F8B; --accent-hover: #185A71; --accent-ink: #FFFFFF; --accent-soft: rgba(31, 111, 139, .14);
+  --ok: #2B7A4B; --ok-soft: #DCEFE2; --warn: #93600F; --warn-soft: #F4E6CC; --danger: #B3261E; --danger-soft: #F7E0DC;
+  --idle: #6F776F; --idle-soft: #E3E7E1; --video: #6A4C93; --video-soft: #ECE6F4; --vpn: #0E7C86;
+  --focus: rgba(31, 111, 139, .42);
+  /* ---------- CasaOS teması: cam yüzeyler ve duvar kâğıdı (yeni token'lar) ---------- */
+  --glass: rgba(255, 255, 255, .62); --glass-2: rgba(255, 255, 255, .80); --glass-line: rgba(255, 255, 255, .62);
+  --glass-shadow: 0 18px 48px -26px rgba(16, 36, 56, .45); --blur: 18px; --radius: 16px;
+  --sky1: #B9D5E8; --sky2: #E6EEF4; --m1: #8EA9BE; --m2: #6A879E; --m3: #4C6780; --m4: #37506A;
+  --f-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0D1217; --surface: #151B21; --surface-2: #1C242B; --ink: #E6ECF1; --muted: #9AA8B5; --line: #2A353F;
+    --accent: #6FC3DC; --accent-hover: #8FD3E8; --accent-ink: #082028; --accent-soft: rgba(111, 195, 220, .18);
+    --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14; --danger: #F08A80; --danger-soft: #3A1B18;
+    --idle: #8E968F; --idle-soft: #242A27; --video: #B79BE0; --video-soft: #2A2238; --vpn: #5FC4CC;
+    --focus: rgba(111, 195, 220, .45);
+    --glass: rgba(18, 24, 30, .58); --glass-2: rgba(18, 24, 30, .78); --glass-line: rgba(255, 255, 255, .10);
+    --glass-shadow: 0 18px 48px -26px rgba(0, 0, 0, .8);
+    --sky1: #0B1B2B; --sky2: #1E3346; --m1: #223447; --m2: #1A2A3B; --m3: #13202E; --m4: #0D1722;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0D1217; --surface: #151B21; --surface-2: #1C242B; --ink: #E6ECF1; --muted: #9AA8B5; --line: #2A353F;
+  --accent: #6FC3DC; --accent-hover: #8FD3E8; --accent-ink: #082028; --accent-soft: rgba(111, 195, 220, .18);
+  --ok: #5CC28C; --ok-soft: #173325; --warn: #E2A84C; --warn-soft: #3A2C14; --danger: #F08A80; --danger-soft: #3A1B18;
+  --idle: #8E968F; --idle-soft: #242A27; --video: #B79BE0; --video-soft: #2A2238; --vpn: #5FC4CC;
+  --focus: rgba(111, 195, 220, .45);
+  --glass: rgba(18, 24, 30, .58); --glass-2: rgba(18, 24, 30, .78); --glass-line: rgba(255, 255, 255, .10);
+  --glass-shadow: 0 18px 48px -26px rgba(0, 0, 0, .8);
+  --sky1: #0B1B2B; --sky2: #1E3346; --m1: #223447; --m2: #1A2A3B; --m3: #13202E; --m4: #0D1722;
+}
+/* Düz görünüm: bugünkü Konsol ile karşılaştırma (cam yok, duvar kâğıdı yok) */
+:root[data-glass="off"] { --glass: var(--surface); --glass-2: var(--surface); --glass-line: var(--line); --glass-shadow: none; --blur: 0px; --radius: 10px; }
+:root[data-glass="off"] .wall { display: none; }
+@media (prefers-reduced-transparency: reduce) { :root { --glass: var(--surface); --glass-2: var(--surface); --blur: 0px; } }
+
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body { margin: 0; min-height: 100vh; background: transparent; color: var(--ink); font: 14px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus); border-radius: 8px; }
+a { color: inherit; }
+svg { flex: none; }
+.ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mono { font-family: var(--f-mono); font-size: .9em; }
+.hm { font-size: 12px; color: var(--muted); }
+.hm.ok { color: var(--ok); } .hm.warn { color: var(--warn); } .hm.bad { color: var(--danger); }
+
+/* ---------- duvar kâğıdı ---------- */
+.wall { position: fixed; inset: 0; z-index: -1; background: linear-gradient(180deg, var(--sky1) 0%, var(--sky2) 70%); overflow: hidden; }
+.wall svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wall .m1 { fill: var(--m1); } .wall .m2 { fill: var(--m2); } .wall .m3 { fill: var(--m3); } .wall .m4 { fill: var(--m4); }
+.wall .glow { fill: url(#glow); opacity: .9; }
+:root[data-wall="kiyi"] .wall { background: linear-gradient(180deg, var(--sky2) 0%, var(--sky1) 100%); }
+:root[data-wall="kiyi"] .wall .dag { display: none; }
+:root[data-wall="sade"] .wall svg { display: none; }
+:root[data-wall="sade"] .wall { background: radial-gradient(120% 80% at 10% 0%, var(--sky1), transparent 60%), linear-gradient(180deg, var(--sky2), var(--ground)); }
+:root:not([data-wall="kiyi"]) .wall .kiyi { display: none; }
+
+/* ---------- kabuk ---------- */
+.glass { background: var(--glass); border: 1px solid var(--glass-line); border-radius: var(--radius); box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(150%); backdrop-filter: blur(var(--blur)) saturate(150%); }
+.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+.side { position: sticky; top: 14px; height: calc(100vh - 28px); margin: 14px 0 14px 14px; padding: 20px 14px 16px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 18px; }
+.brand { display: grid; gap: 2px; padding-inline: 8px; }
+.wordmark { font: 700 28px/1 var(--f-display); letter-spacing: -.035em; }
+.wordmark .dot { color: var(--accent); }
+.brand small { font-size: 12px; color: var(--muted); }
+.nav { display: grid; gap: 4px; }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 10px; text-decoration: none; color: var(--muted); font-size: 13.5px; font-weight: 500; }
+.nav a:hover { background: var(--accent-soft); color: var(--ink); }
+.nav a[aria-current="page"] { background: var(--glass-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--glass-line); }
+.nav a[aria-current="page"] .ic { color: var(--accent); }
+.side-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 10px 2px; }
+.nav .settings-link { margin-top: 10px; }
+.resources { border-top: 1px solid var(--glass-line); padding: 16px 6px 0; display: grid; gap: 12px; margin-top: auto; }
+.res { display: grid; grid-template-columns: 38px 1fr; gap: 10px; align-items: center; font-size: 12px; }
+.res strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+.res small { display: block; color: var(--muted); font-size: 10.5px; }
+.ring { width: 38px; height: 38px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 4; }
+.ring .bg { stroke: var(--line); }
+.ring .fg { stroke: var(--accent); stroke-linecap: round; }
+.ring .fg.warn { stroke: var(--warn); }
+.side-foot { font-size: 10.5px; color: var(--muted); display: grid; gap: 4px; padding: 12px 8px 0; border-top: 1px solid var(--glass-line); }
+.side-foot button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; font-size: 11px; }
+.mobile-brand { display: none; }
+
+.main { padding: 28px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
+.content { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
+.topbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; }
+.eyebrow { margin: 0 0 4px; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 0; font: 650 28px/1.15 var(--f-display); letter-spacing: -.02em; }
+.top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---------- düğmeler, kartlar ---------- */
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--glass-line); background: var(--glass-2); color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 500; text-decoration: none; }
+.btn:hover { border-color: var(--accent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.btn-sm { padding: 6px 11px; font-size: 12.5px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.idle { background: var(--idle-soft); color: var(--idle); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.card { padding: 16px 18px; display: grid; gap: 12px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.card-head h2 { margin: 0; font-size: 14.5px; font-weight: 650; }
+.card-head small { display: block; color: var(--muted); font-size: 12px; }
+.note { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+/* ---------- Genel bakış: widget'lar + ızgara ---------- */
+.widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.clock { font: 600 34px/1 var(--f-display); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.rings { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.rings .hm { flex: 1 1 150px; line-height: 1.6; }
+.rings .big .ring { width: 58px; height: 58px; }
+.rings .big { display: grid; justify-items: center; gap: 4px; font-size: 11px; color: var(--muted); position: relative; }
+.rings .big b { position: absolute; top: 20px; font-size: 12px; color: var(--ink); }
+.bar { height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+.spark { width: 100%; height: 56px; }
+.spark path { fill: none; stroke: var(--accent); stroke-width: 1.8; }
+.spark .fill { fill: var(--accent-soft); stroke: none; }
+.section-title { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 10px 2px 0; }
+.section-title h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 14px; }
+.tile { position: relative; display: grid; justify-items: center; gap: 9px; padding: 20px 10px 14px; text-decoration: none; color: inherit; text-align: center; cursor: pointer; }
+.tile:hover { border-color: var(--accent); }
+.tile .ico { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; color: #fff; box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .6); }
+.tile .ico .ic { width: 27px; height: 27px; stroke-width: 1.6; }
+.tile strong { font-size: 13px; font-weight: 600; }
+.tile small { font-size: 11px; color: var(--muted); }
+.tile .dot { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; }
+.dot.on { background: var(--ok); } .dot.off { background: var(--idle); } .dot.warn { background: var(--warn); }
+.t-files { background: linear-gradient(145deg, #3F8BD1, #2A5F9A); }
+.t-store { background: linear-gradient(145deg, #4E9A8A, #2F6F62); }
+.t-settings { background: linear-gradient(145deg, #6C7A89, #45515D); }
+.t-video { background: linear-gradient(145deg, #8B6BC4, #5A3F8F); }
+.t-vpn { background: linear-gradient(145deg, #2CA3AE, #126C78); }
+.t-share { background: linear-gradient(145deg, #D08A3F, #9A5F22); }
+.t-add { background: var(--surface-2); color: var(--muted) !important; box-shadow: none; border: 1px dashed var(--line); }
+
+/* ---------- App Store ---------- */
+.store-detail { display: grid; gap: 14px; }
+.store-detail ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+
+/* ---------- Dosyalar ---------- */
+.tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--glass-line); padding: 0 4px; }
+.tabs button { border: 0; background: none; color: var(--muted); padding: 10px 0; font-size: 13px; border-bottom: 2px solid transparent; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.fswrap { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; }
+.fsrail { padding: 10px; display: grid; align-content: start; gap: 3px; }
+.fsrail button { display: flex; align-items: center; gap: 9px; border: 0; background: none; padding: 9px 10px; border-radius: 9px; color: var(--muted); font-size: 13px; cursor: pointer; text-align: left; }
+.fsrail button[aria-current] { background: var(--accent-soft); color: var(--ink); }
+.fsrail .disk { margin-top: 10px; padding: 10px; font-size: 11px; color: var(--muted); display: grid; gap: 6px; }
+.table { display: grid; }
+.tr { display: grid; grid-template-columns: 32px minmax(0, 1fr) 90px 120px; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--glass-line); font-size: 13px; }
+.tr.head { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; border-top: 0; }
+.tr .ticon { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+.tr small { color: var(--muted); font-size: 11.5px; }
+.offbar { padding: 10px 14px; background: var(--warn-soft); color: var(--warn); border-radius: 10px; font-size: 12.5px; }
+
+/* ---------- uygulama sayfası, ayarlar ---------- */
+.app-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; }
+.cred { display: grid; gap: 6px; }
+.cred-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 13px; }
+.cred-row .k { color: var(--muted); font-size: 12px; }
+.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.field { display: grid; gap: 5px; font-size: 12.5px; color: var(--muted); }
+.field input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-height: 42px; }
+.facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 18px; }
+.facts > div { border-top: 1px solid var(--glass-line); padding: 12px 2px; display: grid; gap: 4px; }
+.facts dt { color: var(--muted); font-size: 11.5px; } .facts dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.rules { font-size: 12.5px; }
+.rules .tr { grid-template-columns: 110px 90px minmax(0, 1fr) 70px; }
+.switch { width: 38px; height: 22px; border-radius: 999px; border: 0; background: var(--line); position: relative; cursor: pointer; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--accent); } .switch[aria-checked="true"]::after { transform: translateX(16px); }
+
+/* ---------- demo kumandası ---------- */
+.demo { position: fixed; right: 16px; bottom: 16px; z-index: 30; padding: 10px 12px; display: grid; gap: 8px; font-size: 12px; max-width: 280px; }
+.demo .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.demo .row span { color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { border: 0; background: none; padding: 4px 9px; font-size: 11.5px; cursor: pointer; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.demo summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; }
+.demo summary::after { content: "▾"; color: var(--muted); }
+.demo[open] summary::after { content: "▴"; }
+.footnote { font-size: 11.5px; color: var(--muted); text-align: center; margin: 10px auto 0; padding: 6px 14px; border-radius: 999px; background: var(--glass); border: 1px solid var(--glass-line); width: max-content; max-width: 100%; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+@media (max-width: 1000px) { .fswrap { grid-template-columns: 1fr; } .fsrail { display: flex; flex-wrap: wrap; } .fsrail .disk { display: none; } }
+@media (max-width: 760px) {
+  .shell { grid-template-columns: 1fr; }
+  .mobile-brand { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; margin: 10px 10px 0; position: sticky; top: 10px; z-index: 25; }
+  .mobile-brand .wordmark { font-size: 22px; }
+  .side { position: fixed; top: 0; left: 0; bottom: 0; height: 100vh; width: min(84vw, 300px); margin: 0; border-radius: 0 18px 18px 0; transform: translateX(-110%); transition: transform .25s ease; z-index: 40; --glass: var(--glass-2); }
+  .side.open { transform: none; }
+  .main { padding: 18px 14px 90px; }
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .widgets { grid-template-columns: 1fr 1fr; }
+  .clock { font-size: 28px; }
+  .tr { grid-template-columns: 32px minmax(0, 1fr) 80px; } .tr > :nth-child(4) { display: none; }
+  .demo { right: 10px; bottom: 10px; left: 10px; max-width: none; }
+}
+@media (max-width: 480px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .widgets { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v8.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+    <symbol id="i-stack" viewBox="0 0 24 24"><path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 19h16"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="m8.3 10.8 7.4-3.6M8.3 13.2l7.4 3.6"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-hdd" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="16.5" cy="12" r="1.3"/><path d="M6 12h6"/></symbol>
+    <symbol id="i-net" viewBox="0 0 24 24"><path d="M3 16c4.5-7 13.5-7 18 0"/><path d="M6.5 13.5c3-4.2 8-4.2 11 0"/><circle cx="12" cy="18" r="1.4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 3.5v4.4h-4.4"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M15 12v2"/></symbol>
+  </defs>
+</svg>
+
+<!-- Duvar kâğıdı: dış görsel yok (CSP img-src 'self'); üretimde repo içi bir SVG/JPG ya da bu gradyan. -->
+<div class="wall" aria-hidden="true">
+  <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+    <defs><radialGradient id="glow" cx="30%" cy="22%" r="45%"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect class="glow" width="1600" height="900"/>
+    <g class="dag">
+      <path class="m1" d="M0 640 220 470 380 560 560 400 760 520 980 360 1180 500 1400 410 1600 540V900H0z"/>
+      <path class="m2" d="M0 720 180 600 340 660 520 540 700 640 900 520 1080 620 1300 540 1600 660V900H0z"/>
+      <path class="m3" d="M0 800 200 710 400 760 600 680 820 760 1040 690 1260 760 1600 720V900H0z"/>
+      <path class="m4" d="M0 900V850l260-50 300 40 320-30 340 40 380-20V900z"/>
+    </g>
+    <g class="kiyi">
+      <path class="m3" d="M0 760c200-40 400 30 600-10s400-60 600-20 300 60 400 40V900H0z"/>
+      <path class="m4" d="M0 840c260-30 520 20 780-10s520-30 820 10V900H0z"/>
+    </g>
+  </svg>
+</div>
+
+<header class="mobile-brand glass">
+  <span class="wordmark">nrm<span class="dot">.</span></span>
+  <button type="button" class="btn btn-sm" id="menu-toggle" aria-controls="panel-sidebar" aria-expanded="false">Menü</button>
+</header>
+
+<div class="shell">
+  <aside class="side glass" id="panel-sidebar" aria-label="Sunucu konsolu">
+    <div class="brand"><span class="wordmark">nrm<span class="dot">.</span></span><small>Konsol · panel.ayc</small></div>
+    <nav class="nav" aria-label="Bölümler">
+      <a href="#/genel" data-route="genel"><svg class="ic"><use href="#i-home"/></svg>Genel bakış</a>
+      <a href="#/dosyalar" data-route="dosyalar"><svg class="ic"><use href="#i-folder"/></svg>Dosyalar</a>
+      <a href="#/moduller" data-route="moduller"><svg class="ic"><use href="#i-stack"/></svg>App Store</a>
+      <span class="side-label">Kurulu uygulamalar</span>
+      <a href="#/torrent" data-route="torrent"><svg class="ic"><use href="#i-download"/></svg>qBittorrent</a>
+      <a href="#/wireguard" data-route="wireguard"><svg class="ic"><use href="#i-shield"/></svg>WireGuard</a>
+      <a href="#/ayarlar" data-route="ayarlar" class="settings-link"><svg class="ic"><use href="#i-sliders"/></svg>Ayarlar</a>
+    </nav>
+    <section class="resources" aria-label="Sunucu kaynakları">
+      <div class="res"><svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="15.8 113.1"/></svg><div><strong>%14</strong><small>İşlemci · 4 çekirdek</small></div></div>
+      <div class="res"><svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="52 113.1"/></svg><div><strong>%46</strong><small>RAM · 3,6 / 7,8 GB</small></div></div>
+      <div class="res"><svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg warn" cx="22" cy="22" r="18" stroke-dasharray="81.4 113.1"/></svg><div><strong>%72</strong><small>Disk · 28 GB boş</small></div></div>
+    </section>
+    <div class="side-foot"><span>Tailscale</span><span class="mono">100.64.0.10</span><span class="mono">2026.08.06-v2-177</span><button type="button">Çıkış yap</button></div>
+  </aside>
+
+  <main class="main" id="main-content" tabindex="-1">
+    <div class="content">
+      <header class="topbar">
+        <div><p class="eyebrow" id="eyebrow">Sunucu yönetimi</p><h1 id="title">Genel bakış</h1></div>
+        <div class="top-actions" id="top-actions"></div>
+      </header>
+
+      <!-- ===== GENEL BAKIŞ ===== -->
+      <section data-view="genel" hidden>
+        <div class="widgets">
+          <article class="card glass" aria-label="Saat">
+            <div class="clock" id="clock">18:41</div>
+            <div class="hm" id="date">Perşembe, 2 Ekim 2026</div>
+            <div class="hm">Çalışma süresi 6 g 4 sa · Debian 13 · 6.12.111</div>
+          </article>
+          <article class="card glass" aria-label="Sistem durumu">
+            <div class="card-head"><div><h2>Sistem durumu</h2><small>Son okuma 18:41</small></div><span class="pill ok">Sağlıklı</span></div>
+            <div class="rings">
+              <div class="big"><svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="15.8 113.1"/></svg><b>%14</b>İşlemci</div>
+              <div class="big"><svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="52 113.1"/></svg><b>%46</b>RAM</div>
+              <div class="hm">Başarısız servis yok<br>Güncellemeler yerinde<br>Güvenlik duvarı doğrulandı</div>
+            </div>
+          </article>
+          <article class="card glass" aria-label="Depolama">
+            <div class="card-head"><div><h2>Depolama</h2><small>/srv · tek disk</small></div><span class="hm">72 / 100 GB</span></div>
+            <div class="bar"><i style="width:72%"></i></div>
+            <div class="hm">indirmeler 51 GB · kütüphane 19 GB · çöp 0,4 GB</div>
+          </article>
+          <article class="card glass" aria-label="Ağ">
+            <div class="card-head"><div><h2>Ağ</h2><small>eth0 · son 60 sn</small></div><span class="hm mono">↓ 1,2 MB/s ↑ 86 KB/s</span></div>
+            <svg class="spark" viewBox="0 0 200 56" preserveAspectRatio="none" aria-hidden="true">
+              <path class="fill" d="M0 50 20 44 40 46 60 30 80 36 100 18 120 26 140 12 160 22 180 16 200 24V56H0z"/>
+              <path d="M0 50 20 44 40 46 60 30 80 36 100 18 120 26 140 12 160 22 180 16 200 24"/>
+            </svg>
+          </article>
+        </div>
+
+        <div class="section-title"><h2>Uygulamalar</h2><span class="hm">Kurulu olanlar ve Konsol'un kendi bölümleri</span></div>
+        <div class="tiles" id="tiles-genel">
+          <a class="tile glass" href="#/dosyalar"><span class="ico t-files"><svg class="ic"><use href="#i-folder"/></svg></span><strong>Dosyalar</strong><small>/srv · 2 paylaşım</small></a>
+          <a class="tile glass" href="#/torrent"><span class="dot on"></span><span class="ico t-video"><svg class="ic"><use href="#i-download"/></svg></span><strong>qBittorrent</strong><small>çalışıyor</small></a>
+          <a class="tile glass" href="#/wireguard"><span class="dot on"></span><span class="ico t-vpn"><svg class="ic"><use href="#i-shield"/></svg></span><strong>WireGuard</strong><small>1 ağ · 3 cihaz</small></a>
+          <a class="tile glass" href="#/dosyalar"><span class="ico t-share"><svg class="ic"><use href="#i-share"/></svg></span><strong>Paylaşımlar</strong><small>Tailscale açık</small></a>
+          <a class="tile glass" href="#/moduller"><span class="ico t-store"><svg class="ic"><use href="#i-stack"/></svg></span><strong>App Store</strong><small>2 uygulama</small></a>
+          <a class="tile glass" href="#/ayarlar"><span class="ico t-settings"><svg class="ic"><use href="#i-sliders"/></svg></span><strong>Ayarlar</strong><small>sistem, duvar, Caddy, DNS</small></a>
+        </div>
+      </section>
+
+      <!-- ===== DOSYALAR ===== -->
+      <section data-view="dosyalar" hidden>
+        <nav class="tabs" aria-label="Dosya bölümleri"><button type="button" role="tab" aria-selected="true">Dosyalar</button><button type="button" role="tab" aria-selected="false">Paylaşımlar</button></nav>
+        <div class="fswrap">
+          <nav class="fsrail glass" aria-label="Klasörler">
+            <button type="button"><svg class="ic"><use href="#i-hdd"/></svg>Sunucu</button>
+            <button type="button" aria-current="true"><svg class="ic"><use href="#i-folder"/></svg>downloads</button>
+            <button type="button"><svg class="ic"><use href="#i-video"/></svg>media</button>
+            <button type="button"><svg class="ic"><use href="#i-share"/></svg>Paylaşımlar</button>
+            <button type="button"><svg class="ic"><use href="#i-trash"/></svg>Çöp</button>
+            <div class="disk"><span>Disk · 28 GB boş</span><div class="bar"><i style="width:72%"></i></div></div>
+          </nav>
+          <div class="glass" style="overflow:hidden">
+            <div class="app-toolbar" style="justify-content:space-between"><span class="hm mono">/srv/downloads</span><span style="display:flex;gap:8px"><button class="btn btn-sm" type="button">Yükle</button><button class="btn btn-sm" type="button">Yeni klasör</button></span></div>
+            <div class="table">
+              <div class="tr head"><span></span><span>Ad</span><span>Boyut</span><span>Değişti</span></div>
+              <div class="tr"><span class="ticon t-video"><svg class="ic"><use href="#i-folder"/></svg></span><span><strong>incomplete</strong><br><small>qBittorrent bu klasöre yazıyor · seçilemez</small></span><span>4,1 GB</span><span class="hm">bugün 18:02</span></div>
+              <div class="tr"><span class="ticon t-files"><svg class="ic"><use href="#i-folder"/></svg></span><span><strong>Belgeler</strong><br><small>12 öge</small></span><span>380 MB</span><span class="hm">dün</span></div>
+              <div class="tr"><span class="ticon t-files"><svg class="ic"><use href="#i-folder"/></svg></span><span><strong>Filmler</strong><br><small>38 öge · paylaşılıyor</small></span><span>44 GB</span><span class="hm">28 Eyl</span></div>
+              <div class="tr"><span class="ticon t-settings"><svg class="ic"><use href="#i-file"/></svg></span><span><strong>notlar.txt</strong><br><small>metin dosyası</small></span><span>2 KB</span><span class="hm">21 Eyl</span></div>
+              <div class="tr"><span class="ticon t-settings"><svg class="ic"><use href="#i-file"/></svg></span><span><strong>arsiv-2026.zip</strong><br><small>ZIP · açılabilir</small></span><span>1,9 GB</span><span class="hm">14 Eyl</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== APP STORE ===== -->
+      <section data-view="moduller" hidden>
+        <div class="tiles" id="store-tiles">
+          <button type="button" class="tile glass" data-app="torrent"><span class="dot on"></span><span class="ico t-video"><svg class="ic"><use href="#i-download"/></svg></span><strong>qBittorrent</strong><small>Kurulu · çalışıyor</small></button>
+          <button type="button" class="tile glass" data-app="wireguard"><span class="dot on"></span><span class="ico t-vpn"><svg class="ic"><use href="#i-shield"/></svg></span><strong>WireGuard</strong><small>Kurulu · 1 ağ</small></button>
+          <button type="button" class="tile glass" data-app="ornek"><span class="dot off"></span><span class="ico t-add"><svg class="ic"><use href="#i-plus"/></svg></span><strong>Yeni paket</strong><small>magaza/&lt;id&gt;/ klasörüyle gelir</small></button>
+        </div>
+        <article class="card glass store-detail" id="store-detail">
+          <div class="card-head"><div><h2>qBittorrent</h2><small>Debian paketiyle sunucunun kendisinde çalışır. İlk kurulumda en az ayarı bir kez yazar; sonra ayarlarına dokunmaz.</small></div><span class="pill ok">Çalışıyor</span></div>
+          <div class="chips"><span class="chip">qbittorrent-nox · Debian</span><span class="chip">arayüz yalnız sunucu</span><span class="chip">torrent.ayc</span></div>
+          <ul>
+            <li>Debian paketi qbittorrent-nox; apt güncellemeleriyle yenilenir</li>
+            <li>torrent.ayc adı eklenir (arayüz yalnız sunucuda dinler)</li>
+            <li>İndirme yeri /srv/downloads, profil /var/lib/qbittorrent</li>
+            <li>İnternete eş portu açılmaz; yalnız giden bağlantılar</li>
+          </ul>
+          <div class="top-actions"><a class="btn btn-primary" href="#/torrent">Aç</a><button class="btn" type="button"><svg class="ic"><use href="#i-pause"/></svg>Durdur</button><button class="btn" type="button">Günlük</button><button class="btn btn-danger" type="button">Kaldır</button></div>
+        </article>
+      </section>
+
+      <!-- ===== qBittorrent (paket sayfası) ===== -->
+      <section data-view="torrent" hidden>
+        <div class="app-toolbar glass"><span class="pill ok">Çalışıyor</span><button class="btn" type="button"><svg class="ic"><use href="#i-pause"/></svg>Durdur</button><a class="btn btn-primary" href="#/torrent">Web arayüzünü aç ↗</a><a class="btn btn-sm" href="#/moduller" style="margin-left:auto">App Store’da yönet</a></div>
+        <details class="card glass"><summary style="cursor:pointer;font-weight:600">İlk giriş bilgileri</summary>
+          <div class="cred" style="margin-top:8px">
+            <div class="cred-row"><span class="k">Adres</span><span class="mono">torrent.ayc</span><button class="btn btn-sm" type="button">Kopyala</button></div>
+            <div class="cred-row"><span class="k">Kullanıcı</span><span class="mono">tata</span><button class="btn btn-sm" type="button">Kopyala</button></div>
+            <p class="note">Parola kayıtlı; Konsol mevcut parolayı göstermez. Aşağıdan yeni kullanıcı adı veya parola belirleyebilirsiniz.</p>
+          </div>
+        </details>
+        <div class="widgets" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+          <article class="card glass"><div class="card-head"><div><h2>Web arayüzü hesabı</h2><small>Mevcut parola gösterilmez</small></div></div>
+            <div class="formgrid"><label class="field">Kullanıcı adı<input value="tata"></label><span></span><label class="field">Yeni parola<input type="password" placeholder="en az 8 karakter"></label><label class="field">Yeni parola (tekrar)<input type="password"></label></div>
+            <div><button class="btn btn-primary" type="button">Hesabı kaydet</button></div>
+            <p class="note">Doğrudan kaydedilir; ek onay gerekmez. Çalışıyorsa qBittorrent kısa süre yeniden başlar.</p>
+          </article>
+          <article class="card glass"><div class="card-head"><div><h2>İndirme dizini</h2><small>Yalnız yeni torrentlerin varsayılanı</small></div></div>
+            <div class="cred-row"><span class="k">Dizin</span><span class="mono">/srv/downloads/</span><button class="btn btn-sm" type="button">Klasör seç</button></div>
+            <p class="note">Seçilen dizin mevcut ve servis kullanıcısına yazılabilir olmalı; doğrudan kaydedilir. Mevcut torrentler ve yarım indirmeler taşınmaz.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ===== WireGuard (paket sayfası, kısa) ===== -->
+      <section data-view="wireguard" hidden>
+        <article class="card glass"><div class="card-head"><div><h2>wg0 · Ana ağ</h2><small>UDP 61001 · 10.8.0.0/24 · internet çıkışı</small></div><button class="switch" type="button" role="switch" aria-checked="true" aria-label="Ağ açık"></button></div>
+          <div class="table">
+            <div class="tr head" style="grid-template-columns:32px minmax(0,1fr) 110px 100px"><span></span><span>Cihaz</span><span>Son el sıkışma</span><span></span></div>
+            <div class="tr" style="grid-template-columns:32px minmax(0,1fr) 110px 100px"><span class="ticon t-vpn"><svg class="ic"><use href="#i-key"/></svg></span><span><strong>iphone</strong><br><small>10.8.0.2 · 2,1 GB ↓</small></span><span class="hm">3 dk önce</span><span><button class="btn btn-sm" type="button">QR</button></span></div>
+            <div class="tr" style="grid-template-columns:32px minmax(0,1fr) 110px 100px"><span class="ticon t-vpn"><svg class="ic"><use href="#i-key"/></svg></span><span><strong>macbook</strong><br><small>10.8.0.3 · 640 MB ↓</small></span><span class="hm">dün</span><span><button class="btn btn-sm" type="button">QR</button></span></div>
+            <div class="tr" style="grid-template-columns:32px minmax(0,1fr) 110px 100px"><span class="ticon t-vpn"><svg class="ic"><use href="#i-key"/></svg></span><span><strong>tv</strong><br><small>10.8.0.4 · kapalı</small></span><span class="hm">—</span><span><button class="btn btn-sm" type="button">QR</button></span></div>
+          </div>
+          <div><button class="btn" type="button"><svg class="ic"><use href="#i-plus"/></svg>Cihaz ekle</button></div>
+        </article>
+      </section>
+
+      <!-- ===== AYARLAR ===== -->
+      <section data-view="ayarlar" hidden>
+        <nav class="tabs" id="as-tabs" aria-label="Ayar sekmeleri">
+          <button type="button" role="tab" aria-selected="true" data-tab="sistem">Sistem</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="fw">Güvenlik Duvarı</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="web">Caddy</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="dns">Dnsmasq</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="log">Günlük</button>
+        </nav>
+        <div data-tab-panel="sistem" class="widgets" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+          <article class="card glass"><div class="card-head"><div><h2>Sağlık</h2><small>30 sn önbellek</small></div><span class="pill ok">Sorun yok</span></div>
+            <dl class="facts"><div><dt>Servisler</dt><dd>Başarısız servis yok</dd></div><div><dt>Yeniden başlatma</dt><dd>Gerekmiyor</dd></div><div><dt>Ayar işlemi</dt><dd>Bekleyen yok</dd></div><div><dt>Tailscale</dt><dd>Bağlı · exit node</dd></div></dl></article>
+          <article class="card glass"><div class="card-head"><div><h2>Sistem</h2><small>nrm · Debian 13</small></div></div>
+            <dl class="facts"><div><dt>Sürüm</dt><dd class="mono">2026.08.06-v2-177</dd></div><div><dt>Çekirdek</dt><dd class="mono">6.12.111</dd></div><div><dt>Tailscale</dt><dd class="mono">100.64.0.10</dd></div><div><dt>İnternet</dt><dd class="mono">203.0.113.10</dd></div></dl></article>
+          <article class="card glass"><div class="card-head"><div><h2>Konsol hesabı</h2><small>Giriş yapan: tata · oturum 7 gün</small></div></div><div><button class="btn btn-sm" type="button">Parolayı değiştir</button></div></article>
+        </div>
+        <div data-tab-panel="fw" hidden>
+          <article class="card glass rules"><div class="card-head"><div><h2>İnternet</h2><small>eth0 · gelen</small></div><button class="btn btn-sm" type="button"><svg class="ic"><use href="#i-plus"/></svg>Port kuralı</button></div>
+            <div class="table">
+              <div class="tr head"><span>Servis</span><span>Port</span><span>Açıklama</span><span></span></div>
+              <div class="tr"><span>SSH</span><span class="mono">tcp 22</span><span class="hm">Sunucuya uzaktan terminal bağlantısı.</span><span><button class="switch" type="button" role="switch" aria-checked="true" aria-label="açık"></button></span></div>
+              <div class="tr"><span>Tailscale</span><span class="mono">udp 41641</span><span class="hm">Tünel bağlantı trafiği.</span><span><button class="switch" type="button" role="switch" aria-checked="true" aria-label="açık"></button></span></div>
+              <div class="tr"><span>WireGuard · wg0</span><span class="mono">udp 61001</span><span class="hm">Kurulu bir uygulamanın bildirdiği port.</span><span><button class="switch" type="button" role="switch" aria-checked="true" aria-label="açık"></button></span></div>
+            </div></article>
+        </div>
+        <div data-tab-panel="web" hidden><article class="card glass"><div class="card-head"><div><h2>Yayınlar</h2><small>Tailscale ve isteğe bağlı internet HTTPS</small></div></div><p class="note">panel.ayc · paylas.ayc · torrent.ayc. İnternet: dav.example.com (HTTPS hazır), qbit.example.com (kapalı).</p></article></div>
+        <div data-tab-panel="dns" hidden><article class="card glass"><div class="card-head"><div><h2>Yerel adlar</h2><small>ayc · lo + tailscale0</small></div></div><p class="note">panel, paylas, torrent → 100.64.0.10. Üst DNS: kapalı.</p></article></div>
+        <div data-tab-panel="log" hidden><article class="card glass"><div class="card-head"><div><h2>Son işlemler</h2><small>7 gün</small></div></div><p class="note mono">18:37 torrent:dizin /srv/downloads → ok<br>18:35 torrent:hesap kullanıcı adı → ok<br>17:02 paylasim-save klasör paylaşımı → ok</p></article></div>
+      </section>
+
+      <p class="footnote">Tasarım taslağı · veriler örnektir · <a href="#" id="note-link">üretimde ne değişir?</a></p>
+    </div>
+  </main>
+</div>
+
+<details class="demo glass" open>
+  <summary>Demo kumandası</summary>
+  <div class="row"><span>Tema</span><div class="seg" data-key="theme"><button type="button" data-value="auto" aria-pressed="true">Sistem</button><button type="button" data-value="light" aria-pressed="false">Açık</button><button type="button" data-value="dark" aria-pressed="false">Koyu</button></div></div>
+  <div class="row"><span>Görünüm</span><div class="seg" data-key="glass"><button type="button" data-value="on" aria-pressed="true">Cam (CasaOS)</button><button type="button" data-value="off" aria-pressed="false">Düz (bugün)</button></div></div>
+  <div class="row"><span>Duvar kâğıdı</span><div class="seg" data-key="wall"><button type="button" data-value="dag" aria-pressed="true">Dağ</button><button type="button" data-value="kiyi" aria-pressed="false">Kıyı</button><button type="button" data-value="sade" aria-pressed="false">Sade</button></div></div>
+</details>
+
+<dialog id="note" style="border:0;border-radius:16px;padding:0;max-width:560px;background:var(--surface);color:var(--ink)">
+  <div class="card" style="gap:10px">
+    <div class="card-head"><h2>Üretimde ne değişir</h2><button class="btn btn-sm" type="button" id="note-close">Kapat</button></div>
+    <p class="note"><strong>A · Tema (yalnız CSS):</strong> konsol.css/panel.css token'ları (+ --glass, --glass-line, --blur, --radius), kabuk kuralları (kenar çubuğu, kartlar, düğmeler), repo içi duvar kâğıdı. DOM, JS, testler değişmez.</p>
+    <p class="note"><strong>C · Genel bakış + ızgara (küçük JS):</strong> yeni "genel" rotası (saat, durum, depolama, ağ widget'ları + uygulama kareleri), App Store listesi → kareler; paket sayfaları ve Ayarlar aynen. Nav seçicileri korunur; Playwright paketlerine birkaç ekleme.</p>
+    <p class="note"><strong>Kısıtlar:</strong> CSP img-src 'self' → duvar kâğıdı repo içinden; backdrop-filter zayıf cihazda pahalı (Düz görünüm otomatik yedek: prefers-reduced-transparency); kontrast WCAG AA her iki temada.</p>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const TITLES = { genel: ["Sunucu yönetimi", "Genel bakış"], dosyalar: ["Kullanıcı alanı", "Dosyalar"], moduller: ["Uygulamalar", "App Store"],
+    torrent: ["Hesap, indirme dizini ve servis", "qBittorrent"], wireguard: ["Cihazlar ve ağlar", "WireGuard"], ayarlar: ["Sunucu ayarları", "Ayarlar"] };
+  const ACTIONS = { genel: ["Yenile"], dosyalar: ["Yükle", "Yenile"], moduller: ["Yenile"], torrent: ["Yenile"], wireguard: ["Arayüz ekle", "Yenile"], ayarlar: ["Yenile"] };
+  function route() {
+    const key = location.hash.replace(/^#\/?/, "").split("/")[0] || "genel";
+    const k = TITLES[key] ? key : "genel";
+    document.querySelectorAll("[data-view]").forEach((s) => { s.hidden = s.dataset.view !== k; });
+    document.querySelectorAll(".nav a").forEach((a) => { if (a.dataset.route === k) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    $("#eyebrow").textContent = TITLES[k][0]; $("#title").textContent = TITLES[k][1];
+    $("#top-actions").replaceChildren(...ACTIONS[k].map((t, i) => { const b = document.createElement("button"); b.type = "button"; b.className = "btn btn-sm" + (i === 0 && t !== "Yenile" ? " btn-primary" : ""); b.textContent = t; return b; }));
+    $("#panel-sidebar").classList.remove("open"); $("#menu-toggle").setAttribute("aria-expanded", "false");
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener("hashchange", route); route();
+  // dar ekranda kumanda kapalı başlar; içerik görünsün
+  if (window.innerWidth <= 760) document.querySelector(".demo").removeAttribute("open");
+  $("#menu-toggle").addEventListener("click", () => { const s = $("#panel-sidebar"); const open = s.classList.toggle("open"); $("#menu-toggle").setAttribute("aria-expanded", String(open)); });
+  // saat
+  const tick = () => { const d = new Date(); $("#clock").textContent = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }); $("#date").textContent = d.toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); };
+  tick(); setInterval(tick, 30000);
+  // demo kumandası
+  document.querySelectorAll(".seg").forEach((seg) => seg.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    seg.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    const key = seg.dataset.key, v = b.dataset.value;
+    if (key === "theme") { if (v === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = v; }
+    if (key === "glass") document.documentElement.dataset.glass = v;
+    if (key === "wall") document.documentElement.dataset.wall = v;
+  }));
+  // ayarlar sekmeleri
+  $("#as-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-tab]"); if (!b) return;
+    document.querySelectorAll("#as-tabs [role=tab]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    document.querySelectorAll("[data-tab-panel]").forEach((p) => { p.hidden = p.dataset.tabPanel !== b.dataset.tab; });
+  });
+  // store kareleri → ayrıntı
+  const DETAIL = {
+    torrent: ["qBittorrent", "Debian paketiyle sunucunun kendisinde çalışır. İlk kurulumda en az ayarı bir kez yazar; sonra ayarlarına dokunmaz.", "ok", "Çalışıyor",
+      ["Debian paketi qbittorrent-nox; apt güncellemeleriyle yenilenir", "torrent.ayc adı eklenir (arayüz yalnız sunucuda dinler)", "İndirme yeri /srv/downloads, profil /var/lib/qbittorrent", "İnternete eş portu açılmaz; yalnız giden bağlantılar"]],
+    wireguard: ["WireGuard", "Çekirdek WireGuard; ağlar ve cihazlar Konsol'dan, anahtarlar sunucuda kalır.", "ok", "Kurulu · 1 ağ",
+      ["wireguard-tools ve qrencode paketleri", "Her ağ kendi UDP portunu internete açar", "Cihaz profilleri ve QR yalnız istenince", "Kaldırınca /etc/wireguard korunur"]],
+    ornek: ["Yeni paket", "Mağaza modeli (DD-196…203): bir uygulama eklemek Data/magaza/<id>/ klasörü yazmaktır; taban hiçbir uygulamayı tanımaz.", "idle", "Katalogda değil",
+      ["paket.env bildirimi, kanca, konsol.json", "sayfa.js/sayfa.css ile kendi Konsol sayfası", "api.py ve isteğe bağlı çalışan", "Yazdığı klasörler ve portlar bildirimden"]],
+  };
+  $("#store-tiles").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-app]"); if (!t) return;
+    const [name, sub, tone, state, items] = DETAIL[t.dataset.app];
+    const d = $("#store-detail"); d.querySelector("h2").textContent = name; d.querySelector("small").textContent = sub;
+    const pill = d.querySelector(".pill"); pill.className = "pill " + tone; pill.textContent = state;
+    d.querySelector("ul").replaceChildren(...items.map((x) => { const li = document.createElement("li"); li.textContent = x; return li; }));
+    d.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  $("#note-link").addEventListener("click", (e) => { e.preventDefault(); $("#note").showModal(); });
+  $("#note-close").addEventListener("click", () => $("#note").close());
+})();
+</script>
+</body>
+</html>

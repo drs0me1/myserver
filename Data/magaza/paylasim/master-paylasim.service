@@ -1,0 +1,54 @@
+[Unit]
+Description=Klasör WebDAV (master-stack, DD-158)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=__SERVER_ROOT__
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=__DOWNLOADS_UID__
+Group=__DOWNLOADS_GID__
+LoadCredential=registry:__SHARE_STATE_FILE__
+Environment=HOME=/tmp
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master_webdav.py --registry=%d/registry --port=__SHARE_PORT__ --wan-listen=__SHARE_WAN_BACKEND__
+Restart=on-failure
+RestartSec=3s
+UMask=0002
+Environment=PYTHONDONTWRITEBYTECODE=1
+ReadWritePaths=__SERVER_ROOT__
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+PrivateIPC=true
+ProtectProc=invisible
+# DD-225: tek satır (ikinci bir atama listeyi sıfırlar). Arşiv hazırlık alanı ve paketlerin özel durumu
+# da görünmez; .arsiv'i Dosyalar açılışta kurar, o yüzden '-' yok (yoksa servis güvenli tarafta açılmaz).
+InaccessiblePaths=__SERVER_ROOT__/__FILES_PANEL_TRASH__ __SERVER_ROOT__/__FILES_ARCHIVE_DIR__ -__SERVER_ROOT__/__SHARE_DIR__ __PRIVATE_STATE_ROOT__
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+# 72 connection workers + two listener threads; hashes use those same workers.
+TasksMax=96
+# Includes reclaimable filesystem cache as well as the bounded transfer/hash buffers.
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

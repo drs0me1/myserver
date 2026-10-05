@@ -1,0 +1,49 @@
+# qBittorrent paketi (DD-209): Podman birimi (quadlet). master-modul KONTEYNER_BIRIM_DIR altına koyar,
+# systemd'nin Podman üreticisi __TORRENT_CONTAINER__.service birimini yazar. İmaj yalnız özetiyle
+# sabittir ve kurulumda bir kez çekilir; açılışta ağa çıkılmaz (Pull=never).
+# DD-217: konteyner kendi köprü ağındadır (__TORRENT_NETWORK__) ve yalnız aşağıdaki PublishPort satırları
+# açıktır: arayüz yalnız 127.0.0.1'de (Caddy ve yayın oraya gider), eş portu yalnız WAN IPv4 adresinde
+# (TCP+UDP). Tailscale'de ve başka adreste port yoktur; köprüye gelen başka trafiği Konsol'un yönlendirme
+# koruması düşürür. DD-221: Podman sayfasında değişen arayüz ya da eş portu bu satırları (ve eş portunda
+# TORRENTING_PORT'u) kalıcı seçimle birlikte günceller; kurulum aynı değerle yeniden yazar. Konteyner yalnız profili
+# (/config) ve indirme klasörünü aynı yolla görür; çöp ve paylaşım kökü ona hiç görünmez. Konsol'da
+# indirme klasörü dışında seçilen bir dizin __TORRENT_CONTAINER__.container.d/90-konsol.conf ile eklenir.
+# Süreç indirme klasörünün sahibi (PUID/PGID) olarak çalışır; dosyalar Konsol ve Paylaşım'la aynı sahipte.
+# DD-223: konteyner güvenlik duvarından sonra açılır ama onunla birlikte yeniden başlamaz (Requires= yok).
+# Açılmadan önce yönlendirme korumasının yerinde olduğunu yalnız denetler (yazmaz); yoksa 10 sn arayla
+# yeniden dener ve koruma gelince açılır. Korumayı güvenlik duvarı, motor ve paket çalışanı yazar.
+[Unit]
+Description=qBittorrent (Podman)
+Wants=network-online.target master-firewall.service
+After=network-online.target master-firewall.service
+
+[Container]
+Image=__TORRENT_IMAGE__
+ContainerName=__TORRENT_CONTAINER__
+Pull=never
+Network=__TORRENT_NETWORK__
+PublishPort=127.0.0.1:__TORRENT_UI_PORT__:__TORRENT_UI_PORT__/tcp
+PublishPort=__WAN_IPV4__:__TORRENT_PEER_PORT__:__TORRENT_PEER_PORT__/tcp
+PublishPort=__WAN_IPV4__:__TORRENT_PEER_PORT__:__TORRENT_PEER_PORT__/udp
+LogDriver=journald
+StopTimeout=45
+# NoNewPrivileges yok: imajın s6 başlatıcısı onunla SIGTERM'de kapanamıyor ve 45 sn sonra SIGKILL'le
+# öldürülüyordu (nrm, 2026-10-03: 30 sn'ye karşı 3 sn); qBittorrent kapanışta ayarlarını ve devam
+# kayıtlarını yazar. Gereksiz yetkiler düşürülür; uygulama süreci içeride de PUID ile çalışır.
+DropCapability=NET_BIND_SERVICE SETFCAP SYS_CHROOT
+Environment=PUID=__DOWNLOADS_UID__ PGID=__DOWNLOADS_GID__ UMASK=002 TZ=__TIMEZONE__ WEBUI_PORT=__TORRENT_UI_PORT__ TORRENTING_PORT=__TORRENT_PEER_PORT__
+Volume=__TORRENT_PROFILE_DIR__:/config
+Volume=__DOWNLOADS_PATH__:__DOWNLOADS_PATH__
+
+[Service]
+ExecStartPre=/usr/bin/python3 __SBIN_DIR__/master_container_network.py --state __STATE_FILE__ --check
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=300
+TimeoutStopSec=60
+# DD-181: indirme işlemciyi paylaşır; Tailscale (çıkış düğümünün hızı) ve Konsol öne geçer.
+Nice=10
+CPUWeight=50
+
+[Install]
+WantedBy=multi-user.target

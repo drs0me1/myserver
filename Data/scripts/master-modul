@@ -1,0 +1,956 @@
+#!/usr/bin/env bash
+# Mağaza motoru (DD-148, DD-196, DD-197). Temiz kurulum yalnız temeli kurar; uygulamaları
+# Konsol → App Store buradan kurar, başlatır, durdurur ve kaldırır. Konsol'un root arka ucu bu
+# betiği `systemd-run` ile ayrı bir birim olarak çalıştırır: işlem sayfa kapansa da sürer ve
+# ilerleme RUNTIME_DIR/modul-<id>.ilerleme dosyasından okunur. Aynı anda tek işlem yapılır (kilit).
+#
+# Motor hiçbir uygulamayı tanımaz. Her paket MODULES_DIR/<id>/ altında bir klasördür (kurulum
+# Data/magaza/<id>/ dosyalarını işleyip oraya koyar): paket.env bildirimi (PAKET_* anahtarları)
+# ve `source` edilen kanca dosyası (paket_kur, paket_kaldir, paket_uygula, paket_baslat,
+# paket_durdur, paket_birim, paket_hesap, paket_veri_sil, paket_gunluk_suz, paket_ozet).
+# Bildirimdeki araçlar (SBIN_DIR), birim ekleri (UNIT_DIR), adlar (Caddy + dnsmasq), Konsol
+# sayfa dosyaları (CONSOLE_WEB_DIR/uygulama/<id>, DD-200) ve apt paketleri motorun
+# yardımcılarıyla konur ve kaldırılır; kaldırma sonunda hiçbir iz kalmadığı denetlenir.
+# Yerleşik Dosyalar/WebDAV (dosya, paylasim) katalogda değildir ve kaldırılamaz.
+#
+#   master-modul liste                  id runtime kayıt canlı eylem adım toplam metin (sekmeyle)
+#   master-modul kur ID
+#   master-modul baslat ID | durdur ID | yeniden-baslat ID  durdurulabilir paketlerde
+#   master-modul kaldir ID [--veri]     --veri: paketin ayar/anahtar verisi de silinir
+#   master-modul gunluk ID [SATIR]
+#   master-modul hesap ID [--parola]    yalnız PAKET_HESAP=1 olan paketlerde
+#   master-modul uygula ID              kurulumun yeniden çalışması: kurulu paketin dosyalarını uygular
+#   master-modul saglik                 kurulu paketlerin gerekli birimleri: id birim tür (gerekli | ag)
+set -Eeuo pipefail
+umask 022
+
+STATE_FILE="${STATE_FILE:-/etc/master-stack/state.env}"
+
+die() { printf 'HATA: %s\n' "$*" >&2; exit 1; }
+
+[[ -r "$STATE_FILE" ]] ||
+    die "state.env okunamıyor ($STATE_FILE): kurulum yapılmamış ya da root değilsiniz"
+# shellcheck source=/dev/null
+source "$STATE_FILE"
+: "${MODULES_FILE:?}"
+: "${MODULES_DIR:?}"
+: "${RUNTIME_DIR:?}"
+: "${DOWNLOADS_PATH:?}"
+
+ID_RE='^[a-z]{2,16}$'
+
+# -- paket bildirimi: PAKET_KEY=değer satırları (tırnaklı ya da düz); `source` edilmez, okunur.
+# Değişkenleri kancalar ve kurulum okur.
+# shellcheck disable=SC2034
+paket_sifirla() {
+    PAKET_ID="" PAKET_AD="" PAKET_SIRA=50 PAKET_CALISMA=host PAKET_DURDURULABILIR=0 PAKET_HESAP=0
+    PAKET_APT="" PAKET_ARACLAR="" PAKET_EKLER="" PAKET_ADLAR=0 PAKET_GUNLUK="" PAKET_KUR_ADIM=1
+    PAKET_YAYIN=0 PAKET_UYGULA_HEP=0 PAKET_UYGULA_NEDEN="" PAKET_YERLESIK=0
+    PAKET_KONSOL="" PAKET_SAYFA="" PAKET_API=""
+    # DD-203: yazdığı klasörler (mutlak), onları bildiren Python modülü, root arka ucun yazma yolları.
+    PAKET_KLASORLER="" PAKET_KLASOR_MODUL="" PAKET_ARKAUC_YOLLAR=""
+    # DD-206: Genel bakış ağ kartı için trafik toplamlarını ölçen Python modülü (root arka uç yükler).
+    PAKET_TRAFIK=""
+    # DD-209: Podman birimi (paketteki quadlet dosyasının adı) ve özetiyle sabitlenmiş imajı.
+    PAKET_KONTEYNER="" PAKET_IMAJ="" PAKET_KONTEYNER_YONETIM="" PAKET_AYAR_ANAHTARLAR=""
+    # DD-214: imajın izlediği kanal (hareketli etiket); motor kullanmaz, Konsol yalnız denetler.
+    PAKET_IMAJ_KANAL=""
+    # DD-217: konteynerin kendi köprü ağı (adı); motor kurar, kaldırmada siler.
+    PAKET_KONTEYNER_AG=""
+    # DD-210: Konsol'daki kurulum penceresinin bilgilerini doğrulayan paket çalışanı (kur-hazirla).
+    PAKET_KUR_AYAR=""
+}
+
+paket_bildirim() { # ID → PAKET_* değişkenleri (kanca yüklenmez)
+    local dir="$MODULES_DIR/$1" line
+    paket_sifirla
+    # shellcheck disable=SC2034
+    PAKET_ID="$1" PAKET_AD="$1"
+    [[ -f "$dir/paket.env" && ! -L "$dir/paket.env" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]] || continue
+        [[ "$line" =~ ^(PAKET_[A-Z_]+)=(\"([^\"]*)\"|([A-Za-z0-9_./@*: -]*))$ ]] ||
+            die "paket bildirimi bozuk: $dir/paket.env"
+        printf -v "${BASH_REMATCH[1]}" '%s' "${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    done <"$dir/paket.env"
+    [[ "$PAKET_CALISMA" =~ ^(host|konsol|konteyner)$ ]] || die "paket çalışma biçimi geçersiz: $PAKET_ID"
+    [[ "$PAKET_SIRA" =~ ^[0-9]{1,4}$ && "$PAKET_KUR_ADIM" =~ ^[0-9]{1,2}$ ]] || die "paket bildirimi geçersiz: $PAKET_ID"
+}
+
+HOOK_FUNCS="paket_gerekli paket_kur paket_kaldir paket_uygula paket_baslat paket_durdur paket_yeniden_baslat paket_birim paket_hesap paket_veri_sil paket_gunluk_suz paket_ozet paket_firewall paket_saglik"
+
+# İşlenmiş paket varsayılanlarını kanca okur; bu desteklenen kalıcı seçimleri üzerlerine koyar.
+# Çıktı veri olarak okunur: root'a ait olsa da override dosyası hiçbir zaman source/eval edilmez.
+paket_ayar_oku() { # ID
+    local id="$1" dir="${PACKAGE_OVERRIDES_DIR:-${STATE_DIR:-}/package-overrides}" rows key value
+    [[ ! -e "$dir/$id.env" && ! -L "$dir/$id.env" ]] && return 0
+    rows="$(python3 "$SBIN_DIR/master_settings.py" --state "$STATE_FILE" package-overrides "$id")" ||
+        die "paket kalıcı ayarları okunamadı: $id"
+    while IFS='=' read -r key value; do
+        [[ -n "$key" ]] || continue
+        [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ && " $PAKET_AYAR_ANAHTARLAR " == *" $key "* ]] ||
+            die "desteklenmeyen paket ayarı: $id"
+        printf -v "$key" '%s' "$value"
+    done <<<"$rows"
+}
+
+paket_yukle() { # ID → bildirim + kanca işlevleri
+    local dir="$MODULES_DIR/$1"
+    paket_bildirim "$1" || die "paket bildirimi yok: $dir/paket.env; kurulumu yeniden çalıştırın"
+    # shellcheck disable=SC2086
+    unset -f $HOOK_FUNCS 2>/dev/null || true
+    if [[ -f "$dir/kanca" ]]; then
+        [[ ! -L "$dir/kanca" ]] || die "paket kancası sembolik bağ olamaz: $dir/kanca"
+        # shellcheck source=/dev/null
+        source "$dir/kanca"
+    fi
+    paket_ayar_oku "$1"
+}
+
+# Katalog: kurulumun koyduğu paketler, PAKET_SIRA sırasıyla; yerleşikler dışarıda.
+katalog() {
+    local dir id
+    for dir in "$MODULES_DIR"/*/; do
+        id="${dir%/}"; id="${id##*/}"
+        [[ "$id" =~ $ID_RE && -f "$dir/paket.env" ]] || continue
+        ( paket_bildirim "$id" && [[ "$PAKET_YERLESIK" != 1 ]] && printf '%s\t%s\n' "$PAKET_SIRA" "$id" ) || true
+    done | sort -n | cut -f2
+}
+CATALOG="$(katalog | tr '\n' ' ')"
+
+valid_id() {
+    [[ "$1" =~ $ID_RE ]] && [[ " $CATALOG " == *" $1 "* ]] || die "bilinmeyen modül: '$1'"
+}
+
+# -- kayıt: satır başına "id<TAB>durum" (calisiyor | durduruldu); yoksa kurulu değil
+registry_get() {
+    [[ -f "$MODULES_FILE" ]] || return 1
+    awk -F'\t' -v i="$1" '$1 == i {print $2; f = 1; exit} END {exit !f}' "$MODULES_FILE"
+}
+registry_set() { # ID DURUM (boş durum = kayıttan sil)
+    local tmp
+    mkdir -p -- "$(dirname -- "$MODULES_FILE")"
+    tmp="$(mktemp "$MODULES_FILE.XXXXXX")"
+    {
+        [[ ! -f "$MODULES_FILE" ]] || awk -F'\t' -v i="$1" '$1 != i' "$MODULES_FILE"
+        [[ -z "$2" ]] || printf '%s\t%s\n' "$1" "$2"
+    } >"$tmp"
+    chmod 0644 "$tmp"
+    mv -f -- "$tmp" "$MODULES_FILE"
+    # PAKET_YAYIN=1: paketin Caddy yayın satırı kayda bağlıdır (DD-191).
+    if [[ "$1" == "${PAKET_ID:-}" && "${PAKET_YAYIN:-0}" == 1 && -f "$SBIN_DIR/master_publications.py" ]]; then
+        python3 "$SBIN_DIR/master_shares.py" publish || fail_step "Caddy yayınları güncellenemedi"
+    fi
+}
+
+# -- ilerleme: tek satır "eylem<TAB>adım<TAB>toplam<TAB>metin"; bitince adım "bitti" ya da "hata"
+progress_file() { printf '%s/modul-%s.ilerleme\n' "$RUNTIME_DIR" "$1"; }
+progress() { # ID EYLEM ADIM TOPLAM METİN
+    local f
+    f="$(progress_file "$1")"
+    mkdir -p -- "$RUNTIME_DIR"
+    printf '%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "$5" >"$f.tmp"
+    mv -f -- "$f.tmp" "$f"
+    command -v logger >/dev/null 2>&1 && logger -t master-modul -- "$1 $2: $5" || true
+}
+# Kancaların adımı: toplam bildirimdeki PAKET_KUR_ADIM.
+progress_step() { # ADIM METİN
+    progress "$CUR_ID" "$CUR_ACTION" "$1" "$PAKET_KUR_ADIM" "$2"
+}
+
+CUR_ID="" CUR_ACTION=""
+on_error() {
+    local rc=$?
+    # Komut ikamesindeki (alt kabuk) bir hata ilerlemeye "hata" yazmasın: yalnız ana kabuk yazar.
+    [[ "${BASHPID:-$$}" == "$$" ]] || exit "$rc"
+    [[ -z "$CUR_ID" ]] || progress "$CUR_ID" "$CUR_ACTION" hata 0 "${LAST_ERROR:-işlem başarısız (çıkış $rc)}"
+    exit "$rc"
+}
+trap on_error ERR
+
+fail_step() { # METİN — ilerlemeye yazar ve çıkar
+    LAST_ERROR="$1"
+    [[ -z "$CUR_ID" ]] || progress "$CUR_ID" "$CUR_ACTION" hata 0 "$1"
+    trap - ERR
+    die "$1"
+}
+
+warn() {
+    printf 'UYARI: %s\n' "$*" >&2
+    command -v logger >/dev/null 2>&1 && logger -t master-modul -- "UYARI: $*" || true
+}
+
+take_lock() {
+    mkdir -p -- "$RUNTIME_DIR"
+    # Canonical order: install -> module. The installer already owns install.lock;
+    # validate and reuse its inherited descriptor without unlocking the parent.
+    if [[ "${V2_LOCK_FD:-}" =~ ^[0-9]+$ &&
+        "/proc/$$/fd/$V2_LOCK_FD" -ef "$RUNTIME_DIR/install.lock" ]]; then
+        flock -n "$V2_LOCK_FD" || die "üst kurulum kilidi doğrulanamadı"
+    else
+        exec 9>"$RUNTIME_DIR/install.lock"
+        flock -w 5 9 || die "başka bir kurulum/ayar işlemi sürüyor; biraz sonra yeniden deneyin"
+    fi
+    exec 8>"$RUNTIME_DIR/modul.lock"
+    flock -w 5 8 || die "başka bir modül işlemi sürüyor; biraz sonra yeniden deneyin"
+    [[ -z "${SETTINGS_PENDING_FILE:-}" || ! -f "$SETTINGS_PENDING_FILE" ]] ||
+        die "Konsol'da onay bekleyen ayar var; önce onaylayın veya geri alın"
+    # Kilit beklerken değişen paket seçimi başlangıçtaki okumayı geçersiz kılabilir.
+    [[ -z "${PAKET_ID:-}" ]] || paket_ayar_oku "$PAKET_ID"
+}
+
+FAIL=""
+need_keys() { # ANAHTAR…
+    local k
+    for k in "$@"; do
+        [[ -n "${!k:-}" ]] || fail_step "state.env'de $k yok; kurulumu yeniden çalıştırın"
+    done
+}
+
+# Konsol brokerinin gördüğü sürümü kilit alındıktan sonra yeniden kontrol eder. Yerel/native
+# çağrılarda bu iç önkoşul yoktur. Başarısızlık 75: broker bunu yeniden inceleme gereken 409 yapar.
+konteyner_surumu_dogrula() {
+    [[ -n "${KONSOL_KONTEYNER_REVISION:-}" ]] || return 0
+    if ! python3 "$SBIN_DIR/master_settings.py" --state "$STATE_FILE" container-revision \
+        "$CUR_ID" "$KONSOL_KONTEYNER_REVISION" >/dev/null 2>&1; then
+        progress "$CUR_ID" "$CUR_ACTION" hata 0 "Konteyner ayarları değişti veya doğrulanamadı; yenileyip yeniden deneyin."
+        trap - ERR
+        printf 'HATA: Konteyner ayarları değişti veya doğrulanamadı; yenileyip yeniden deneyin.\n' >&2
+        exit 75
+    fi
+}
+
+# Eksik Debian paketlerini önerileri olmadan kurar; kurulu olanlara dokunmaz. Hata: FAIL.
+apt_install() { # PAKET…
+    local out pkg missing=0
+    for pkg in "$@"; do
+        dpkg -s "$pkg" >/dev/null 2>&1 || missing=1
+    done
+    [[ "$missing" == 1 ]] || return 0
+    if ! out="$(DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        -o DPkg::Lock::Timeout=300 "$@" 2>&1)"; then
+        # Liste eskimiş olabilir: bir kez güncellenip yeniden denenir.
+        out="$(apt-get -o DPkg::Lock::Timeout=300 update 2>&1 &&
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                -o DPkg::Lock::Timeout=300 "$@" 2>&1)" ||
+            { FAIL="paketler kurulamadı: $(tail -n 1 <<<"$out")"; return 1; }
+    fi
+}
+
+
+# Birim "active" olur olmaz işlem henüz root olabilir: systemd User='a exec'ten hemen önce geçer.
+# uid, beklenen uid'ye dönene dek birkaç kez okunur (en çok ~5 sn); son okunan yazılır.
+unit_uid() { # BİRİM
+    local _ uid=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        uid="$(ps -o uid= -p "$(systemctl show -p MainPID --value "$1" 2>/dev/null || true)" 2>/dev/null | tr -d ' ' || true)"
+        [[ "$uid" != "$DOWNLOADS_UID" ]] || break
+        sleep 0.5
+    done
+    printf '%s\n' "$uid"
+}
+
+http_code() { # URL ya da curl argümanları; yanıt yoksa 000
+    curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@" 2>/dev/null || true
+}
+
+# ------------------------------------------------------- klasör paylaşımı (DD-158)
+SHARE_UNIT="master-paylasim.service"
+SHARE_FAIL=""
+
+share_need() {
+    local k
+    for k in SERVER_ROOT SHARE_DIR SHARE_PORT SHARE_STATE_FILE STATE_DIR SBIN_DIR CADDYFILE CADDY_MODULES_DIR DNSMASQ_CONF_DIR LOCAL_DOMAIN TAILSCALE_IPV4 UNIT_DIR DOWNLOADS_UID; do
+        [[ -n "${!k:-}" ]] || fail_step "state.env'de $k yok; kurulumu yeniden çalıştırın"
+    done
+}
+
+share_prepare() {
+    python3 "$SBIN_DIR/master_shares.py" prepare || fail_step "klasör paylaşım kaydı hazırlanamadı"
+}
+
+share_place_unit() {
+    place_unit "$MODULES_DIR/paylasim/$SHARE_UNIT" "$SHARE_UNIT"
+}
+
+share_verify() {
+    local _ uid code=""
+    SHARE_FAIL=""
+    for _ in $(seq 1 20); do
+        code="$(http_code "http://127.0.0.1:$SHARE_PORT/")"
+        [[ "$code" != 401 ]] || break
+        sleep 1
+    done
+    systemctl is-active --quiet "$SHARE_UNIT" || { SHARE_FAIL="paylaşım servisi başlamadı"; return 1; }
+    uid="$(unit_uid "$SHARE_UNIT")"
+    [[ "$uid" == "$DOWNLOADS_UID" && "$code" == 401 ]] ||
+        { SHARE_FAIL="paylaşım uid/adres/giriş kapısı doğrulanamadı"; return 1; }
+}
+
+# -- adlar: Caddy sitesi ve dnsmasq adı. Geçici dosyalar noktayla başlar: Caddy'nin içe aktarma
+# kalıbı ve dnsmasq'ın dizin okuması onları atlar. Caddy yeniden yüklenir (Konsol'u da o sunar;
+# hatalı yapılandırmada eskisini korur), dnsmasq yeniden başlar (SIGHUP adları okumaz).
+caddy_validate() {
+    TAILSCALE_IPV4="$TAILSCALE_IPV4" caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1
+}
+dnsmasq_check() {
+    if [[ -n "${SETTINGS_FILE:-}" ]]; then
+        python3 "$SBIN_DIR/master_settings.py" project-dns || return 1
+    fi
+    if [[ -x /usr/share/dnsmasq/systemd-helper ]]; then
+        /usr/share/dnsmasq/systemd-helper checkconfig >/dev/null 2>&1
+    else
+        dnsmasq --test --conf-dir="$DNSMASQ_CONF_DIR,.dpkg-dist,.dpkg-old,.dpkg-new" >/dev/null 2>&1
+    fi
+}
+
+swap_in() { # KAYNAK HEDEF DOĞRULAYICI → 0 değişti, 1 aynı, 2 doğrulanmadı (eskisi geri), 3 kaynak yok
+    local src="$1" dst="$2" dir base bak="" tmp
+    [[ -f "$src" ]] || return 3
+    if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then return 1; fi
+    dir="$(dirname -- "$dst")" base="$(basename -- "$dst")"
+    install -d -m 0755 -- "$dir"
+    if [[ -f "$dst" ]]; then
+        bak="$(mktemp "$dir/.$base.eski-XXXXXX")"
+        cp -- "$dst" "$bak"
+    fi
+    tmp="$(mktemp "$dir/.$base.yeni-XXXXXX")"
+    cp -- "$src" "$tmp"
+    chmod 0644 "$tmp"
+    mv -f -- "$tmp" "$dst"
+    if ! "$3"; then
+        if [[ -n "$bak" ]]; then mv -f -- "$bak" "$dst"; else rm -f -- "$dst"; fi
+        return 2
+    fi
+    [[ -z "$bak" ]] || rm -f -- "$bak"
+    return 0
+}
+
+swap_out() { # HEDEF DOĞRULAYICI → 0 kaldırıldı, 1 zaten yok, 2 kaldırıldı ama yapılandırma doğrulanmadı
+    [[ -e "$1" || -L "$1" ]] || return 1
+    rm -f -- "$1"
+    "$2" || return 2
+}
+
+# Bir modülün adları: MODULES_DIR/<id>/<id>.caddy → CADDY_MODULES_DIR/<id>.caddy ve
+# MODULES_DIR/<id>/dnsmasq.conf → DNSMASQ_CONF_DIR/modul-<id>.conf. Hata: FAIL.
+names_on() { # ID
+    local id="$1" rc=0 dns_src dns_tmp="" caddy_src caddy_tmp=""
+    FAIL=""
+    caddy_src="$MODULES_DIR/$id/$id.caddy"
+    if [[ -f "$SBIN_DIR/master_publications.py" ]]; then
+        caddy_tmp="$(mktemp "$RUNTIME_DIR/.caddy-XXXXXX")"
+        cp -- "$caddy_src" "$caddy_tmp"
+        python3 "$SBIN_DIR/master_publications.py" --state "$STATE_FILE" filter-caddy "$id" "$caddy_tmp" ||
+            { rm -f -- "$caddy_tmp"; FAIL="Caddy ağ seçimi okunamadı"; return 1; }
+        caddy_src="$caddy_tmp"
+    fi
+    swap_in "$caddy_src" "$CADDY_MODULES_DIR/$id.caddy" caddy_validate || rc=$?
+    [[ -z "$caddy_tmp" ]] || rm -f -- "$caddy_tmp"
+    case "$rc" in
+        0) systemctl reload caddy >/dev/null 2>&1 || { FAIL="Caddy yeniden yüklenemedi"; return 1; } ;;
+        1) ;;
+        2) FAIL="Caddy yapılandırması doğrulanmadı ($id)"; return 1 ;;
+        *) FAIL="modül dosyası yok ($MODULES_DIR/$id/$id.caddy); kurulumu yeniden çalıştırın"; return 1 ;;
+    esac
+    rc=0
+    dns_src="$MODULES_DIR/$id/dnsmasq.conf"
+    if [[ -n "${SETTINGS_FILE:-}" ]]; then
+        dns_tmp="$(mktemp "$RUNTIME_DIR/.dns-XXXXXX")"
+        cp -- "$dns_src" "$dns_tmp"
+        python3 "$SBIN_DIR/master_settings.py" filter-dns "$dns_tmp" || { rm -f -- "$dns_tmp"; return 1; }
+        dns_src="$dns_tmp"
+    fi
+    swap_in "$dns_src" "$DNSMASQ_CONF_DIR/modul-$id.conf" dnsmasq_check || rc=$?
+    [[ -z "$dns_tmp" ]] || rm -f -- "$dns_tmp"
+    case "$rc" in
+        0) systemctl restart dnsmasq >/dev/null 2>&1 || { FAIL="dnsmasq yeniden başlatılamadı"; return 1; } ;;
+        1) ;;
+        2) FAIL="dnsmasq yapılandırması doğrulanmadı ($id)"; return 1 ;;
+        *) FAIL="modül dosyası yok ($MODULES_DIR/$id/dnsmasq.conf); kurulumu yeniden çalıştırın"; return 1 ;;
+    esac
+}
+
+names_off() { # ID — kaldırmayı durdurmaz; yalnız uyarır
+    local id="$1" rc=0
+    swap_out "$CADDY_MODULES_DIR/$id.caddy" caddy_validate || rc=$?
+    case "$rc" in
+        0) systemctl reload caddy >/dev/null 2>&1 || warn "Caddy yeniden yüklenemedi" ;;
+        2) warn "$id sitesi kaldırıldı ama Caddy yapılandırması doğrulanmıyor" ;;
+    esac
+    rc=0
+    swap_out "$DNSMASQ_CONF_DIR/modul-$id.conf" dnsmasq_check || rc=$?
+    case "$rc" in
+        0) systemctl restart dnsmasq >/dev/null 2>&1 || warn "dnsmasq yeniden başlatılamadı" ;;
+        2) warn "$id adı kaldırıldı ama dnsmasq yapılandırması doğrulanmıyor" ;;
+    esac
+}
+
+share_verify_names() {
+    local _ a="" b="" ans="" expected=401 rc=0
+    if [[ -f "$SBIN_DIR/master_publications.py" ]]; then
+        python3 "$SBIN_DIR/master_publications.py" --state "$STATE_FILE" tail-enabled paylasim || rc=$?
+        [[ "$rc" -le 1 ]] || { SHARE_FAIL="Caddy ağ seçimi okunamadı"; return 1; }
+        [[ "$rc" == 0 ]] || expected=403
+    fi
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        a="$(http_code -H "Host: paylas.$LOCAL_DOMAIN" "http://$TAILSCALE_IPV4/")"
+        b="$(http_code "http://$TAILSCALE_IPV4:$SHARE_PORT/")"
+        ans="$(dig +short +time=2 +tries=1 "paylas.$LOCAL_DOMAIN" @"$TAILSCALE_IPV4" 2>/dev/null | head -n1 || true)"
+        if [[ -n "${SETTINGS_FILE:-}" ]] && ! python3 "$SBIN_DIR/master_settings.py" dns-enabled "paylas.$LOCAL_DOMAIN"; then ans="$TAILSCALE_IPV4"; fi
+        [[ "$a" == "$expected" && "$b" == "$expected" && "$ans" == "$TAILSCALE_IPV4" ]] && return 0
+        sleep 1
+    done
+    SHARE_FAIL="paylas.$LOCAL_DOMAIN ya da $TAILSCALE_IPV4:$SHARE_PORT açılmadı (ad $a, port $b, DNS '$ans')"
+    return 1
+}
+
+# -------------------------------------------------------- dosya yöneticisi (DD-150)
+# Servis birimini kurulum MODULES_DIR/dosya/ altına yazar; modül onu UNIT_DIR'e koyar ve açar.
+FILES_UNIT="master-files-panel.service"
+
+files_need() {
+    need_keys SERVER_ROOT FILES_PANEL_PORT FILES_PANEL_TRASH UNIT_DIR SBIN_DIR DOWNLOADS_UID LOCAL_DOMAIN TAILSCALE_IPV4
+}
+
+# Kurulumun işlediği birim UNIT_DIR'e konur. 0: yeni yazıldı (daemon-reload yapıldı), 1: aynıydı.
+place_unit() { # KAYNAK BİRİM
+    local src="$1" dst="$UNIT_DIR/$2" tmp
+    [[ -f "$src" ]] || fail_step "modül dosyası yok ($src); kurulumu yeniden çalıştırın"
+    if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then return 1; fi
+    tmp="$(mktemp "$UNIT_DIR/.$2.XXXXXX")"
+    cp -- "$src" "$tmp"
+    chmod 0644 "$tmp"
+    mv -f -- "$tmp" "$dst"
+    systemctl daemon-reload
+}
+
+files_place_unit() { # 0: birim yeni yazıldı, 1: aynıydı
+    place_unit "$MODULES_DIR/dosya/$FILES_UNIT" "$FILES_UNIT"
+}
+
+# Servis ayakta, kullanıcı alanının sahibi olarak (root değil) çalışıyor ve yanıt veriyor;
+# başlıksız istek 403 alıyor. Kurulumun eski aşama 7 denetimleri (DD-139). DD-194: Caddy'den
+# geçen yol Konsol oturumu ister ve sunucunun içinden gelen isteği reddeder (DD-180); servisin
+# kendisi loopback portundan sınanır.
+files_verify() {
+    local _ uid ok=0 code
+    FAIL=""
+    for _ in $(seq 1 20); do
+        systemctl is-active --quiet "$FILES_UNIT" && break
+        sleep 1
+    done
+    systemctl is-active --quiet "$FILES_UNIT" || { FAIL="dosya servisi başlamadı"; return 1; }
+    uid="$(unit_uid "$FILES_UNIT")"
+    [[ "$uid" == "$DOWNLOADS_UID" ]] || { FAIL="dosya servisi uid '$uid' ile çalışıyor (beklenen $DOWNLOADS_UID)"; return 1; }
+    for _ in $(seq 1 10); do
+        if python3 "$SBIN_DIR/master-files-panel" check --url "http://127.0.0.1:$FILES_PANEL_PORT/api/state" \
+            --host "panel.$LOCAL_DOMAIN" >/dev/null 2>&1; then
+            ok=1
+            break
+        fi
+        sleep 1
+    done
+    [[ "$ok" == 1 ]] || { FAIL="dosya servisi yerel portunda yanıt vermedi"; return 1; }
+    code="$(http_code -H "Host: panel.$LOCAL_DOMAIN" "http://127.0.0.1:$FILES_PANEL_PORT/api/state")"
+    [[ "$code" == 403 ]] || { FAIL="dosya servisi başlıksız isteğe $code verdi (beklenen 403)"; return 1; }
+}
+
+
+# ------------------------------------------------ bildirimdeki parçalar (DD-197)
+# Paketin apt paketleri, araçları (SBIN_DIR'e 0755), birim ekleri (UNIT_DIR altına 0644) ve adları
+# motor tarafından konur ve kaldırılır; kancalar yalnız sırasına karar verir. Hata: FAIL.
+paket_apt() {
+    # shellcheck disable=SC2086
+    apt_install $PAKET_APT
+}
+
+# shellcheck disable=SC2034
+ARACLAR_DEGISTI=0
+paket_araclar_koy() {
+    local name src dst tmp
+    ARACLAR_DEGISTI=0
+    for name in $PAKET_ARACLAR; do
+        [[ "$name" =~ ^[a-z][a-z0-9_.-]{1,40}$ ]] || { FAIL="paket aracı adı geçersiz: $name"; return 1; }
+        src="$MODULES_DIR/$PAKET_ID/$name" dst="$SBIN_DIR/$name"
+        [[ -f "$src" ]] || { FAIL="paket dosyası yok ($src); kurulumu yeniden çalıştırın"; return 1; }
+        if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then continue; fi
+        tmp="$(mktemp "$SBIN_DIR/.$name.XXXXXX")"
+        cp -- "$src" "$tmp" && chmod 0755 "$tmp" && mv -f -- "$tmp" "$dst"
+        # shellcheck disable=SC2034
+        ARACLAR_DEGISTI=1
+    done
+}
+
+paket_araclar_kaldir() {
+    local name
+    for name in $PAKET_ARACLAR; do
+        [[ "$name" =~ ^[a-z][a-z0-9_.-]{1,40}$ ]] || continue
+        rm -f -- "$SBIN_DIR/$name"
+    done
+}
+
+# DD-200: Konsol sayfa dosyaları (PAKET_SAYFA: .js/.css adları) yalnız kuruluyken Caddy'nin
+# sunduğu CONSOLE_WEB_DIR/uygulama/<id>/ altında durur; Konsol onları kurulu paket için yükler.
+paket_sayfa_koy() {
+    local name src dst dir tmp
+    [[ -n "$PAKET_SAYFA" ]] || return 0
+    need_keys CONSOLE_WEB_DIR
+    dir="$CONSOLE_WEB_DIR/uygulama/$PAKET_ID"
+    install -d -m 0755 -o root -g root -- "$dir"
+    for name in $PAKET_SAYFA; do
+        [[ "$name" =~ ^[a-z][a-z0-9_.-]{0,40}\.(js|css)$ ]] || { FAIL="paket sayfa dosyası adı geçersiz: $name"; return 1; }
+        src="$MODULES_DIR/$PAKET_ID/$name" dst="$dir/$name"
+        [[ -f "$src" ]] || { FAIL="paket dosyası yok ($src); kurulumu yeniden çalıştırın"; return 1; }
+        if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then continue; fi
+        tmp="$(mktemp "$dir/.$name.XXXXXX")"
+        cp -- "$src" "$tmp" && chmod 0644 "$tmp" && mv -f -- "$tmp" "$dst"
+    done
+}
+
+paket_sayfa_kaldir() {
+    [[ -n "${CONSOLE_WEB_DIR:-}" ]] || return 0
+    rm -rf -- "$CONSOLE_WEB_DIR/uygulama/$PAKET_ID"
+    # Son paket de gidince üst klasör kalmaz (boş değilse başka paketindir, kalır).
+    rmdir -- "$CONSOLE_WEB_DIR/uygulama" 2>/dev/null || true
+}
+
+ekler_hedef() { # "kaynak:hedef" → hedefin UNIT_DIR altındaki yolu
+    local pair="$1" dst="${1#*:}"
+    [[ "$pair" == *:* && "$dst" =~ ^[A-Za-z0-9@._-]+(/[A-Za-z0-9@._-]+)?$ ]] || return 1
+    printf '%s/%s\n' "$UNIT_DIR" "$dst"
+}
+
+EKLER_DEGISTI=0
+paket_ekler_koy() {
+    local pair src dst tmp
+    EKLER_DEGISTI=0
+    for pair in $PAKET_EKLER; do
+        dst="$(ekler_hedef "$pair")" || { FAIL="paket birim eki tanımı geçersiz: $pair"; return 1; }
+        src="$MODULES_DIR/$PAKET_ID/${pair%%:*}"
+        [[ -f "$src" ]] || { FAIL="paket dosyası yok ($src); kurulumu yeniden çalıştırın"; return 1; }
+        if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then continue; fi
+        install -d -m 0755 -- "$(dirname -- "$dst")"
+        tmp="$(mktemp "$(dirname -- "$dst")/.$(basename -- "$dst").XXXXXX")"
+        cp -- "$src" "$tmp" && chmod 0644 "$tmp" && mv -f -- "$tmp" "$dst"
+        EKLER_DEGISTI=1
+    done
+    [[ "$EKLER_DEGISTI" == 0 ]] || systemctl daemon-reload
+}
+
+paket_ekler_kaldir() {
+    local pair dst removed=0
+    for pair in $PAKET_EKLER; do
+        dst="$(ekler_hedef "$pair")" || continue
+        [[ -e "$dst" ]] || continue
+        rm -f -- "$dst"
+        rmdir -- "$(dirname -- "$dst")" 2>/dev/null || true
+        removed=1
+    done
+    [[ "$removed" == 0 ]] || systemctl daemon-reload >/dev/null 2>&1 || true
+}
+
+# DD-209: Podman birimi. PAKET_KONTEYNER paketteki quadlet dosyasının adıdır (ör. ad.container);
+# KONTEYNER_BIRIM_DIR altına 0644 konur, systemd'nin Podman üreticisi aynı adlı .service birimini
+# yazar. Üretilen birim etkinleştirilemez: açılışta başlama dosyanın [Install] bölümündendir, durdurma
+# dosyayı kaldırır. Dosyanın yanındaki AD.d/ ekleri (ör. Konsol'un seçtiği klasör) paketin kancasınındır.
+konteyner_hedef() {
+    [[ "$PAKET_KONTEYNER" =~ ^[a-z][a-z0-9-]{1,30}\.container$ && -n "${KONTEYNER_BIRIM_DIR:-}" ]] || return 1
+    printf '%s/%s\n' "$KONTEYNER_BIRIM_DIR" "$PAKET_KONTEYNER"
+}
+
+# DD-217: paketin kendi köprü ağı. Köprü arayüzü Konsol'un konteyner korumasının adlandırmasıyla
+# (KONTEYNER_BRIDGE_PREFIX + adın SHA-256 özetinin ilk 10 hanesi) kurulur; koruma bu öneke giden her
+# trafiği düşürür, yalnız paketin yerleşik Quadlet dosyasındaki WAN/Tailscale yayınlarını geçirir.
+# Ağ pakete etiketle bağlıdır; aynı adla başka bir ağ varsa kullanılmaz.
+paket_ag_arayuzu() {
+    [[ "$PAKET_KONTEYNER_AG" =~ ^[a-z][a-z0-9-]{1,30}$ ]] || return 1
+    case "$PAKET_KONTEYNER_AG" in bridge | host | none | podman | "${KONTEYNER_NETWORK:-konsol}") return 1 ;; esac
+    [[ "${KONTEYNER_BRIDGE_PREFIX:-}" =~ ^[a-z][a-z0-9]{1,4}$ ]] || return 1
+    printf '%s%s\n' "$KONTEYNER_BRIDGE_PREFIX" "$(printf '%s' "$PAKET_KONTEYNER_AG" | sha256sum | cut -c1-10)"
+}
+
+paket_ag_hazirla() {
+    local iface out
+    [[ -n "$PAKET_KONTEYNER_AG" ]] || return 0
+    iface="$(paket_ag_arayuzu)" || { FAIL="paket ağı tanımı geçersiz: $PAKET_KONTEYNER_AG"; return 1; }
+    if podman network exists "$PAKET_KONTEYNER_AG" >/dev/null 2>&1; then
+        out="$(podman network inspect --format '{{.NetworkInterface}} {{index .Labels "io.master-stack.paket"}}' "$PAKET_KONTEYNER_AG" 2>/dev/null || true)"
+        [[ "$out" == "$iface $PAKET_ID" ]] || { FAIL="'$PAKET_KONTEYNER_AG' ağı bu pakete ait değil ($out)"; return 1; }
+        return 0
+    fi
+    out="$(podman network create --driver bridge --interface-name "$iface" \
+        --label "io.master-stack.paket=$PAKET_ID" "$PAKET_KONTEYNER_AG" 2>&1)" ||
+        { FAIL="paket ağı kurulamadı: $(tail -n 1 <<<"$out")"; return 1; }
+}
+
+paket_ag_kaldir() {
+    [[ -n "$PAKET_KONTEYNER_AG" ]] && paket_ag_arayuzu >/dev/null || return 0
+    podman network exists "$PAKET_KONTEYNER_AG" >/dev/null 2>&1 || return 0
+    [[ "$(podman network inspect --format '{{index .Labels "io.master-stack.paket"}}' "$PAKET_KONTEYNER_AG" 2>/dev/null)" == "$PAKET_ID" ]] ||
+        return 0
+    podman network rm "$PAKET_KONTEYNER_AG" >/dev/null 2>&1 || warn "paket ağı silinemedi: $PAKET_KONTEYNER_AG"
+}
+
+# Koruma yerleşik Quadlet dosyalarından kurulur: yerleştirme ya da kaldırma sonrası yenilenir.
+konteyner_korumasi() {
+    [[ -n "$PAKET_KONTEYNER_AG" && -n "${KONTEYNER_STATE_DIR:-}" ]] || return 0
+    python3 "$SBIN_DIR/master_container_network.py" --state "$STATE_FILE" apply >/dev/null 2>&1 ||
+        { FAIL="konteyner yönlendirme koruması güncellenemedi"; return 1; }
+}
+
+# shellcheck disable=SC2034  # kancalar okur (birim değiştiyse konteyner yeniden kurulur)
+KONTEYNER_DEGISTI=0
+paket_konteyner_koy() {
+    local src dst tmp
+    KONTEYNER_DEGISTI=0
+    [[ -n "$PAKET_KONTEYNER" ]] || return 0
+    dst="$(konteyner_hedef)" || { FAIL="paket konteyner birimi tanımı geçersiz: $PAKET_KONTEYNER"; return 1; }
+    src="$MODULES_DIR/$PAKET_ID/$PAKET_KONTEYNER"
+    [[ -f "$src" ]] || { FAIL="paket dosyası yok ($src); kurulumu yeniden çalıştırın"; return 1; }
+    paket_ag_hazirla || return 1
+    if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then konteyner_korumasi; return; fi
+    install -d -m 0755 -- "$KONTEYNER_BIRIM_DIR"
+    tmp="$(mktemp "$KONTEYNER_BIRIM_DIR/.$PAKET_KONTEYNER.XXXXXX")"
+    cp -- "$src" "$tmp" && chmod 0644 "$tmp" && mv -f -- "$tmp" "$dst"
+    # shellcheck disable=SC2034
+    KONTEYNER_DEGISTI=1
+    systemctl daemon-reload
+    konteyner_korumasi
+}
+
+paket_konteyner_kaldir() {
+    local dst
+    dst="$(konteyner_hedef)" || return 0
+    [[ -e "$dst" ]] || return 0
+    rm -f -- "$dst"
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    konteyner_korumasi || warn "$FAIL"
+}
+
+# DD-209: paketin imajı yalnız özetiyle (@sha256) kabul edilir; yerelde varsa ağa çıkılmaz. Hata: FAIL.
+paket_imaj_cek() {
+    local out
+    [[ -n "$PAKET_IMAJ" ]] || return 0
+    [[ "$PAKET_IMAJ" =~ ^[a-z0-9.-]+(/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}$ ]] ||
+        { FAIL="paket imajı özetiyle sabitlenmemiş: $PAKET_IMAJ"; return 1; }
+    command -v podman >/dev/null 2>&1 || { FAIL="Podman yok; kurulumu yeniden çalıştırın"; return 1; }
+    ! podman image exists "$PAKET_IMAJ" 2>/dev/null || return 0
+    out="$(timeout 900 podman pull -q "$PAKET_IMAJ" 2>&1)" ||
+        { FAIL="imaj indirilemedi: $(tail -n 1 <<<"$out")"; return 1; }
+}
+
+# --veri: imaj da gider. `podman rmi AD@sha256:…` özeti etiket sanar ("tag not known"); imaj kimliğiyle
+# silinir. Başka bir etiketi ya da onu kullanan bir konteyneri olan imaj zorla silinmez, yerinde kalır.
+paket_imaj_sil() {
+    local id
+    [[ -n "$PAKET_IMAJ" ]] && command -v podman >/dev/null 2>&1 || return 0
+    id="$(podman image inspect --format '{{.Id}}' "$PAKET_IMAJ" 2>/dev/null)" || return 0
+    [[ "$id" =~ ^[0-9a-f]{12,64}$ ]] || return 0
+    podman rmi "$id" >/dev/null 2>&1 ||
+        warn "imaj silinemedi (başka bir etiketi ya da onu kullanan bir konteyner var): $PAKET_IMAJ"
+}
+
+paket_adlar_ac() {
+    [[ "$PAKET_ADLAR" == 1 ]] || return 0
+    names_on "$PAKET_ID"
+}
+
+paket_adlar_kapat() {
+    [[ "$PAKET_ADLAR" == 1 ]] || return 0
+    names_off "$PAKET_ID"
+}
+
+# Kaldırma sonunda bildirimdeki hiçbir parça sunucuda kalmamalı.
+paket_iz_kontrol() {
+    local name pair dst left=""
+    for name in $PAKET_ARACLAR; do [[ ! -e "$SBIN_DIR/$name" ]] || left="$left $SBIN_DIR/$name"; done
+    for pair in $PAKET_EKLER; do
+        dst="$(ekler_hedef "$pair")" || continue
+        [[ ! -e "$dst" ]] || left="$left $dst"
+    done
+    if dst="$(konteyner_hedef)"; then [[ ! -e "$dst" ]] || left="$left $dst"; fi
+    if [[ -n "$PAKET_KONTEYNER_AG" ]] && paket_ag_arayuzu >/dev/null &&
+        [[ "$(podman network inspect --format '{{index .Labels "io.master-stack.paket"}}' "$PAKET_KONTEYNER_AG" 2>/dev/null || true)" == "$PAKET_ID" ]]; then
+        left="$left ağ:$PAKET_KONTEYNER_AG"
+    fi
+    if [[ "$PAKET_ADLAR" == 1 ]]; then
+        [[ ! -e "$CADDY_MODULES_DIR/$PAKET_ID.caddy" ]] || left="$left $CADDY_MODULES_DIR/$PAKET_ID.caddy"
+        [[ ! -e "$DNSMASQ_CONF_DIR/modul-$PAKET_ID.conf" ]] || left="$left $DNSMASQ_CONF_DIR/modul-$PAKET_ID.conf"
+    fi
+    [[ -z "${CONSOLE_WEB_DIR:-}" || ! -e "$CONSOLE_WEB_DIR/uygulama/$PAKET_ID" ]] ||
+        left="$left $CONSOLE_WEB_DIR/uygulama/$PAKET_ID"
+    [[ -z "$left" ]] || fail_step "kaldırma eksik kaldı:$left"
+}
+
+# Güvenlik duvarı kurulu paketlerin kaydına bakar (DD-150); kayıt değişince yeniden uygulanır.
+firewall_apply() {
+    systemctl reset-failed master-firewall.service >/dev/null 2>&1 || true
+    systemctl restart master-firewall.service >/dev/null 2>&1
+}
+
+kanca_var() { declare -F "$1" >/dev/null 2>&1; }
+kanca_gerekli() { kanca_var "$1" || fail_step "paket kancası eksik: $1 ($PAKET_ID)"; }
+
+# ------------------------------------------------------------------- komutlar
+cmd_liste() {
+    local id reg live unit action step total text
+    for id in $CATALOG; do
+        paket_yukle "$id"
+        reg="$(registry_get "$id" || printf 'yok')"
+        live="-"
+        if [[ "$reg" != yok ]] && kanca_var paket_birim; then
+            unit="$(paket_birim 2>/dev/null || true)"
+            if [[ -n "$unit" ]]; then
+                if systemctl is-active --quiet "$unit" 2>/dev/null; then live=running; else live=exited; fi
+            fi
+        fi
+        action="-" step="-" total="-" text="-"
+        if [[ -f "$(progress_file "$id")" ]]; then
+            IFS=$'\t' read -r action step total text <"$(progress_file "$id")" || true
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$PAKET_CALISMA" "$reg" "$live" \
+            "${action:--}" "${step:--}" "${total:--}" "${text:--}"
+    done
+}
+
+# DD-207: paketin bildirdiği, Konsol'un root arka ucunun yazdığı yollar (PAKET_ARKAUC_YOLLAR). systemd
+# onları yalnız arka uç başlarken varsa yazılabilir bağlar; kurulum hepsini önceden açar. Bir yol
+# arka uç çalışırken silinip yeniden oluştuysa (ör. elle apt purge) arka ucun gördüğü kopya salt
+# okunurdur: yol yoksa açılır, arka ucun bağlamalarında rw değilse arka uç bir kez yeniden başlar.
+arkauc_yollari_hazirla() {
+    local p pid missing=0
+    for p in $PAKET_ARKAUC_YOLLAR; do
+        [[ "$p" == /* ]] || continue
+        [[ -d "$p" ]] || install -d -m 0700 -o root -g root -- "$p"
+    done
+    pid="$(systemctl show -p MainPID --value master-panel.service 2>/dev/null || true)"
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 0
+    for p in $PAKET_ARKAUC_YOLLAR; do
+        [[ "$p" == /* ]] || continue
+        awk -v p="$p" '$5 == p && $6 ~ /(^|,)rw(,|$)/ {f = 1} END {exit !f}' \
+            "${PANEL_MOUNTINFO:-/proc/$pid/mountinfo}" 2>/dev/null || missing=1
+    done
+    [[ "$missing" == 0 ]] || systemctl restart master-panel.service >/dev/null 2>&1 || true
+}
+
+# DD-210: kurulum penceresi bildiren paket (PAKET_KUR_AYAR) yalnız Konsol'un doğrulayıp bıraktığı bilgiyle
+# kurulur: RUNTIME_DIR/modul-<id>.kur, root'un, yalnız sahibine açık ve taze (parolanın yalnız özeti).
+# Kanca onu KUR_TOHUM'dan okur; dosya ve kancanın yedeği (.onceki) kurulum nasıl biterse bitsin silinir.
+KUR_TOHUM=""
+kur_tohumu_al() { # ID
+    KUR_TOHUM="$RUNTIME_DIR/modul-$1.kur"
+    trap 'rm -f -- "$KUR_TOHUM" "$KUR_TOHUM.onceki"' EXIT
+    [[ -f "$KUR_TOHUM" && ! -L "$KUR_TOHUM" && -O "$KUR_TOHUM" &&
+        -n "$(find "$KUR_TOHUM" -maxdepth 0 -type f -perm 0600 -mmin -10 2>/dev/null)" ]] ||
+        fail_step "kurulum bilgileri yok ya da eskidi; Konsol → App Store'daki pencereden kurun"
+}
+
+cmd_kur() {
+    local id="$1"
+    CUR_ID="$id" CUR_ACTION=kur
+    take_lock
+    ! registry_get "$id" >/dev/null || fail_step "modül zaten kurulu"
+    [[ -z "$PAKET_KUR_AYAR" ]] || kur_tohumu_al "$id"
+    kanca_gerekli paket_kur
+    paket_kur
+    arkauc_yollari_hazirla
+    registry_set "$id" calisiyor
+    progress "$id" kur bitti 0 "kuruldu"
+    printf '%s\tcalisiyor\n' "$id"
+}
+
+cmd_baslat() {
+    local id="$1"
+    CUR_ID="$id" CUR_ACTION=baslat
+    take_lock
+    konteyner_surumu_dogrula
+    registry_get "$id" >/dev/null || fail_step "modül kurulu değil"
+    [[ "$PAKET_DURDURULABILIR" == 1 ]] || fail_step "bu modül durdurulup başlatılmaz; kaldırıp yeniden kurun"
+    kanca_gerekli paket_baslat
+    progress "$id" baslat 1 1 "Başlatılıyor"
+    paket_baslat
+    arkauc_yollari_hazirla
+    registry_set "$id" calisiyor
+    progress "$id" baslat bitti 0 "başlatıldı"
+    printf '%s\tcalisiyor\n' "$id"
+}
+
+cmd_durdur() {
+    local id="$1"
+    CUR_ID="$id" CUR_ACTION=durdur
+    take_lock
+    konteyner_surumu_dogrula
+    registry_get "$id" >/dev/null || fail_step "modül kurulu değil"
+    [[ "$PAKET_DURDURULABILIR" == 1 ]] || fail_step "bu modül durdurulup başlatılmaz; kaldırıp yeniden kurun"
+    kanca_gerekli paket_durdur
+    progress "$id" durdur 1 1 "Durduruluyor"
+    paket_durdur
+    registry_set "$id" durduruldu
+    progress "$id" durdur bitti 0 "durduruldu"
+    printf '%s\tdurduruldu\n' "$id"
+}
+
+cmd_yeniden_baslat() {
+    local id="$1" state
+    CUR_ID="$id" CUR_ACTION=yeniden-baslat
+    take_lock
+    konteyner_surumu_dogrula
+    state="$(registry_get "$id" || true)"
+    [[ -n "$state" ]] || fail_step "modül kurulu değil"
+    [[ "$state" == calisiyor ]] || fail_step "modül durdurulmuş; önce başlatın"
+    [[ "$PAKET_DURDURULABILIR" == 1 ]] || fail_step "bu modül yeniden başlatılamaz"
+    kanca_gerekli paket_yeniden_baslat
+    progress "$id" yeniden-baslat 1 1 "Yeniden başlatılıyor"
+    paket_yeniden_baslat
+    arkauc_yollari_hazirla
+    registry_set "$id" calisiyor
+    progress "$id" yeniden-baslat bitti 0 "yeniden başlatıldı"
+    printf '%s\tcalisiyor\n' "$id"
+}
+
+cmd_kaldir() {
+    local id="$1" data="$2"
+    CUR_ID="$id" CUR_ACTION=kaldir
+    take_lock
+    konteyner_surumu_dogrula
+    registry_get "$id" >/dev/null || fail_step "modül kurulu değil"
+    kanca_gerekli paket_kaldir
+    progress "$id" kaldir 1 1 "Kaldırılıyor"
+    paket_kaldir
+    if [[ "$data" == 1 ]] && kanca_var paket_veri_sil; then
+        paket_veri_sil
+    fi
+    # Bildirimdeki parçalar paketle gider; kanca bazılarını zaten kaldırmış olabilir.
+    paket_adlar_kapat
+    paket_araclar_kaldir
+    paket_ekler_kaldir
+    paket_konteyner_kaldir
+    paket_ag_kaldir
+    paket_sayfa_kaldir
+    registry_set "$id" ""
+    paket_iz_kontrol
+    progress "$id" kaldir bitti 0 "kaldırıldı"
+    printf '%s\tyok\n' "$id"
+}
+
+cmd_gunluk() {
+    local id="$1" lines="${2:-60}" units=() u out
+    [[ "$lines" =~ ^[0-9]{1,4}$ ]] || die "satır sayısı geçersiz"
+    if kanca_var paket_birim; then
+        u="$(paket_birim 2>/dev/null || true)"
+        [[ -z "$u" ]] || units=(-u "$u")
+    else
+        for u in $PAKET_GUNLUK; do units+=(-u "$u"); done
+    fi
+    [[ ${#units[@]} -gt 0 ]] || { printf '(günlük yok)\n'; return 0; }
+    out="$(journalctl "${units[@]}" -n "$lines" --no-pager -o cat 2>/dev/null || true)"
+    [[ -n "$out" ]] || { printf '(günlük yok)\n'; return 0; }
+    if kanca_var paket_gunluk_suz; then
+        printf '%s\n' "$out" | paket_gunluk_suz
+    else
+        printf '%s\n' "$out"
+    fi
+}
+
+# DD-198: Sağlık kartı için kurulu (calisiyor) paketlerin birimleri. Tür "gerekli": çalışmalı;
+# "ag": Konsol'dan kapatılmış (disabled) olabilir. Kancası bozuk kayıt görürse çıkış kodu sıfır
+# olmaz ve kart "doğrulanamadı" der. Kilit ve ilerleme yok.
+cmd_saglik() {
+    local id unit rc=0 out
+    for id in $CATALOG; do
+        [[ "$(registry_get "$id" || true)" == calisiyor ]] || continue
+        paket_yukle "$id"
+        if kanca_var paket_saglik; then
+            out="$(paket_saglik)" || { rc=1; printf '%s\thata\tbozuk\n' "$id"; continue; }
+            [[ -z "$out" ]] || while IFS= read -r unit; do printf '%s\t%s\n' "$id" "$unit"; done <<<"$out"
+        elif kanca_var paket_birim; then
+            unit="$(paket_birim 2>/dev/null || true)"
+            [[ -z "$unit" ]] || printf '%s\t%s\tgerekli\n' "$id" "$unit"
+        fi
+    done
+    return "$rc"
+}
+
+# Salt okunur: Konsol'un root arka ucu kendi korumalı alanında çalıştırır (kilit ve ilerleme yok).
+cmd_hesap() { # ID PAROLA(0|1)
+    [[ "$PAKET_HESAP" == 1 ]] || die "bu modülde hesap yok: '$1'"
+    kanca_var paket_hesap || die "bu modülde hesap yok: '$1'"
+    if [[ "$2" == 1 ]]; then paket_hesap --parola; else paket_hesap; fi
+}
+
+cmd_uygula() {
+    local id="$1" state
+    take_lock
+    state="$(registry_get "$id" || true)"
+    if [[ -z "$state" ]]; then
+        printf '%s\tyok\n' "$id"
+        return 0
+    fi
+    kanca_gerekli paket_uygula
+    paket_uygula "$state"
+    arkauc_yollari_hazirla
+    printf '%s\t%s\n' "$id" "$state"
+}
+
+# Installer-only lifecycle for built-ins; they are absent from the public
+# catalog and cannot be stopped/removed through a module API or CLI action.
+# Keep internal registry IDs for firewall/settings compatibility, not disk markers.
+cmd_yerlesik() {
+    local changed=" ${1:-} " files_changed=0 share_changed=0
+    take_lock
+    files_need
+    share_need
+    share_prepare
+    files_place_unit && files_changed=1
+    share_place_unit && share_changed=1
+    systemctl enable --quiet "$FILES_UNIT" "$SHARE_UNIT"
+    if [[ "$changed" == *" dosya "* || "$files_changed" == 1 ]] || ! systemctl is-active --quiet "$FILES_UNIT"; then
+        systemctl reset-failed "$FILES_UNIT"
+        systemctl restart "$FILES_UNIT"
+    fi
+    if [[ "$changed" == *" paylasim "* || "$share_changed" == 1 ]] || ! systemctl is-active --quiet "$SHARE_UNIT"; then
+        systemctl reset-failed "$SHARE_UNIT"
+        systemctl restart "$SHARE_UNIT"
+    fi
+    files_verify || fail_step "$FAIL"
+    share_verify || fail_step "$SHARE_FAIL"
+    names_on paylasim || fail_step "$FAIL"
+    share_verify_names || fail_step "$SHARE_FAIL"
+    [[ "$(registry_get dosya || true)" == calisiyor ]] || registry_set dosya calisiyor
+    [[ "$(registry_get paylasim || true)" == calisiyor ]] || registry_set paylasim calisiyor
+    printf 'Yerleşik Dosyalar + WebDAV doğrulandı.\n'
+}
+
+main() {
+    local cmd="${1:-}"
+    case "$cmd" in
+        liste) cmd_liste ;;
+        saglik) cmd_saglik ;;
+        yerlesik) cmd_yerlesik "${2:-}" ;;
+        kur | baslat | durdur | yeniden-baslat | gunluk | kaldir | hesap | uygula)
+            [[ $# -ge 2 ]] || die "kullanım: master-modul $cmd ID"
+            valid_id "$2"
+            paket_yukle "$2"
+            case "$cmd" in
+                kur) cmd_kur "$2" ;;
+                baslat) cmd_baslat "$2" ;;
+                durdur) cmd_durdur "$2" ;;
+                yeniden-baslat) [[ $# -eq 2 ]] || die "kullanım: master-modul yeniden-baslat ID"; cmd_yeniden_baslat "$2" ;;
+                gunluk) cmd_gunluk "$2" "${3:-60}" ;;
+                kaldir)
+                    [[ "${3:-}" == "" || "${3:-}" == --veri ]] || die "kullanım: master-modul kaldir ID [--veri]"
+                    cmd_kaldir "$2" "$([[ "${3:-}" == --veri ]] && echo 1 || echo 0)"
+                    ;;
+                hesap)
+                    [[ "${3:-}" == "" || "${3:-}" == --parola ]] || die "kullanım: master-modul hesap ID [--parola]"
+                    cmd_hesap "$2" "$([[ "${3:-}" == --parola ]] && echo 1 || echo 0)"
+                    ;;
+                uygula) [[ $# -eq 2 ]] || die "kullanım: master-modul uygula ID"; cmd_uygula "$2" ;;
+            esac
+            ;;
+        *) die "kullanım: master-modul liste | saglik | kur ID | baslat ID | durdur ID | yeniden-baslat ID | kaldir ID [--veri] | gunluk ID [SATIR] | hesap ID [--parola] | uygula ID" ;;
+    esac
+}
+
+main "$@"

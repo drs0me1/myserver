@@ -1,0 +1,5 @@
+# Modül: qBittorrent (DD-151). master-modul bunu CADDY_MODULES_DIR/torrent.caddy olarak koyar.
+# Arayüz yalnız 127.0.0.1'de dinler; tailnet'e bu ad açar.
+http://torrent.__LOCAL_DOMAIN__ {
+	reverse_proxy 127.0.0.1:__TORRENT_UI_PORT__
+}

@@ -1,0 +1,181 @@
+# WireGuard paketinin kancaları (DD-150, DD-197). master-modul bu dosyayı `source` eder ve
+# yalnız paket_* işlevlerini çağırır. Motorun yardımcıları: progress_step, paket_apt,
+# paket_araclar_koy/kaldir, paket_ekler_koy/kaldir, paket_sayfa_koy, registry_set, firewall_apply, need_keys,
+# fail_step, warn, FAIL. Kurulum yalnız bu klasörü işler; sunucuya ne gireceğine paket karar verir.
+# shellcheck shell=bash
+
+# DD-201: paketin kendi ayarları (adres tabanı, yollar, varsayılanlar) paket klasöründedir;
+# kancayı yükleyen her yer (motor, güvenlik duvarı, kurulum) MODULES_DIR'i bilir.
+# shellcheck source=/dev/null
+[[ -z "${MODULES_DIR:-}" || ! -f "$MODULES_DIR/wireguard/wireguard.env" ]] || source "$MODULES_DIR/wireguard/wireguard.env"
+
+paket_gerekli() {
+    need_keys WG_CONF_DIR WG_NETWORKS_FILE WG_MODULES_LOAD_FILE SBIN_DIR UNIT_DIR MODULES_DIR
+}
+
+wg_layer() {
+    local tmp
+    modprobe wireguard >/dev/null 2>&1 || { FAIL="çekirdek WireGuard modülü yüklenemedi"; return 1; }
+    tmp="$(mktemp "$(dirname -- "$WG_MODULES_LOAD_FILE")/.wireguard.XXXXXX")"
+    printf 'wireguard\n' >"$tmp"
+    chmod 0644 "$tmp"
+    mv -f -- "$tmp" "$WG_MODULES_LOAD_FILE"
+    install -d -m 0700 -o root -g root -- "$WG_CONF_DIR"
+}
+
+# Kayıttaki ağlar açılır (anahtarlar ve profiller /etc/wireguard'da durur); açılamayan uyarıdır.
+wg_networks_up() {
+    local iface count=0
+    [[ -f "$WG_NETWORKS_FILE" ]] || { printf '0\n'; return 0; }
+    while IFS=$'\t' read -r iface _; do
+        [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+        count=$((count + 1))
+        systemctl enable --now --quiet "wg-quick@$iface.service" >/dev/null 2>&1 || warn "$iface açılamadı"
+    done <"$WG_NETWORKS_FILE"
+    printf '%s\n' "$count"
+}
+
+wg_networks_down() {
+    local unit
+    # systemctl exits 1 when a listing matches nothing; with set -e and pipefail that ended the
+    # process substitution before the registry was read, so no network was closed (found on a
+    # real host in v2-170). Each source is read on its own and may be empty.
+    while IFS= read -r unit; do
+        [[ "$unit" =~ ^wg-quick@wg[0-9]\.service$ ]] || continue
+        systemctl disable --now --quiet "$unit" >/dev/null 2>&1 || warn "$unit kapatılamadı"
+    done < <(
+        { systemctl list-unit-files --no-legend --plain 'wg-quick@wg*.service' 2>/dev/null || true; } | awk '{print $1}'
+        { systemctl list-units --all --no-legend --plain 'wg-quick@wg*.service' 2>/dev/null || true; } | awk '{print $1}'
+        [[ ! -f "$WG_NETWORKS_FILE" ]] || awk -F'\t' '$1 ~ /^wg[0-9]$/ {print "wg-quick@" $1 ".service"}' "$WG_NETWORKS_FILE" || true
+        true
+    )
+}
+
+# --veri: ağ anahtarları, cihaz profilleri ve ağ kaydı. Klasör kalır.
+wg_drop_data() {
+    [[ -d "$WG_CONF_DIR" && ! -L "$WG_CONF_DIR" ]] || return 0
+    find "$WG_CONF_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+}
+
+paket_kur() {
+    paket_gerekli
+    progress_step 1 "Paketler kuruluyor"
+    paket_apt || fail_step "$FAIL"
+    progress_step 2 "Araçlar"
+    paket_araclar_koy || fail_step "$FAIL"
+    paket_ekler_koy || fail_step "$FAIL"
+    # DD-200: Konsol sayfası paketle gelir; dosyaları kayıt yazılmadan önce yerleşir ki
+    # başarısız bir kurulum yarım kayıt bırakmasın.
+    paket_sayfa_koy || fail_step "$FAIL"
+    progress_step 3 "Çekirdek modülü"
+    wg_layer || fail_step "$FAIL"
+    progress_step 4 "Güvenlik duvarı kancası"
+    # Güvenlik duvarı ağları kayda bakarak açar: kayıt önce yazılır.
+    registry_set "$PAKET_ID" calisiyor
+    firewall_apply || {
+        registry_set "$PAKET_ID" ""
+        firewall_apply || true
+        paket_araclar_kaldir
+        paket_ekler_kaldir
+        paket_sayfa_kaldir
+        fail_step "güvenlik duvarı uygulanamadı"
+    }
+    progress_step 5 "WireGuard sayfası açılıyor"
+    wg_networks_up >/dev/null
+}
+
+paket_kaldir() {
+    paket_gerekli
+    wg_networks_down
+    rm -f -- "$WG_MODULES_LOAD_FILE"
+    # Kayıt önce silinir: güvenlik duvarı WireGuard portlarını ve kurallarını kaldırır.
+    registry_set "$PAKET_ID" ""
+    firewall_apply || warn "güvenlik duvarı yeniden uygulanamadı"
+}
+
+paket_veri_sil() {
+    wg_drop_data
+}
+
+paket_uygula() { # KAYIT_DURUMU
+    paket_gerekli
+    paket_apt || fail_step "$FAIL"
+    paket_araclar_koy || fail_step "$FAIL"
+    paket_ekler_koy || fail_step "$FAIL"
+    paket_sayfa_koy || fail_step "$FAIL"
+    wg_layer || fail_step "$FAIL"
+    wg_networks_up >/dev/null
+}
+
+# DD-198: güvenlik duvarına bildirim. Kayıttaki her ağ bir "vpn" satırıdır: WAN UDP ucu,
+# tailnet izni, internet-only yönlendirme ve NAT'ı master-firewall yazar. Kayıt dışı bir kapsam
+# ya da eksik alan, duvarın reddedeceği bir satır üretir (hiçbir kural değişmez).
+paket_firewall() {
+    local iface port scope n4 n6 rest
+    [[ -n "${WG_NETWORKS_FILE:-}" && -f "$WG_NETWORKS_FILE" ]] || return 0
+    while IFS=$'\t' read -r iface port scope _ n4 _ n6 rest; do
+        [[ -n "$iface" ]] || continue
+        if [[ "$scope" == inet ]]; then
+            printf 'vpn %s %s %s %s\n' "$iface" "$port" "$n4" "$n6"
+        else
+            printf 'vpn %s kapsam-%s\n' "$iface" "${scope:-yok}"
+        fi
+    done <"$WG_NETWORKS_FILE"
+}
+
+# DD-198: Sağlık kartı. Kayıttaki her ağın birimi; Konsol'dan kapatılan ağ "ag" türüyle
+# devre dışı kalabilir. Bozuk kayıt satırı hata döndürür (kart "doğrulanamadı" der).
+paket_saglik() {
+    local line
+    local -a f
+    [[ -n "${WG_NETWORKS_FILE:-}" && -f "$WG_NETWORKS_FILE" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] || continue
+        IFS=$'\t' read -r -a f <<<"$line"
+        [[ "${#f[@]}" -eq 9 && "${f[0]}" =~ ^wg[0-9]$ && "${f[2]}" == inet ]] || return 1
+        printf 'wg-quick@%s.service\tag\n' "${f[0]}"
+    done <"$WG_NETWORKS_FILE"
+}
+
+# DD-201: kurulumun 7. aşaması kurulu paketi böyle doğrular (alt kabuk, kurulumun değişkenleri).
+# Hata: açıklama stderr'e, çıkış 1; kurulum paketin adıyla durur.
+paket_denetle() {
+    local iface port policy s4 code
+    [[ -n "${WG_CONF_DIR:-}" && -n "${WG_NETWORKS_FILE:-}" && -n "${WG_MODULES_LOAD_FILE:-}" ]] ||
+        { echo "paket ayarı eksik (wireguard.env); kurulumu yeniden çalıştırın" >&2; return 1; }
+    "${SBIN_DIR:?}/master-wg" version >/dev/null 2>&1 || { echo "master-wg çalışmıyor ($SBIN_DIR/master-wg)" >&2; return 1; }
+    [[ -f "$WG_MODULES_LOAD_FILE" ]] || { echo "çekirdek modülü dosyası yok: $WG_MODULES_LOAD_FILE" >&2; return 1; }
+    [[ -f "$WG_NETWORKS_FILE" ]] || return 0
+    while IFS=$'\t' read -r iface port policy s4 _; do
+        [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+        [[ "$policy" == inet ]] || { echo "kayıtta beklenmeyen erişim sütunu: $iface ($policy)" >&2; return 1; }
+        [[ "$(wg show "$iface" listen-port 2>/dev/null || true)" == "$port" ]] ||
+            { echo "$iface dinleme portu kayıttaki $port değil" >&2; return 1; }
+        ip -4 -o addr show dev "$iface" 2>/dev/null | grep -q " ${s4}/" ||
+            { echo "$iface üzerinde $s4 yok" >&2; return 1; }
+        # DD-177/180: Konsol'un dosya arka ucu bir VPN adresinde yanıt vermemeli.
+        if [[ -n "${FILES_PANEL_PORT:-}" ]]; then
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://${s4}:${FILES_PANEL_PORT}/" || true)"
+            [[ "$code" == "000" ]] || { echo "Konsol $iface adresinde yanıt verdi (HTTP $code)" >&2; return 1; }
+        fi
+    done <"$WG_NETWORKS_FILE"
+}
+
+# Kurulum özetinin notu, yalnız paket kuruluyken.
+paket_not() {
+    printf '  WireGuard cihazları yalnız internete çıkar; sunucu servisleri ve diğer ağlara erişemez.\n'
+    printf '  Ağlar: WireGuard → Yapılandır. Peer ve QR: Konsol ya da Mac'"'"'te wireguard.command.'
+}
+
+# Kurulum özeti için tek satır: kayıttaki ağlar ve arayüzlerdeki peer'lar.
+paket_ozet() {
+    local iface nets=0 peers=0
+    if [[ -n "${WG_NETWORKS_FILE:-}" && -f "$WG_NETWORKS_FILE" ]]; then
+        while IFS=$'\t' read -r iface _; do
+            [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+            nets=$((nets + 1))
+            peers=$((peers + $(wg show "$iface" peers 2>/dev/null | grep -c . || true)))
+        done <"$WG_NETWORKS_FILE"
+    fi
+    printf '%s ağ, %s peer' "$nets" "$peers"
+}

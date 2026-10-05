@@ -1,0 +1,36 @@
+/* qBittorrent paketinin Konsol sayfa biçemi (DD-202). Konsol bu dosyayı paket kuruluyken
+   /uygulama/torrent/sayfa.css olarak yükler; kart, alan ve not biçemleri ayarlar.css'ten,
+   renkler konsol.css'ten gelir. */
+
+/* Geçici parola yalnız istenince görünür, 30 sn sonra gizlenir. */
+.acct-inner { display: grid; gap: 6px; }
+.cred-row.masked-row .v { letter-spacing: .08em; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.acct-meta { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.acct-wg { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); padding: 8px 10px; border-radius: 8px; background: var(--surface-2); }
+.acct-wg svg { width: 15px; height: 15px; color: var(--accent); flex: none; margin-top: 1px; }
+
+.app-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:18px; }
+.app-toolbar > .linkbtn { margin-left:auto; }
+.app-account { display:block; margin-bottom:20px; }
+.app-account > summary { cursor:pointer; font-size:13px; }
+.app-account[open] > div { margin-top:16px; }
+@media(max-width:760px) {
+  .app-toolbar > .linkbtn { margin-left:0; }
+}
+#torrent-settings { display:grid; gap:18px; }
+/* Keep account controls aligned even when only one field has a help line. */
+#torrent-settings .as-card { gap:18px; }
+#torrent-settings .as-body { padding:0; min-width:0; }
+#torrent-settings .as-formgrid { align-items:start; }
+#torrent-settings .as-field { min-width:0; align-content:start; }
+#torrent-settings .as-field input { min-height:44px; }
+#torrent-settings .as-body .btn { min-height:44px; }
+#torrent-settings code { font:13px/1.65 var(--f-mono); overflow-wrap:anywhere; min-width:0; }
+#torrent-settings div.as-body { grid-template-columns:minmax(0,1fr) auto; align-items:center; }
+#torrent-settings div.as-body > code { padding:10px 12px; border:1px solid var(--line); border-radius:7px; background:var(--surface-2); }
+#torrent-settings div.as-body > .as-note { grid-column:1/-1; }
+#torrent-settings div.as-body .btn { background:var(--surface); color:var(--ink); border:1px solid var(--line); }
+#torrent-settings div.as-body .btn:hover:not(:disabled) { background:var(--surface-2); }
+@media(max-width:700px) {
+  #torrent-settings div.as-body { grid-template-columns:minmax(0,1fr); }
+}

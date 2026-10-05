@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Konsol · Giriş</title>
+<link rel="stylesheet" href="/konsol.css">
+<link rel="stylesheet" href="/giris.css">
+<script src="/giris.js" defer></script>
+</head>
+<body>
+<main class="login" id="main-content">
+  <div class="brand"><span class="wordmark">Konsol<span class="dot">.</span></span><small id="login-access">Sunucu yönetimi</small></div>
+  <section class="card login-card" aria-labelledby="login-title">
+    <h1 id="login-title">Giriş</h1>
+    <p class="hint-s" id="login-note" role="status">Oturum durumu okunuyor…</p>
+
+    <form id="form-login" class="login-form" hidden>
+      <label for="login-user">Kullanıcı adı</label>
+      <input id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="32">
+      <label for="login-pass">Parola</label>
+      <input id="login-pass" name="password" type="password" autocomplete="current-password" required maxlength="256">
+      <p class="err-s" id="login-error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary" id="login-submit">Giriş yap</button>
+    </form>
+  </section>
+  <p class="hint-s login-foot">Oturum 7 gün açık kalır. Tailscale adresinde parola sorulmaz; parolayı unutursanız oradan Ayarlar → Sistem → Konsol hesabı bölümünde yenisini belirleyin.</p>
+</main>
+</body>
+</html>
