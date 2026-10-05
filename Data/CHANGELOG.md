@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Home widgets aligned to the tiles, "Sunucu" widget, uniform Store cards (v2-208)
+
+- Application tiles say "Dur"/"Başla" in a larger type.
+- Ana Menü: the address block (Tailscale IP, WAN IP, uptime, version, access) is a "Sunucu" widget
+  next to the network card; the sidebar ends with the server resources.
+- The network card is exactly as wide as two application tiles; its halves are balanced and
+  application totals show the name on one line and download/upload below it.
+- App Store cards have the same width and layout as the Ana Menü tiles.
+- Settings → Caddy: the local-domain card lines up with the "Adresler ve erişim" table (DD-230).
+
 ### 2026-10-05 — Overview controls, stopping WireGuard, containers kept off the host (v2-207)
 
 - Ana Menü: "Düzenle" sits in the bottom-right corner of the screen. Application tiles say

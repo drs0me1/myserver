@@ -142,8 +142,8 @@ const server = http.createServer((req,res) => {
         await page.setViewportSize({width,height:1100});
         assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${colorScheme}/${width}`);
         const localBox=await local.boundingBox(), tableBox=await table.boundingBox(), guideBox=await guide.boundingBox();
-        assert(localBox.width<=620 && localBox.width<=tableBox.width+1,"Local card is compact and responsive");
-        if(width===1440) assert(localBox.width<tableBox.width*.65,"Address table retains full width");
+        // DD-230: the local-domain card lines up with the "Adresler ve erişim" card (same left edge and width).
+        assert(Math.abs(localBox.x-tableBox.x)<2 && Math.abs(localBox.width-tableBox.width)<2,`Local card aligns with the address table at ${width}: ${JSON.stringify([localBox,tableBox])}`);
         const inputBox=await localInput.boundingBox(), buttonBox=await local.getByRole("button",{name:"Güncelle",exact:true}).boundingBox();
         assert(buttonBox.x>=inputBox.x+inputBox.width && Math.abs(buttonBox.y+buttonBox.height-inputBox.y-inputBox.height)<2,"Input and Update share a row");
         assert(guideBox.y>inputBox.y+inputBox.height,"DNS instructions sit below the controls");

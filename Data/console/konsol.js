@@ -218,9 +218,23 @@
     $("detail-disk").textContent = Number.isFinite(disk) ? bytes(s.disk.total - s.disk.free) + " / " + bytes(s.disk.total) + " · " + bytes(s.disk.free) + " boş · " + s.root : "Güncel ölçüm yok";
     const status = !s && !resourceFailed ? "Kaynaklar okunuyor…" : !fresh ? "Bağlantı yok · ölçümler eski" : !cpuFresh ? "İşlemci örneği bekleniyor" : "Sunucu kaynakları · canlı";
     if ($("resource-status").textContent !== status) $("resource-status").textContent = status;
-    $("foot-uptime").textContent = fresh && Number.isFinite(s.uptime)
-      ? uptimeText(s.uptime + (performance.now() - resourceReceived) / 1000) : "—";
+    paintFacts();
     paintHomeClock();
+  }
+  // DD-230: the address facts are Ana Menü's "Sunucu" widget; they are painted wherever it is shown.
+  function serverFacts() {
+    const { s, fresh } = resourceValues();
+    return [
+      ["foot-ts", "Tailscale IP", s && s.net.tailscale || "—", true],
+      ["foot-wan", "WAN IP", s && s.net.wan || "—", true],
+      ["foot-uptime", "Çalışma süresi", fresh && Number.isFinite(s.uptime) ? uptimeText(s.uptime + (performance.now() - resourceReceived) / 1000) : "—", false],
+      ["foot-version", "Sürüm", s && s.version || "—", true],
+      // DD-195: the tailnet address is HTTP; only the public Konsol address is HTTPS.
+      ["foot-access", "Erişim", location.protocol === "https:" ? "İnternet · HTTPS" : "Tailscale", false],
+    ];
+  }
+  function paintFacts() {
+    for (const [id, , value] of serverFacts()) { const el = $(id); if (el && el.textContent !== value) el.textContent = value; }
   }
   function paintHomeClock() {
     const clock = $("home-clock"), date = $("home-date");
@@ -237,11 +251,6 @@
     $("brand-host-m").textContent = s.host;
     $("brand-sub").textContent = s.domain ? "panel." + s.domain : "Konsol";
     document.title = s.host + " · Konsol";
-    $("foot-version").textContent = s.version || "—";
-    $("foot-ts").textContent = s.net.tailscale || "—";
-    $("foot-wan").textContent = s.net.wan || "—";
-    // DD-195: the tailnet address is HTTP; only the public Konsol address is HTTPS.
-    $("foot-access").textContent = location.protocol === "https:" ? "İnternet · HTTPS" : "Tailscale";
     paintResources();
     if (current === "ayarlar" && settingsTab === "system") renderSettings();
     if (current === "genel") renderOverview();
@@ -1567,6 +1576,7 @@
   // Eski saat/sistem ayarları yok sayılır; ağ kartı masaüstündeki altı alanın ikisini kullanır.
   const WIDGETS = [
     { id: "ag", ad: "Ağ", label: "Ağ", genislik: 2 },
+    { id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 2 },
   ];
   // layout: sunucudaki kayıt (null: varsayılan); editing: Düzenle açıkken taslak, değilse null.
   // modsSettled: the module list answered once (or failed), so the tiles do not jump in after the page.
@@ -1663,7 +1673,12 @@
   }
 
   /* -- widget'lar -- */
-  function widgetContent() {
+  function widgetContent(id) {
+    if (id === "sunucu") return [
+      h("div", { class: "card-head" }, h("div", null, h("h2", null, "Sunucu"), h("small", { class: "hint-s" }, "Adresler ve sürüm"))),
+      h("dl", { class: "server-facts" }, ...serverFacts().map(([key, label, value, mono]) =>
+        h("div", null, h("dt", null, label), h("dd", { id: key, class: mono ? "mono" : null }, value)))),
+    ];
     return [
       h("div", { class: "card-head" }, h("div", null, h("h2", null, "Ağ"), h("small", { class: "hint-s", id: "ag-sub" }, netSub())),
         h("span", { class: "hm" + (netFresh() ? " ok" : ""), id: "ag-live" }, netFresh() ? "Canlı" : "Bekleniyor")),
@@ -1683,7 +1698,7 @@
     return WIDGETS.filter((w) => editing || !widgetSetting(w.id).gizli).map((def) => {
       const set = widgetSetting(def.id);
       const el = h("article", { class: "card widget" + (set.gizli ? " is-hidden" : ""), "aria-label": def.label, "data-widget": def.id,
-        "data-span": String(set.genislik) }, ...widgetContent());
+        "data-span": String(set.genislik) }, ...widgetContent(def.id));
       if (editing) el.append(widgetTools(def, set));
       return el;
     });
@@ -1724,8 +1739,8 @@
   }
   // Ayarlar: the package's declared form (dialog), else its page. Durdur/Başlat follows the server's state and
   // progress: busy (or a request on its way) marks it aria-disabled — still focusable, so keyboard focus
-  // survives the poll redraws — and clicks are ignored until the operation ends. DD-229: the service action
-  // is a word (Durdur/Başlat), settings a gear and logs a terminal icon; the name is the label and tooltip.
+  // survives the poll redraws — and clicks are ignored until the operation ends. DD-229/230: the service action
+  // is a short word (Dur/Başla), settings a gear and logs a terminal icon; the full name is the label and tooltip.
   const tilePending = new Map();   // id → the action whose request is on its way
   function appActions(def) {
     const m = (MODS || []).find((x) => x.id === def.key);
@@ -1739,7 +1754,7 @@
       const word = !busy ? (running ? "Durdur" : "Başlat") : doing === "durdur" ? "Durduruluyor…" : doing === "baslat" ? "Başlatılıyor…"
         : running ? "Durdur" : "Başlat";
       kids.push(h("button", { type: "button", class: "tile-act", "data-act": "servis", "aria-disabled": busy ? "true" : "false",
-        ...named(`${def.name}: ${word}`), onclick: () => tileService(m.id) }, running ? "Durdur" : "Başlat"));
+        ...named(`${def.name}: ${word}`), onclick: () => tileService(m.id) }, running ? "Dur" : "Başla"));
     } else kids.push(blank("servis"));
     if (def.settings === "form") kids.push(h("button", { type: "button", class: "tile-act", "data-act": "ayar", ...named(`${def.name} ayarları`),
       onclick: () => appForm(m.id, "ayar") }, svg("gear")));

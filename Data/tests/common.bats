@@ -3180,16 +3180,20 @@ PY
     grep -qF '"X-Konsol": "1"' <<<"$journal"
     grep -qF 'output.textContent = value || "(boş)"' <<<"$journal"
     run ! grep -q 'innerHTML' <<<"$journal"
-    # Resources stay in the sidebar; clock/date belong only to the home page's h1.
+    # Resources stay in the sidebar and close it; clock/date belong only to the home page's h1.
+    # DD-230: the address facts moved to Ana Menü's "Sunucu" widget.
     sidebar="$(awk '/<aside /,/<\/aside>/' "$html")"
-    for id in resource-cpu resource-mem resource-disk foot-ts foot-wan foot-version foot-uptime; do
+    for id in resource-cpu resource-mem resource-disk; do
         grep -qF "id=\"$id\"" <<<"$sidebar"
     done
+    run ! grep -qE 'foot-(ts|wan|version|uptime|access)|side-facts' <<<"$sidebar"
+    [ "$(grep -n 'class="resources"' <<<"$sidebar" | cut -d: -f1)" -gt "$(grep -n 'class="side-foot"' <<<"$sidebar" | cut -d: -f1)" ]
     run ! grep -qE 'side-clock|side-date|home-clock|home-date' <<<"$sidebar"
     grep -qF 'function paintHomeClock()' "$js"
     grep -qF '$("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }));' "$js"
     grep -qF '} else $("title").textContent = hd.title;' "$js"
-    grep -qF '$("foot-uptime").textContent = fresh && Number.isFinite(s.uptime)' "$js"
+    grep -qF '["foot-uptime", "Çalışma süresi", fresh && Number.isFinite(s.uptime)' "$js"
+    grep -qF 'function paintFacts() {' "$js"
     run ! grep -qE 'genel-clock|genel-health|const (ring|pie) =|function (ring|pie)\(' "$js"
     run ! grep -qE '(^|[[:space:],])\.(clock(-facts)?|rings?|pie(-box)?)([[:space:].,{]|$)' "$css"
     run ! grep -qiE 'qbittorrent|wireguard|torrent' "$js" "$css"
@@ -3206,7 +3210,7 @@ PY
     for icon in home clock folder share stack sliders refresh list; do grep -qE "^    ${icon}: '" "$js"; done
 }
 
-@test "overview layout and network card (DD-206, DD-213): two of six slots, server rates and cumulative app totals" {
+@test "overview layout and network card (DD-206, DD-213, DD-230): widgets aligned to tiles, server rates and cumulative app totals" {
     local js="$V2_ROOT/console/konsol.js" html="$V2_ROOT/console/index.html" css="$V2_ROOT/console/panel.css" backend="$V2_ROOT/panel/master-panel"
     # DD-229: Düzenle is fixed to the screen's bottom-right corner; the page keeps room below the last row.
     grep -qF '<div class="edit-bar" id="genel-edit" role="toolbar" aria-label="Ana Menü düzeni"></div>' "$html"
@@ -3216,18 +3220,21 @@ PY
     # The tiles wait for the module list (no jump), and Düzenle waits for both the layout and the list.
     grep -qF 'const defs = modsSettled ? orderedTiles() : [];' "$js"
     grep -qF 'disabled: !layoutLoaded || !modsSettled, onclick: startEdit' "$js"
-    # Only ag survives; an old width is ignored while its visibility is retained.
+    # ag and sunucu (DD-230) are the widgets; an old width is ignored while visibility is retained.
     local widgets tools totals
     widgets="$(awk '/^  const WIDGETS = \[/,/^  ];$/' "$js")"
-    [ "$(grep -c 'id:' <<<"$widgets")" -eq 1 ]
+    [ "$(grep -c 'id:' <<<"$widgets")" -eq 2 ]
     grep -qF '{ id: "ag", ad: "Ağ", label: "Ağ", genislik: 2 },' <<<"$widgets"
+    grep -qF '{ id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 2 },' <<<"$widgets"
     grep -qF 'return { genislik: base.genislik, gizli: own ? own.gizli : false };' "$js"
     grep -qF 'widgetlar: WIDGETS.map((w) => ({ id: w.id, ...widgetSetting(w.id) }))' "$js"
     grep -qF 'const defs = tileDefs(), order = activeLayout().kareler || [];' "$js"
-    grep -qF '.widgets { display:grid; grid-template-columns:repeat(6,minmax(0,1fr));' "$css"
+    # DD-230: widgets share the tiles' column template, so a span-2 widget is exactly two tiles wide.
+    grep -qF '.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
+    grep -qF '.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     grep -qF '.widget[data-span="2"] { grid-column:span 2; }' "$css"
-    grep -qF '@media(max-width:1199px) { .widgets { grid-template-columns:repeat(4,minmax(0,1fr)); } }' "$css"
-    grep -qF '.widgets { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
+    grep -qF '@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
+    grep -qF '.store-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     tools="$(awk '/^  function widgetTools\(def, set\)/,/^  }$/' "$js")"
     grep -qF 'change({ gizli: !set.gizli }, "gizle")' <<<"$tools"
     run ! grep -qE '"data-tool": "(dar|genis)"|genislik:' <<<"$tools"
@@ -3255,7 +3262,7 @@ PY
     grep -qF '...["Uygulama", "İndirme", "Yükleme"].map' "$js"
     grep -qF 'class: "net-app-name", title: name' <<<"$totals"
     # Equal-width, equal-height sections and a borderless table with fixed-height overflow.
-    grep -qF '@container (min-width:300px) {' "$css"
+    grep -qF '@container (min-width:240px) {' "$css"
     grep -qF '.net { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
     grep -qF '.net-live, .net-apps { min-width:0; height:90px; }' "$css"
     grep -qF '.net-live, .net-apps { height:126px; }' "$css"

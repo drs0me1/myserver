@@ -214,7 +214,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-210 | App Store install form, direct app launch and the icon-only tile action row | live; action slots and logs extended by DD-212; sidebar launch removed by DD-216 | design-decisions.md |
 | DD-211 | Main-sidebar container manager, explicit ownership and durable Quadlet operations | live; named Podman by DD-216 | design-decisions.md |
 | DD-212 | Installed application home tiles, fixed action slots and one full-width network widget | presentation amended by DD-213; installed-only tiles and cumulative totals retained | design-decisions.md |
-| DD-213 | Compact Ana Menü, five-second refresh and direct container actions | v2-192; row action places amended by DD-214; edit button place and action labels amended by DD-229 | design-decisions.md |
+| DD-213 | Compact Ana Menü, five-second refresh and direct container actions | v2-192; row action places amended by DD-214; edit button place and action labels amended by DD-229; widget grid amended by DD-230 | design-decisions.md |
 | DD-214 | Konsol checks image updates, the operator applies them; row controls before the name | v2-193; `--veri` keeps the override since DD-220 | design-decisions.md |
 | DD-215 | The Podman page shows the ports a host-network container listens on | v2-194; qBittorrent left the host network (DD-217) | design-decisions.md |
 | DD-216 | Applications open from Ana Menü only; the container page is named Podman | v2-194 | design-decisions.md |
@@ -230,4 +230,5 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-226 | A Konsol container's bind sources are pinned at every start | v2-204; live-verified on nrm 2026-10-05 | design-decisions.md |
 | DD-227 | Writable server folders only through the Files account | v2-205; live-verified on nrm 2026-10-05 | design-decisions.md |
 | DD-228 | Install from the public repository with one curl line on the server | v2-206 | design-decisions.md |
-| DD-229 | Overview controls, WireGuard as a whole, and a host closed to containers | v2-207 | design-decisions.md |
+| DD-229 | Overview controls, WireGuard as a whole, and a host closed to containers | v2-207; tile word amended by DD-230 | design-decisions.md |
+| DD-230 | Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards | v2-208 | design-decisions.md |

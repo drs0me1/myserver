@@ -244,12 +244,12 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
       .evaluateAll((els) => els.map((e) => [e.dataset.act,e.tagName, e.innerText.trim(), e.getAttribute("aria-label"), e.getAttribute("title"),
         e.querySelectorAll("svg").length, e.closest("a.tile-link") === null]));
     const iconOnly = async () => {
-      // DD-229: the service action is a word; settings (gear) and logs (terminal) are icons.
-      assert.deepEqual(await row("torrent"), [["servis","BUTTON", "Durdur", "qBittorrent: Durdur", "qBittorrent: Durdur", 0, true],
+      // DD-229/230: the service action is a short word (Dur/Başla); settings (gear) and logs (terminal) are icons.
+      assert.deepEqual(await row("torrent"), [["servis","BUTTON", "Dur", "qBittorrent: Durdur", "qBittorrent: Durdur", 0, true],
         ["ayar","BUTTON", "", "qBittorrent ayarları", "qBittorrent ayarları", 1, true],
         ["gunluk","BUTTON", "", "qBittorrent günlükleri", "qBittorrent günlükleri", 1, true]], "service, settings, logs in order; controls outside the launch link");
       // WireGuard stops as a whole now; its settings are its page.
-      assert.deepEqual(await row("wireguard"), [["servis","BUTTON","Durdur","WireGuard: Durdur","WireGuard: Durdur",0,true],
+      assert.deepEqual(await row("wireguard"), [["servis","BUTTON","Dur","WireGuard: Durdur","WireGuard: Durdur",0,true],
         ["ayar","A", "", "WireGuard ayarları", "WireGuard ayarları", 1, true],
         ["gunluk","BUTTON","","WireGuard günlükleri","WireGuard günlükleri",1,true]]);
       for (const id of ["torrent","wireguard"])
@@ -265,7 +265,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     const bare = (sel) => page.locator(sel).evaluate((el) => { const c = getComputedStyle(el);
       return [c.backgroundColor, c.borderTopStyle === "none" || c.borderTopWidth === "0px", c.boxShadow, el.innerText.trim()]; });
     const BARE = ["rgba(0, 0, 0, 0)", true, "none", ""];
-    const bareFor = (sel) => sel.includes('"servis"') ? [...BARE.slice(0, 3), "Durdur"] : BARE;
+    const bareFor = (sel) => sel.includes('"servis"') ? [...BARE.slice(0, 3), "Dur"] : BARE;
     const looks = async () => {
       for (const sel of ['#genel-tiles [data-tile="torrent"] [data-act="ayar"]', '#genel-tiles [data-tile="torrent"] [data-act="servis"]',
         '#genel-tiles [data-tile="torrent"] [data-act="gunluk"]', '#genel-tiles [data-tile="wireguard"] [data-act="ayar"]',
@@ -441,7 +441,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await page.locator("#cf-go").click();
     while (lifecycle.length < 1) await page.waitForTimeout(10);
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-disabled") === "true");
-    assert.deepEqual(await svc(), ["qBittorrent: Durduruluyor…", "qBittorrent: Durduruluyor…", "true", true, "Durdur"], "busy: the word stays, dimmed; focus back on the action after the confirmation");
+    assert.deepEqual(await svc(), ["qBittorrent: Durduruluyor…", "qBittorrent: Durduruluyor…", "true", true, "Dur"], "busy: the word stays, dimmed; focus back on the action after the confirmation");
     // Measured in one step: the 1.5 s progress poll redraws the row and would detach a held element.
     assert(await page.evaluate(() => { const t = document.querySelector('#genel-tiles .tile[data-tile="torrent"]'), b = t.querySelector('[data-act="servis"]');
       const tr = t.getBoundingClientRect(), br = b.getBoundingClientRect(); return br.left >= tr.left && br.right <= tr.right; }), "the busy action stays inside the tile");
@@ -459,7 +459,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     Object.assign(modules[1], { busy: false, state: "durduruldu", live: "exited", progress: { action: "durdur", step: "bitti", total: 0, text: "durduruldu" } });
     await poll();
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Başlat");
-    assert.deepEqual(await svc(), ["qBittorrent: Başlat", "qBittorrent: Başlat", "false", true, "Başlat"], "the name follows the finished operation; focus kept");
+    assert.deepEqual(await svc(), ["qBittorrent: Başlat", "qBittorrent: Başlat", "false", true, "Başla"], "the name follows the finished operation; focus kept");
     assert.deepEqual(lifecycle[0], { action: "durdur", body: { veri: false } });
 
     /* ---- A stopped app opens its page, not a dead link; its settings still open and save ---- */
@@ -497,7 +497,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await page.waitForTimeout(200);
     assert.equal(await elsewhere.evaluate((el) => document.activeElement === el), true, "a finishing request leaves focus where the operator put it");
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Başlatılıyor…");
-    assert.deepEqual([(await svc())[0], (await svc())[4]], ["qBittorrent: Başlatılıyor…", "Başlat"]);
+    assert.deepEqual([(await svc())[0], (await svc())[4]], ["qBittorrent: Başlatılıyor…", "Başla"]);
     Object.assign(modules[1], { busy: false, state: "calisiyor", live: "running", progress: { action: "baslat", step: "bitti", total: 0, text: "başlatıldı" } });
     await poll();
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Durdur");

@@ -77,7 +77,8 @@
 .as-address + .as-address { margin-top:8px; }
 .as-domain-links { display:grid; gap:8px; padding:16px; border:1px solid var(--line); border-radius:9px; overflow-wrap:anywhere; }
 .as-domain-links small { color:var(--muted); }
-.as-local-domain { width:min(100%,620px); justify-self:start; }
+.as-local-domain { width:100%; }
+.as-local-domain .as-domain-row, .as-local-domain .as-body > small { max-width:620px; }
 .as-local-domain .card-head, .as-local-domain .as-body { min-width:0; overflow-wrap:anywhere; }
 .as-local-domain .as-body { padding:0; gap:8px; }
 .as-domain-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px; }

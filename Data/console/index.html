@@ -45,21 +45,14 @@
       <!-- DD-216: installed applications have no sidebar entry; they open from their Ana Menü tiles. -->
       <a href="#/ayarlar" data-route="ayarlar" data-icon="sliders" class="settings-link">Ayarlar</a>
     </nav>
+    <!-- DD-230: the address facts live in Ana Menü's "Sunucu" widget; resources close the sidebar. -->
+    <div class="side-foot"><button type="button" class="linkbtn" id="logout" hidden>Çıkış yap</button></div>
     <section class="resources" aria-label="Sunucu kaynakları">
       <p class="resource-status" id="resource-status" role="status">Kaynaklar okunuyor…</p>
       <div class="resource"><div><span>İşlemci</span><strong id="resource-cpu">—</strong></div><progress id="bar-cpu" max="100" value="0" aria-label="İşlemci kullanımı" hidden></progress><small id="detail-cpu">Örnek bekleniyor</small></div>
       <div class="resource"><div><span>RAM</span><strong id="resource-mem">—</strong></div><progress id="bar-mem" max="100" value="0" aria-label="Bellek kullanımı" hidden></progress><small id="detail-mem">—</small></div>
       <div class="resource"><div><span>Disk</span><strong id="resource-disk">—</strong></div><progress id="bar-disk" max="100" value="0" aria-label="Disk kullanımı" hidden></progress><small id="detail-disk">—</small></div>
     </section>
-    <div class="side-foot">
-      <dl class="side-facts">
-        <div><dt>Tailscale IP</dt><dd class="mono" id="foot-ts">—</dd></div>
-        <div><dt>WAN IP</dt><dd class="mono" id="foot-wan">—</dd></div>
-        <div><dt>Çalışma süresi</dt><dd id="foot-uptime">—</dd></div>
-        <div><dt>Sürüm</dt><dd class="mono" id="foot-version">—</dd></div>
-      </dl>
-      <span id="foot-access">Tailscale</span><button type="button" class="linkbtn" id="logout" hidden>Çıkış yap</button>
-    </div>
   </aside>
   <main class="main" id="main-content" tabindex="-1">
     <div class="content">

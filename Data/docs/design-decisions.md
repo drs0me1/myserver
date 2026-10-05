@@ -13,6 +13,30 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-230: Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards (v2-208)
+
+- **Request (user, 2026-10-05):** "durdur/başla yerine Dur, Başla yazalım ve puntoyu biraz
+  büyütelim", "ana sayfada sunucu kaynakları en alta alalım. ve ip bilgilerinin olduğu bloğu widget
+  olarak ağ widget yanına alalım", "caddy sayfasındaki yerel alan adı kartını Adresler ve erişim
+  tablosu ile hizalı yapalım", App Store cards narrower and fixed as one standard layout, and the
+  network widget narrower, balanced, "altta bulunan iki uygulamanın yatay toplamı ile hizalayalım".
+- **One grid:** `.widgets`, `.tiles` and `.store-list` share
+  `repeat(auto-fill,minmax(138px,1fr))` (two columns at ≤480 px). A widget spans two columns, so
+  the network card is exactly two tiles wide at every width, and Store cards are the same width as
+  home tiles (supersedes DD-213's six-slot widget area and the 168 px Store minimum).
+- **Sunucu widget:** the sidebar's address block (Tailscale IP, WAN IP, uptime, version, access
+  channel) is a second widget (`sunucu`, hideable like `ag`); its values come from the same
+  resource/system reads and are painted wherever the widget is shown. The sidebar keeps the
+  sign-out button (public channel only) and ends with the resources. The layout backend
+  already accepts any widget id; a saved layout without `sunucu` shows it.
+- **Network card at two tiles (~270 px content):** its halves stay side by side from 240 px of
+  content with a 10 px gutter. Application totals become two-line rows (name across, then
+  download and upload with the legend's colour dots) in the same semantic table, so names fit.
+- **Tile service word:** "Dur"/"Başla" at 13 px; the accessible name and tooltip keep the full
+  verb ("qBittorrent: Durdur").
+- **Caddy:** the local-domain card is full width like "Adresler ve erişim"; its input row stays
+  at most 620 px wide.
+
 ### DD-229: Overview controls, WireGuard as a whole, and a host closed to containers (v2-207)
 
 - **Request (user, 2026-10-05):** "düzenle seçeneğini ekranın sağ en altına alalım", "wireguard

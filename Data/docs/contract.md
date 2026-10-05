@@ -502,8 +502,9 @@ Contract in §5–§7 and `folder-shares.md`.
     address, only while that publication is active; otherwise it points to
     Settings → Caddy (**DD-195**). `/api/konsol/moduller` carries both as `urls`. CPU, memory and disk sit below the sidebar menu, read
     from the gated `/api/konsol/kaynaklar` endpoint; missing or stale
-    measurements show as unknown, never as zero. Clock/date replace only the home heading;
-    the sidebar shows WAN/Tailscale addresses, version and uptime. Separate home
+    measurements show as unknown, never as zero, and close the sidebar. Clock/date replace only the
+    home heading; WAN/Tailscale addresses, uptime, version and the access channel are Ana Menü's
+    "Sunucu" widget beside the network card (**DD-230**). Separate home
     clock/system widgets, including their unused SVG/CSS, are removed. An unknown route opens
     Ana Menü (`#/genel`); a page of an absent application opens App Store.
   - **Opening an application and its actions (DD-210, DD-212/213).** An application with a native
@@ -515,7 +516,8 @@ Contract in §5–§7 and `folder-shares.md`.
     icon of every installed App Store application's tile is a row with three fixed
     positions: **Durdur/Başlat**, **Ayarlar**, **Günlükler**. Desktop cards are approximately
     16% narrower than v191, retaining their normal height and 44 px action targets. **Durdur/Başlat**
-    is a word; **Ayarlar** is a gear and **Günlükler** a terminal icon (**DD-229**); all are bare
+    is a short word ("Dur"/"Başla", 13 px; the accessible name keeps "Durdur"/"Başlat"); **Ayarlar** is
+    a gear and **Günlükler** a terminal icon (**DD-229**, **DD-230**); all are bare
     (no background or border; accessible names and tooltips remain),
     siblings of the launch link and absent in edit mode. Unsupported actions leave a
     blank, non-interactive slot so supported actions stay aligned. **Ayarlar**
@@ -529,11 +531,14 @@ Contract in §5–§7 and `folder-shares.md`.
     and starts as a whole (**DD-229**). **Günlükler** opens a dialog backed by the existing
     module journal. Settings stay usable while the app is stopped. The page stays
     reachable from App Store details and its route.
-  - **Home layout and network card (DD-206, DD-212/213, DD-229).** "Düzenle" (fixed to the
+  - **Home layout and network card (DD-206, DD-212/213, DD-229, DD-230).** "Düzenle" (fixed to the
     screen's bottom-right corner; the page keeps room below the last row) lets the operator move tiles (dragging with mouse or finger, or arrow
-    buttons) and hide or show the sole network widget (`ag`). Its width is fixed at
-    two of six desktop slots (four slots on narrower screens, two on phones); there are
-    no width controls. "Bitti" saves, "Vazgeç"/Escape drops the
+    buttons) and hide or show the widgets: the network card (`ag`) and the server facts
+    (`sunucu`). The widget area uses the tiles' column template, so each widget is exactly
+    two tiles wide at every screen width (two tiles fill a phone); there are
+    no width controls. The network card keeps its two halves side by side; application
+    totals are two-line rows (name, then download/upload). App Store cards use the same
+    column template and width as the home tiles. "Bitti" saves, "Vazgeç"/Escape drops the
     draft, "Varsayılan" returns to the defaults. The layout lives on the server:
     `GET /api/konsol/duzen` → `{duzen: {schema, kareler, widgetlar} | null}`, `POST`
     `{duzen: …}` or `{sifirla: true}`; the root backend checks the shape only (keys
