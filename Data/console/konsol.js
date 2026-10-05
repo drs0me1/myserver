@@ -247,6 +247,62 @@
     clock.dateTime = d.toISOString();
     date.textContent = d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
   }
+  /* ---------- DD-233: "Güncelle" beside the clock ---------- */
+  // The backend compares the installed version with the newest one on GitHub (cached for hours) and
+  // runs the update as its own systemd unit; the page only asks, confirms and follows its stage.
+  let UPD = null, updAsked = 0, updSeen = "";
+  const shortV = (v) => (v || "—").replace(/^.*-(v\d+-\d+)$/, "$1");
+  function loadUpdate(force) {
+    updAsked = Date.now();
+    return api("/api/konsol/guncelleme" + (force ? "?yenile=1" : "")).then((r) => {
+      const was = UPD && UPD.is.durum;
+      UPD = r;
+      // The installer replaced Konsol's own files: a finished run reloads the page once.
+      if (was === "calisiyor" && r.is.durum === "tamam") { toast(`Güncelleme tamamlandı: ${shortV(r.kurulu)}. Sayfa yenileniyor…`); setTimeout(() => location.reload(), 2500); }
+      if (was === "calisiyor" && r.is.durum === "hata") toast(`Güncelleme başarısız: ${r.is.mesaj || "ayrıntı Ayarlar → Günlük'te"}`);
+      paintUpdate();
+      return r;
+    }).catch(() => { paintUpdate(); return null; });
+  }
+  function paintUpdate() {
+    const box = $("home-update");
+    if (!box) return;
+    if (!UPD) { box.replaceChildren(); return; }
+    const job = UPD.is, running = job.durum === "calisiyor";
+    let btn;
+    if (running) {
+      btn = h("button", { type: "button", class: "upd busy", disabled: true, title: job.asama || "Güncelleniyor" },
+        svg("refresh"), h("span", null, "Güncelleniyor"), h("small", null, (job.asama || "").replace(/ — .*$/, "")));
+    } else if (UPD.yeni) {
+      const locked = !UPD.baslatilabilir;
+      btn = h("button", { type: "button", class: "upd new", disabled: locked,
+        title: locked ? "Güncelleme yalnız Tailscale adresinden başlatılır" : `Yeni sürüm: ${UPD.son}` + (job.durum === "hata" && job.mesaj ? ` · son deneme başarısız: ${job.mesaj}` : ""),
+        onclick: askUpdate }, svg("download"), h("span", null, "Güncelle"), h("small", null, shortV(UPD.son)));
+    } else {
+      btn = h("button", { type: "button", class: "upd", title: UPD.hata || `Kurulu sürüm güncel (${UPD.kurulu}). Denetlemek için tıklayın.`,
+        onclick: () => loadUpdate(true).then((r) => { if (r) toast(r.yeni ? `Yeni sürüm var: ${shortV(r.son)}` : r.hata || `Sürüm güncel: ${shortV(r.kurulu)}`); }) },
+        svg(UPD.hata ? "info" : "check"), h("span", null, UPD.hata ? "Denetlenemedi" : "Güncel"));
+    }
+    const key = btn.className + btn.textContent + btn.title + btn.disabled;
+    if (key === updSeen && box.firstChild) return;
+    updSeen = key;
+    box.replaceChildren(btn);
+  }
+  function askUpdate() {
+    if (!UPD || !UPD.yeni) return;
+    const offer = { surum: UPD.son, commit: UPD.commit };
+    ask({ title: `Sunucu ${shortV(UPD.son)} sürümüne güncellensin mi?`, sub: `Kurulu: ${UPD.kurulu} → ${UPD.son}`, calm: true,
+      items: [["download", `Kod GitHub'dan indirilir (commit ${UPD.commit.slice(0, 7)}).`],
+        ["stack", "Sistem paketleri de güncellenir; birkaç dakika sürebilir."],
+        ["refresh", "Konsol ve servisler yeniden başlar; bitince sayfa kendini yeniler."]].concat(
+        UPD.is.durum === "hata" && UPD.is.mesaj ? [["info", `Son deneme başarısız: ${UPD.is.mesaj}`]] : []),
+      go: "Güncelle",
+      onOk: () => post("/api/konsol/guncelleme", offer).then(() => {
+        UPD.is = { durum: "calisiyor", asama: "İndiriliyor", hedef: offer.surum, mesaj: "" };
+        toast("Güncelleme başladı; bu sayfa açık kalabilir.");
+        paintUpdate();
+      }).catch((e) => { fail(e); loadUpdate(); }) });
+  }
   function paintSystem() {
     const s = S.sys;
     if (!s) return;
@@ -281,6 +337,7 @@
     "ayar-rollback": () => "Ayarlar geri alındı", "ayar-discard": () => "Takılan ayar işlemi bırakıldı",
     "paylasim-save": () => "Klasör paylaşımı kaydedildi", "paylasim-pause": () => "Klasör paylaşımının durumu değişti",
     "paylasim-remove": () => "Klasör paylaşımı kaldırıldı",
+    guncelleme: (e) => `Sunucu güncellemesi başlatıldı: ${e.detail}`,
   };
   // DD-196/200: the root backend carries the Konsol account, Settings, Shares and App Store
   // events; a package API's events are "<id>:<verb>" and take their words from the package.
@@ -2122,8 +2179,10 @@
     const hd = headerFor(current, raw[0] === current ? raw[1] : undefined);
     $("title").classList.toggle("home-title", current === "genel");
     if (current === "genel") {
-      $("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }));
+      $("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }), h("span", { id: "home-update", class: "home-update" }));
       paintHomeClock();
+      updSeen = "";
+      if (UPD) paintUpdate(); else loadUpdate();
     } else $("title").textContent = hd.title;
     $("eyebrow").textContent = hd.eyebrow;
     $("eyebrow").hidden = !hd.eyebrow;
@@ -2192,6 +2251,8 @@
     loadSystem();
     if (!(MODS || []).some((m) => m.busy)) loadModules();
     if (editing || !widgetSetting("ag").gizli || !widgetSetting("hiz").gizli) loadNetwork();
+    // DD-233: the update offer every minute; its stage every tick while the unit runs.
+    if ((UPD && UPD.is.durum === "calisiyor") || Date.now() - updAsked > 60000) loadUpdate();
   }, 5000);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && editing && current === "genel" && !$("sh").open) cancelEdit(); });
   $("logout").addEventListener("click", logout);

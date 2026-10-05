@@ -6,6 +6,8 @@
 # Kodu GitHub'dan (varsayılan main; başka bir sürüm için: sudo KUR_REF=<commit|etiket> bash)
 # indirir, /root/debian-server-installer'a atomik yerleştirir ve install.sh'ı terminalden
 # başlatır. Sorular, Tailscale giriş bağlantısı ve onay terminalde kalır.
+# Konsol'daki "Güncelle" düğmesi (DD-233) bu betiği master-guncelle ile çağırır: KUR_REF bir
+# commit, KUR_GUNCELLE o commit'teki V2_VERSION'dır; kurulum terminalsiz güncelleme kipinde çalışır.
 # Bütün gövde main() içindedir: yarıda kesilen bir indirme yarım betik çalıştırmaz.
 set -Eeuo pipefail
 
@@ -15,6 +17,7 @@ main() {
     # KUR_URL yalnız testler içindir (yerel arşiv); kurulumda boş kalır.
     local url="${KUR_URL:-https://codeload.github.com/$repo/tar.gz/$ref}"
     local root="${KUR_ROOT:-/root/debian-server-installer}"
+    local update="${KUR_GUNCELLE:-}"
     # Kurulumun çalışma dosyaları; dokümanlar ve testler sunucuya gitmez.
     local items="install.sh common.sh config templates scripts systemd panel files-panel console magaza"
 
@@ -28,7 +31,12 @@ main() {
     for tool in curl tar sha256sum; do
         command -v "$tool" >/dev/null 2>&1 || { echo "HATA: $tool yok (apt install -y $tool)" >&2; exit 1; }
     done
-    [[ -r /dev/tty ]] || { echo "HATA: etkileşimli terminal gerekli (ssh -t ile bağlanın)" >&2; exit 1; }
+    if [[ -n "$update" ]]; then
+        [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "HATA: güncelleme bir commit'e sabitlenmeli: $ref" >&2; exit 1; }
+        [[ "$update" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}-v2-[0-9]+$ ]] || { echo "HATA: geçersiz sürüm: $update" >&2; exit 1; }
+    else
+        [[ -r /dev/tty ]] || { echo "HATA: etkileşimli terminal gerekli (ssh -t ile bağlanın)" >&2; exit 1; }
+    fi
 
     local tmp
     tmp="$(mktemp -d /tmp/master-stack-kur.XXXXXX)"
@@ -59,6 +67,9 @@ main() {
     local version
     version="$(grep -m1 -E '^V2_VERSION=' "$incoming/install.sh")" ||
         { rm -rf -- "$incoming"; echo "HATA: install.sh sürüm satırı yok" >&2; exit 1; }
+    # Güncelleme, Konsol'da onaylanan sürümden başkasını kurmaz.
+    [[ -z "$update" || "$version" == "V2_VERSION=\"$update\"" ]] ||
+        { rm -rf -- "$incoming"; echo "HATA: indirilen sürüm ($version) onaylanan $update değil" >&2; exit 1; }
 
     # Atomik yer değiştirme: yarıda kalırsa önceki kopya geri gelir.
     [[ ! -e "$root" ]] || mv -- "$root" "$previous"
@@ -71,6 +82,12 @@ main() {
     rm -rf -- "$previous"
     echo "==> Yerleştirildi → $root ($version)"
 
+    if [[ -n "$update" ]]; then
+        printf '\n==> Güncelleme başlıyor (%s). Sistem önce güncellenir.\n' "$update"
+        rm -rf -- "$tmp"
+        trap - EXIT
+        V2_GUNCELLEME=1 exec bash "$root/install.sh" </dev/null
+    fi
     printf '\n==> Kurulum başlıyor. Sistem önce güncellenir.\n'
     printf '    Özeti kontrol edip onaya E yazın. Tailscale URL gelirse tarayıcıda onaylayın.\n'
     printf '    Uygulamalar kurulumdan sonra Konsol → App Store'"'"'dan kurulur.\n\n'

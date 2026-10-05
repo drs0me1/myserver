@@ -233,4 +233,5 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-229 | Overview controls, WireGuard as a whole, and a host closed to containers | v2-207; tile word amended by DD-230 | design-decisions.md |
 | DD-230 | Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards | v2-208; widget sizes amended by DD-231 | design-decisions.md |
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210 | design-decisions.md |
+| DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |

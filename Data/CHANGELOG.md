@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — "Güncelle" beside the clock (v2-212)
+
+- Ana Menü shows the installed version's state next to the time: "Güncel", or "Güncelle v2-…" when
+  GitHub has a newer installer. A click asks for confirmation, then the server installs exactly that
+  version by itself; the button shows the installer stage and the page reloads when it ends.
+- Only from a Tailscale device; a first install or a missing Tailscale login still needs the
+  terminal line. Servers on v2-211 or older get the button after one terminal run (DD-233).
+
 ### 2026-10-05 — Finder-style Files and a two-card sidebar (v2-211)
 
 - Files shows folders and files as icons, with a column on the right: Favoriler (Sunucu and its

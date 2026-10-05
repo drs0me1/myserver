@@ -13,6 +13,36 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-233: Konsol update button, pinned to a GitHub commit (v2-212)
+
+- **Request (user, 2026-10-05):** "ana menüde saat ve tarih satırının hemen yanına bir Güncelle
+  butonu ekleyelim. githubda güncel versiyon gelince sunucu güncellemeyi görsün ve tıklayınca
+  güncelleme yapabilsin".
+- **Check:** the root backend (`master_update.py`) asks `api.github.com` for the tip commit of
+  `GUNCELLEME_DAL` (one short request, the plain SHA) and reads `V2_VERSION` from that commit's
+  `Data/install.sh` on `raw.githubusercontent.com`. Only `YYYY.MM.DD-v2-<n>` counts; the offer is
+  a higher `<n>` than the installed state. Six-hour cache, 15 minutes after a failure, "Güncel"
+  re-checks at most once a minute: the unauthenticated GitHub API allows 60 requests an hour.
+- **Pinned:** the page sends back the commit and version it showed; the backend starts only that
+  pair, `master-guncelle` downloads `kur.sh` from that commit, and `kur.sh` refuses an archive
+  whose `V2_VERSION` differs. A push between the click and the download never installs unseen code.
+- **Unattended re-run, narrowly:** the contract's TTY requirement stays for every terminal run. The
+  update runs as its own transient unit (`GUNCELLEME_UNIT`), because the installer restarts Konsol
+  and Caddy, and runs `install.sh` with `V2_GUNCELLEME=1`. That mode refuses what needs a person
+  at a terminal: a first install (no domain) and a Tailscale login link.
+- **Who may start it:** a Tailscale device (or root on the socket). The public HTTPS Konsol sees the
+  offer but cannot start it: it runs root code fetched from GitHub, the same trust as the curl line,
+  so it stays behind the device check rather than a password alone. Not beside a package operation,
+  a pending settings change or another update.
+- **Progress:** the unit writes `GUNCELLEME_DURUM_FILE` (running/done/failed, target, last output
+  line) and its output to `GUNCELLEME_LOG_FILE` (0600); Konsol shows the latest "Aşama n/7" and,
+  after a finished run, reloads the page once because its own files changed. A run that vanished
+  (reboot) reads as failed. Audit: `guncelleme <version>`.
+- **Not done:** no automatic update, no rollback (Git keeps every version; `KUR_REF` installs an older
+  commit from the terminal), no authenticated GitHub access.
+- **Trade-off:** convenience against the TTY rule; kept small by the pin, the device check and the
+  refusals. A server below v2-212 needs one terminal run to get the button.
+
 ### DD-232: Finder-style Files window and a two-card sidebar (v2-211)
 
 - **Request (user, 2026-10-05):** Files like Finder — icons on the left, a "Dosyalar" menu on the

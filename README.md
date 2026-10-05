@@ -56,6 +56,11 @@ waits for `E`. Approve the Tailscale login link it prints in a browser.
 Root, interactive TTY (one confirmation), Debian 13 or Ubuntu 24.04/26.04 LTS
 only. Re-runs are supported: run the same line again.
 
+Later versions: Ana Menü shows **Güncelle** beside the clock when `main` on GitHub carries a newer
+installer version. After a confirmation it re-runs the installer for exactly that commit, without a
+terminal, while Konsol restarts; the page reloads when it ends (**DD-233**). The button starts
+updates only over Tailscale; a first install and a missing Tailscale login still need the line above.
+
 WireGuard peers from a Mac (after the install, optional):
 
 ```bash

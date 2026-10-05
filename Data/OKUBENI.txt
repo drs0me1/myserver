@@ -10,6 +10,9 @@ Kurulum sunucuda tek satırla başlar (v2-206, DD-228). Sunucuya kendiniz SSH il
   Hesap sorulmaz: Konsol hesabı Ayarlar'da, klasör hesapları Dosyalar'da, qBittorrent hesabı
   App Store kurulum formunda belirlenir.
   Yeniden kurulum: aynı satırı yeniden çalıştırın.
+  Güncelleme (v2-212, DD-233): GitHub'da yeni sürüm olunca Ana Menü'de saatin yanında "Güncelle"
+  belirir; onaylayınca sunucu o sürümü indirip kurulumu kendisi yeniden çalıştırır, bitince sayfa
+  yenilenir. Yalnız Tailscale adresinden başlatılır.
 
 Repo kökünde:
   kur.sh                     sunucuda çalışan kurulum başlatıcısı (yukarıdaki satır)

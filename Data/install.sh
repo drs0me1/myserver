@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-211"
+V2_VERSION="2026.08.06-v2-212"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -19,6 +19,11 @@ V2_LOG_FILE="${V2_LOG_FILE:-$LOG_DIR/install.log}"
 export V2_LOG_FILE
 RUN_FULL_UPGRADE=0
 FIREWALL_NEEDS_RESTART=0
+# DD-233: Konsol'daki "Güncelle" düğmesi kurulumu master-guncelle birimiyle, terminalsiz yeniden
+# çalıştırır (V2_GUNCELLEME=1). Bu kip ilk kurulum yapmaz: alan adı ve Tailscale oturumu önceden
+# hazır olmalı; onayı operatör Konsol'da verir. Başka hiçbir yol terminalsiz kurulum yapmaz.
+UPDATE_MODE=0
+[[ "${V2_GUNCELLEME:-0}" != "1" ]] || UPDATE_MODE=1
 # state.env'de kayıtlı OS kimliği canlı os-release ile uyuşmuyorsa 1 olur;
 # OS'a bağlı adımlar dosya içeriği aynı kalsa bile yeniden uygulanır (DD-104).
 OS_CHANGED=0
@@ -100,6 +105,12 @@ VPN_BLOCK_DEST6="$VPN_BLOCK_DEST6"
 DNSMASQ_CONF_DIR=$DNSMASQ_CONF_DIR
 CONSOLE_WEB_DIR=$CONSOLE_WEB_DIR
 RUNTIME_DIR=$RUNTIME_DIR
+LOG_DIR=$LOG_DIR
+GUNCELLEME_REPO=$GUNCELLEME_REPO
+GUNCELLEME_DAL=$GUNCELLEME_DAL
+GUNCELLEME_UNIT=$GUNCELLEME_UNIT
+GUNCELLEME_DURUM_FILE=$GUNCELLEME_DURUM_FILE
+GUNCELLEME_LOG_FILE=$GUNCELLEME_LOG_FILE
 OS_ID=$OS_ID
 OS_CODENAME=$OS_CODENAME
 OS_VERSION_ID=$OS_VERSION_ID
@@ -336,7 +347,11 @@ stage_0() {
     # OS-DIVERGENCE: netfilter-binaries (debian) — minimal Debian iptables'ı
     # getirmez; aşama 0 yalnız var olanı denetler, aşama 1 zorunlu kılar [DD-108]
     check_nft_iptables optional
-    [[ -t 0 || -r /dev/tty ]] || die "etkileşimli TTY gerekli"
+    if [[ "$UPDATE_MODE" == 1 ]]; then
+        log INFO "Konsol'dan güncelleme: sorular yok, onay Konsol'da verildi (DD-233)"
+    else
+        [[ -t 0 || -r /dev/tty ]] || die "etkileşimli TTY gerekli"
+    fi
     # OS-DIVERGENCE: ufw-gate (pratikte ubuntu) — yoklama; paket yoksa no-op [DD-102]
     # Ubuntu server ufw ile gelir (varsayılan pasif). Aktifse INPUT'u ikinci
     # bir el yönetir ve MASTER-INPUT ile çelişir — fail-closed: önce kapat.
@@ -367,6 +382,8 @@ stage_0() {
         log INFO "alan adı Konsol'daki kayıttan: $LOCAL_DOMAIN"
     elif [[ -n "$LOCAL_DOMAIN" ]]; then
         log INFO "alan adı önceki kurulumdan: $LOCAL_DOMAIN (değiştirmek için Konsol → Ayarlar)"
+    elif [[ "$UPDATE_MODE" == 1 ]]; then
+        die "Konsol'dan güncelleme ilk kurulumu yapmaz (alan adı kaydı yok); kurulumu terminalden çalıştırın"
     else
         local reply
         while :; do
@@ -398,6 +415,8 @@ stage_0() {
     if command -v tailscale >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 &&
         [[ "$(tailscale_login_state)" == "complete" ]]; then
         ts_note="zaten online"
+    elif [[ "$UPDATE_MODE" == 1 ]]; then
+        die "Tailscale oturumu açık değil; giriş bağlantısı gerektiği için kurulumu terminalden çalıştırın"
     fi
     # DD-228: sistem her kurulumda (yeniden kurulum dahil) önce güncellenir.
     RUN_FULL_UPGRADE=1
@@ -416,7 +435,11 @@ Kurulum girdileri:
   full-upgrade:  $yes_no_upgrade
 
 EOF
-    prompt confirm_ans "Bu değerlerle kurulum başlasın mı? (E/h)" "h"
+    if [[ "$UPDATE_MODE" == 1 ]]; then
+        confirm_ans="E"
+    else
+        prompt confirm_ans "Bu değerlerle kurulum başlasın mı? (E/h)" "h"
+    fi
     [[ "$confirm_ans" =~ ^[EeYy]$ ]] || die "kurulum iptal edildi; hiçbir ayar değiştirilmedi"
 
     write_config
@@ -951,6 +974,10 @@ stage_4() {
     # DD-194: Konsol hesabı/oturumları; master-konsol root CLI'si aynı modülü çalıştırır.
     atomic_write "$SBIN_DIR/master_auth.py" 0755 <"$V2_ROOT/panel/master_auth.py"
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 0 ]] || PANEL_HELPERS_CHANGED=1
+    # DD-233: Konsol'un "Güncelle" düğmesi: sürüm denetimi (arka uç) ve işi yürüten root aracı.
+    atomic_write "$SBIN_DIR/master_update.py" 0755 <"$V2_ROOT/panel/master_update.py"
+    [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 0 ]] || PANEL_HELPERS_CHANGED=1
+    atomic_write "$SBIN_DIR/master-guncelle" 0755 <"$V2_ROOT/scripts/master-guncelle"
     # Konteyner okuma/yönetim araçları. Yazma çalışanı backend sandbox'ının dışında çalışır.
     atomic_write "$SBIN_DIR/master_containers.py" 0755 <"$V2_ROOT/panel/master_containers.py"
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 0 ]] || PANEL_HELPERS_CHANGED=1

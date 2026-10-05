@@ -918,7 +918,7 @@ PLAYWRIGHT_MODULE="$(npm root -g)/playwright" node Data/tests/panel-ui.cjs
 ```
 
 The fixture suites (`panel-ui`, `files-ui`, `settings-ui`, `settings-https-ui`, `wireguard-ui`,
-`torrent-ui`, `giris-ui`, `app-install-ui`) share the same `http.server` on port 8766. `settings-ui.cjs` also covers the
+`torrent-ui`, `giris-ui`, `app-install-ui`, `update-ui`) share the same `http.server` on port 8766. `settings-ui.cjs` also covers the
 health card and the stuck-rollback discard (DD-182); `panel-ui.cjs` the archive
 bar that replaced the jobs page (DD-183).
 
@@ -994,3 +994,12 @@ stopped the test before `tailscale up`.
 Run test daemons inside a container with the binaries bind-mounted
 read-only, pass `--state` explicitly, and gate on `NeedsLogin` before any
 `up`.
+
+## Konsol update button (v2-212, DD-233)
+
+`test_update.py` covers the GitHub check (tip commit, version at that commit, cache, failure
+back-off, forced-check gap, malformed answers), the job state/stage, the start rules, the pinned
+`systemd-run` call and the Tailscale-only start route. `common.bats` runs `kur.sh` in update mode
+(pinned commit, refused version mismatch, no terminal) and `master-guncelle` with local fixtures.
+`update-ui.cjs` checks the button beside the clock, confirmation, payload, stage, failure, reload,
+internet lock and phone widths with fixtured APIs.

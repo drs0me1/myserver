@@ -1359,6 +1359,95 @@ EOF
     case "$output" in *"Yerleştirildi"*) ;; *) false ;; esac
 }
 
+@test "kur.sh update mode installs only the confirmed commit and version, without a terminal" {
+    # DD-233: Konsol's update runs kur.sh pinned to a commit; install.sh gets V2_GUNCELLEME=1 and no tty.
+    local kur="$V2_ROOT/../kur.sh" src="$TMP/src/myserver-x" dir sha=0123456789abcdef0123456789abcdef01234567
+    [ "$(id -u)" -eq 0 ] || skip "needs root"
+    mkdir -p "$src/Data"
+    for dir in install.sh common.sh config templates scripts systemd panel files-panel console magaza; do
+        cp -R "$V2_ROOT/$dir" "$src/Data/"
+    done
+    printf '#!/usr/bin/env bash\nV2_VERSION="2026.08.06-v2-212"\necho "STUB_INSTALL tty=$([[ -t 0 ]] && echo yes || echo no) guncelleme=${V2_GUNCELLEME:-0}"\n' \
+        >"$src/Data/install.sh"
+    tar -C "$TMP/src" -czf "$TMP/kod.tgz" myserver-x
+    mkdir -p "$TMP/root" && touch "$TMP/root/keep"
+    # A branch name, a bad version or another version than the confirmed one changes nothing.
+    run env KUR_URL="file://$TMP/kod.tgz" KUR_ROOT="$TMP/root" KUR_REF=main KUR_GUNCELLE=2026.08.06-v2-212 bash "$kur" </dev/null
+    [ "$status" -ne 0 ]
+    case "$output" in *"commit'e sabitlenmeli"*) ;; *) false ;; esac
+    run env KUR_URL="file://$TMP/kod.tgz" KUR_ROOT="$TMP/root" KUR_REF="$sha" KUR_GUNCELLE='v2-212;x' bash "$kur" </dev/null
+    [ "$status" -ne 0 ]
+    case "$output" in *"geçersiz sürüm"*) ;; *) false ;; esac
+    run env KUR_URL="file://$TMP/kod.tgz" KUR_ROOT="$TMP/root" KUR_REF="$sha" KUR_GUNCELLE=2026.08.06-v2-213 bash "$kur" </dev/null
+    [ "$status" -ne 0 ]
+    case "$output" in *"onaylanan 2026.08.06-v2-213 değil"*) ;; *) false ;; esac
+    [ -f "$TMP/root/keep" ]
+    run env KUR_URL="file://$TMP/kod.tgz" KUR_ROOT="$TMP/root" KUR_REF="$sha" KUR_GUNCELLE=2026.08.06-v2-212 bash "$kur" </dev/null
+    [ "$status" -eq 0 ]
+    case "$output" in *"STUB_INSTALL tty=no guncelleme=1"*) ;; *) false ;; esac
+    [ ! -e "$TMP/root/keep" ]
+    [ -x "$TMP/root/install.sh" ]
+    # Without KUR_GUNCELLE the terminal stays required.
+    grep -q 'exec bash "\$root/install.sh" </dev/tty' "$kur"
+    grep -q 'V2_GUNCELLEME=1 exec bash "\$root/install.sh" </dev/null' "$kur"
+}
+
+@test "master-guncelle runs the pinned kur.sh and records the result for Konsol" {
+    # DD-233: the unit's result file and output; Konsol only reads them.
+    local tool="$V2_ROOT/scripts/master-guncelle" sha=0123456789abcdef0123456789abcdef01234567 args
+    [ "$(id -u)" -eq 0 ] || skip "needs root"
+    bash -n "$tool"
+    printf 'GUNCELLEME_REPO=drs0me1/myserver\nGUNCELLEME_DURUM_FILE=%s\nGUNCELLEME_LOG_FILE=%s\n' \
+        "$TMP/log/guncelleme.durum" "$TMP/log/guncelleme.log" >"$TMP/state.env"
+    printf 'echo "ref=$KUR_REF surum=$KUR_GUNCELLE"\necho "[10:00:00] Aşama 3/7 — servisler"\n' >"$TMP/ok.sh"
+    run env STATE_FILE="$TMP/state.env" KUR_BETIK_URL="file://$TMP/ok.sh" bash "$tool" uygula "$sha" 2026.08.06-v2-212
+    [ "$status" -eq 0 ]
+    grep -qx 'durum=tamam' "$TMP/log/guncelleme.durum"
+    grep -qx 'hedef=2026.08.06-v2-212' "$TMP/log/guncelleme.durum"
+    grep -qx "commit=$sha" "$TMP/log/guncelleme.durum"
+    grep -qx "ref=$sha surum=2026.08.06-v2-212" "$TMP/log/guncelleme.log"
+    [ "$(stat -c %a "$TMP/log/guncelleme.log")" = 600 ]
+    printf 'echo "[10:00:01] Aşama 0/7 — kapılar"\necho "[10:00:02] Tailscale oturumu açık değil" >&2\nexit 1\n' >"$TMP/bad.sh"
+    run env STATE_FILE="$TMP/state.env" KUR_BETIK_URL="file://$TMP/bad.sh" bash "$tool" uygula "$sha" 2026.08.06-v2-212
+    [ "$status" -ne 0 ]
+    grep -qx 'durum=hata' "$TMP/log/guncelleme.durum"
+    grep -qx 'mesaj=Tailscale oturumu açık değil' "$TMP/log/guncelleme.durum"
+    # Malformed requests never write a result.
+    rm -f "$TMP/log/guncelleme.durum"
+    for args in "uygula main 2026.08.06-v2-212" "uygula $sha v2-212" "kur $sha 2026.08.06-v2-212" "uygula $sha"; do
+        # shellcheck disable=SC2086
+        run env STATE_FILE="$TMP/state.env" bash "$tool" $args
+        [ "$status" -ne 0 ]
+    done
+    [ ! -e "$TMP/log/guncelleme.durum" ]
+}
+
+@test "update mode: Konsol re-runs the installer without questions, never a first install" {
+    # DD-233: no terminal and no confirmation only for V2_GUNCELLEME=1; the domain and the Tailscale
+    # login must already exist; the backend helpers and the tool are installed; one repository name.
+    local install="$V2_ROOT/install.sh" stage key
+    stage="$(awk '/^stage_0\(\) \{/,/^}$/' "$install")"
+    grep -qF '[[ "${V2_GUNCELLEME:-0}" != "1" ]] || UPDATE_MODE=1' "$install"
+    grep -qF "die \"Konsol'dan güncelleme ilk kurulumu yapmaz" <<<"$stage"
+    grep -qF 'die "Tailscale oturumu açık değil; giriş bağlantısı gerektiği için kurulumu terminalden çalıştırın"' <<<"$stage"
+    grep -qF '[[ -t 0 || -r /dev/tty ]] || die "etkileşimli TTY gerekli"' <<<"$stage"
+    grep -qF 'prompt confirm_ans "Bu değerlerle kurulum başlasın mı? (E/h)" "h"' <<<"$stage"
+    [ "$(grep -c 'confirm_ans="E"' <<<"$stage")" -eq 1 ]
+    grep -qF 'atomic_write "$SBIN_DIR/master_update.py" 0755 <"$V2_ROOT/panel/master_update.py"' "$install"
+    grep -qF 'atomic_write "$SBIN_DIR/master-guncelle" 0755 <"$V2_ROOT/scripts/master-guncelle"' "$install"
+    for key in GUNCELLEME_REPO GUNCELLEME_DAL GUNCELLEME_UNIT GUNCELLEME_DURUM_FILE GUNCELLEME_LOG_FILE LOG_DIR; do
+        grep -qx "$key=\$$key" "$install"
+    done
+    # shellcheck source=/dev/null
+    source "$V2_ROOT/config/defaults.env"
+    grep -qF "local repo=\"$GUNCELLEME_REPO\"" "$V2_ROOT/../kur.sh"
+    [ "$GUNCELLEME_DURUM_FILE" = "$LOG_DIR/guncelleme.durum" ]
+    [ "$GUNCELLEME_LOG_FILE" = "$LOG_DIR/guncelleme.log" ]
+    # The start is Tailscale-only and pinned; the page shows the offer only beside the clock.
+    grep -qF 'self.error(403, "Güncelleme yalnız Tailscale adresinden başlatılır.")' "$V2_ROOT/panel/master-panel"
+    grep -qF 'h("span", { id: "home-update", class: "home-update" })' "$V2_ROOT/console/konsol.js"
+}
+
 @test "stage 7 checks DNS on Tailscale IP and publish surface" {
     local mm="$V2_ROOT/scripts/master-modul"
     grep -q 'status: REFUSED' "$V2_ROOT/install.sh"
@@ -3213,7 +3302,7 @@ PY
     grep -qF '<div class="side-card side-main">' <<<"$sidebar"
     run ! grep -qE 'side-clock|side-date|home-clock|home-date' <<<"$sidebar"
     grep -qF 'function paintHomeClock()' "$js"
-    grep -qF '$("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }));' "$js"
+    grep -qF '$("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }), h("span", { id: "home-update", class: "home-update" }));' "$js"
     grep -qF '} else $("title").textContent = hd.title;' "$js"
     grep -qF '["foot-uptime", "Açık", fresh && Number.isFinite(s.uptime)' "$js"
     grep -qF 'function paintFacts() {' "$js"

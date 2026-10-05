@@ -115,7 +115,19 @@ the ones agreed on 2026-08-05:
   - The local domain has no default. A name confirmed in Konsol (**DD-157**) or the
     previous install's (`config.env`) is used without asking; only a first install
     asks, repeating the question until the answer is a valid label. It prints the values without passwords and asks for
-    one confirmation before `config.env` is written. An interactive TTY stays required.
+    one confirmation before `config.env` is written. An interactive TTY stays required,
+    except for Konsol's update below.
+  - **Konsol update (DD-233).** Ana Menü offers "Güncelle" when the tip of `GUNCELLEME_DAL` on
+    `GUNCELLEME_REPO` carries a higher `v2-<n>` than the installed version. The backend checks
+    GitHub at most every six hours (a failed check after 15 minutes, a manual check once a minute)
+    and pins the offer to that commit. The start is accepted only from a Tailscale device (or root
+    on the socket), only for the offered commit/version, never beside a package operation, a
+    pending settings change or a running update. `master-guncelle` runs as `GUNCELLEME_UNIT`,
+    fetches that commit's `kur.sh`, which refuses any other version, and runs `install.sh` with
+    `V2_GUNCELLEME=1`: no TTY, no questions, the confirmation is Konsol's. That mode refuses a
+    first install (no saved domain) and a missing Tailscale login. The result and output are in
+    `GUNCELLEME_DURUM_FILE`/`GUNCELLEME_LOG_FILE` (0600); Konsol shows the stage and the last line
+    of a failure. No automatic update and no rollback; the previous code is in Git.
   - Every run, re-runs included, performs `full-upgrade`; there is no question.
 - **Nothing from the operator's workstation reaches the server (DD-143, DD-228).**
   No WireGuard configuration, key or profile is read from `kurulum/` or uploaded,

@@ -169,7 +169,8 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
   See `Data/docs/folder-shares.md` for limits and the scoped expiry/recovery timer.
 
 - Root-only, single-host. The only input is the local domain, asked on the
-  server terminal (**DD-228**); the installer needs a TTY and one confirmation. No unattended mode.
+  server terminal (**DD-228**); the installer needs a TTY and one confirmation. No unattended mode,
+  except Konsol's "Güncelle" re-run of an existing install (**DD-233**: pinned commit, Tailscale-only start).
 - Debian 13 (trixie), Ubuntu 24.04 (noble) or Ubuntu 26.04 (resolute)
   only (**DD-102**). Noble live-verified 2026-08-29; resolute
   live-verified 2026-08-30, including re-run, service restarts and reboot.

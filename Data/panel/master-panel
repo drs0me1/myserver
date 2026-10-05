@@ -57,6 +57,7 @@ import master_container_manager
 import master_settings
 import master_shares
 import master_publications
+import master_update
 
 # DD-148: modül kimliği ve Konsol'dan istenebilen eylemler (master-modul ile aynı küme).
 MODULE_ID_RE = re.compile(r"^[a-z]{2,16}$")
@@ -486,6 +487,8 @@ class Panel:
         self.konsol_cache = {}
         # DD-210: one install-form preparation and engine start at a time (the seed file is per package).
         self.install_lock = threading.Lock()
+        # DD-233: GitHub'daki son sürüm (önbellekli) ve master-guncelle birimi.
+        self.updates = master_update.Updates()
         self.sys_lock = threading.Lock()
         self.samples = []
         self.cpu_prev = None
@@ -696,6 +699,51 @@ class Panel:
         except (OSError, subprocess.TimeoutExpired):
             return set()
         return {line.split()[0] for line in proc.stdout.decode("utf-8", "replace").splitlines() if line.split()}
+
+    def unit_active(self, unit):
+        try:
+            proc = subprocess.run(["systemctl", "list-units", "--plain", "--no-legend", "--no-pager",
+                                   "--state=active,activating,deactivating,reloading", unit],
+                                  timeout=10, env=self.env(), stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return any(line.split()[:1] == [unit] for line in proc.stdout.decode("utf-8", "replace").splitlines())
+
+    # -- güncelleme (DD-233)
+    def update_info(self, force=False):
+        env = read_env(self.args.state)
+        return self.updates.status(env, self.unit_active(env.get("GUNCELLEME_UNIT", "")), force)
+
+    def update_start(self, data):
+        """Starts master-guncelle for the commit and version the page showed, as its own unit: the
+        installer restarts Konsol and Caddy, the run goes on. One run at a time, never beside a
+        package operation or a pending settings change (the installer refuses those too)."""
+        env = read_env(self.args.state)
+        unit = env.get("GUNCELLEME_UNIT", "")
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,40}\.service", unit):
+            raise master_update.UpdateError(503, "Güncelleme kurulu değil; kurulumu terminalden bir kez yeniden çalıştırın.")
+        with self.install_lock:
+            blocked = ""
+            if self.busy_units():
+                blocked = "Bir uygulama işlemi sürüyor; bitince yeniden deneyin."
+            elif env.get("SETTINGS_PENDING_FILE") and os.path.exists(env["SETTINGS_PENDING_FILE"]):
+                blocked = "Ayarlar'da bekleyen bir işlem var; önce onaylayın ya da geri alın."
+            commit, version = self.updates.check_start(env, data, self.unit_active(unit), blocked)
+            tool = os.path.join(os.path.dirname(os.path.abspath(self.args.master_modul)), "master-guncelle")
+            argv = ["systemd-run", "--unit=" + unit, "--collect", "--quiet",
+                    "--description=Konsol güncellemesi: %s" % version]
+            if self.args.state_env:
+                argv.append("--setenv=STATE_FILE=%s" % self.args.state)
+            argv += [tool, "uygula", commit, version]
+            try:
+                proc = subprocess.run(argv, capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.TimeoutExpired) as err:
+                raise master_update.UpdateError(502, "Güncelleme başlatılamadı (%s)." % err.__class__.__name__)
+            if proc.returncode != 0:
+                lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+                raise master_update.UpdateError(502, "Güncelleme başlatılamadı: %s" % (lines[-1] if lines else "systemd-run %d" % proc.returncode))
+        return version
 
     def module_busy(self, mid, busy=None):
         return self.module_unit(mid) in (self.busy_units() if busy is None else busy)
@@ -2015,6 +2063,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/konsol/duzen":
             self.json(200, {"duzen": self.panel.layout()})
             return
+        if path == "/api/konsol/guncelleme":
+            info = self.panel.update_info(force="yenile" in query)
+            # DD-233: only a Tailscale device (or root on the socket) starts an update.
+            info["baslatilabilir"] = self.channel() != "internet"
+            self.json(200, info)
+            return
         if path == "/api/konsol/saglik":
             self.json(200, self.panel.health())
             return
@@ -2170,6 +2224,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.audit(user, "duzen", detail, True)
             self.json(200, {"duzen": value})
+            return
+        if path == "/api/konsol/guncelleme":
+            if self.channel() == "internet":
+                self.error(403, "Güncelleme yalnız Tailscale adresinden başlatılır.")
+                return
+            try:
+                version = self.panel.update_start(data)
+            except master_update.UpdateError as err:
+                self.error(err.status, str(err))
+                return
+            self.audit(user, "guncelleme", version, True)
+            self.json(202, {"surum": version})
             return
         if path == "/api/konsol/konteynerler/islem":
             try:

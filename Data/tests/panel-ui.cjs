@@ -79,6 +79,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
         const now = Math.floor(Date.now()/1000), rx = netCount*1024*1024, tx = 256*1024;
         result = {read_at:now,iface:"eth0",window:120,sampled_at:now,rx,tx,points:[[now-4,512*1024,128*1024],[now-2,rx/2,tx],[now,rx,tx]],apps:netApps()};
       }
+      else if (p === "/api/konsol/guncelleme") result = {kurulu:"2026.08.06-v2-131",son:"2026.08.06-v2-131",commit:"a".repeat(40),yeni:false,denetlendi:1,hata:"",baslatilabilir:true,is:{durum:"yok",hedef:"",mesaj:"",bitis:null,asama:""}};  // DD-233: up to date
       else if (p === "/api/konsol/duzen") {
         if (req.method() === "POST") {
           const body = req.postDataJSON(); layoutWrites.push(body);
