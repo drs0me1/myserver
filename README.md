@@ -152,13 +152,14 @@ names, custom DNS records, disabled states and module renderings move together;
 IP-based share links do not change.
 Confirmed firewall/DNS/domain choices survive installer re-runs.
 
-Files shows a list or cards and a right-hand details pane (below on mobile).
+Files shows icons or a list and a right-hand places/details column (below on narrow screens).
 See [folder WebDAV boundaries](Data/docs/folder-shares.md) before
 sharing with other people: recipients must not reach Konsol/SSH or get the Konsol password.
 Native Finder/Infuse compatibility and fresh Ubuntu acceptance are separate tests.
 
-Konsol is one sidebar workspace, not an OS session. Files has its own contextual
-action dock when items are selected (**DD-170**). Files/WebDAV are always installed.
+Konsol is one sidebar workspace, not an OS session. Files is a Finder-style window:
+icons (or a list) on the left, places, the selection's details and actions on the right
+(**DD-232**). Files/WebDAV are always installed.
 ZIP creation and ZIP/RAR extraction jobs run on the server after the page closes,
 with cancellation and bounded nested extraction. A running job shows as a bar
 above the Files list; the result appears as a notification and in Ayarlar → Günlük

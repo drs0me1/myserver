@@ -3040,15 +3040,15 @@ PY
     grep -q 'names: items.map((i) => i.name)' "$js"
     [ "$(grep -c 'names: items.map((i) => i.name)' "$js")" -ge 2 ]
     # Arama yalnız satırları yeniler; klasör değişince seçim ve arama sıfırlanır.
-    grep -q 'oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDock(); updateMeta(); }' "$js"
+    grep -q 'oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); updateMeta(); }' "$js"
     grep -q 'fsSel.clear();' "$js"
     # qBittorrent'in yazdığı klasör seçilemez.
     grep -q 'const locked = inTemp(here) || inTemp(pathText(fsPath));' "$js"
     grep -q 'locked ? null : h("button", { type: "button", class: "chk"' "$js"
-    # Kısayol sütunu kökü ve üst klasörleri arka uçtan alır.
+    # DD-232: the right column's Favoriler take the root and its folders from the backend.
     grep -q 'fsRootDirs = r.entries.filter((e) => e.type === "dir")' "$js"
-    grep -q '\.fsrail' "$css"
-    grep -qx '          <nav class="fsrail" id="fs-rail" aria-label="Klasörler"></nav>' "$V2_ROOT/console/index.html"
+    grep -q '\.fx-nav' "$V2_ROOT/console/dosyalar.css"
+    grep -qx '            <nav class="fx-nav" id="fs-rail" aria-label="Konumlar"></nav>' "$V2_ROOT/console/index.html"
 }
 
 @test "the base install has no Compose project, no Dozzle and no service account in the input file" {
@@ -3208,7 +3208,9 @@ PY
         grep -qF "id=\"$id\"" <<<"$sidebar"
     done
     run ! grep -qE 'foot-(ts|wan|version|uptime|access)|side-facts' <<<"$sidebar"
-    [ "$(grep -n 'class="resources"' <<<"$sidebar" | cut -d: -f1)" -gt "$(grep -n 'class="side-foot"' <<<"$sidebar" | cut -d: -f1)" ]
+    # DD-232: navigation and resources are two stacked cards; resources come last.
+    [ "$(grep -n 'class="side-card resources"' <<<"$sidebar" | cut -d: -f1)" -gt "$(grep -n 'class="side-foot"' <<<"$sidebar" | cut -d: -f1)" ]
+    grep -qF '<div class="side-card side-main">' <<<"$sidebar"
     run ! grep -qE 'side-clock|side-date|home-clock|home-date' <<<"$sidebar"
     grep -qF 'function paintHomeClock()' "$js"
     grep -qF '$("title").replaceChildren(h("time", { id: "home-clock" }), h("span", { id: "home-date" }));' "$js"
@@ -3271,8 +3273,10 @@ PY
     grep -qF 'self.audit(user, "duzen", detail, True)' "$backend"
     grep -qF 'api("/api/konsol/duzen")' "$js"
     grep -qF 'post("/api/konsol/duzen", reset ? { sifirla: true } : { duzen: draft })' "$js"
-    # Files has one list view (no card mode); neither it nor the overview layout touches browser storage.
-    run ! grep -qE 'localStorage|konsol-files-view|"Kartlar"' "$js"
+    # DD-232: only the Files icon/list choice is a per-browser convenience; the layout stays server-side.
+    [ "$(grep -o 'localStorage\.[a-zA-Z]*' "$js" | sort -u | tr '\n' ' ')" = 'localStorage.getItem localStorage.setItem ' ]
+    [ "$(grep -c 'konsol-files-view' "$js")" = 2 ]
+    run ! grep -qF '"Kartlar"' "$js"
     run ! grep -qE 'sessionStorage' "$js"
     run ! grep -qiE 'qbittorrent|wireguard|torrent' "$js" "$css" "$html"
     # Application columns show cumulative byte totals; only the server section shows live rates.
@@ -3798,7 +3802,7 @@ EOF
 
 @test "console includes per-folder accounts as a Files capability" {
     local js="$V2_ROOT/console/konsol.js" dav="$V2_ROOT/console/dosyalar.js"
-    grep -qF 'if (fsView === "shares") { renderShareList(body); return; }' "$js"
+    grep -qF 'if (fsView === "shares") { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); renderDetail(); return; }' "$js"
     # DD-183: no archive jobs page; a running job shows as a bar in Files, results go to Günlük.
     run ! grep -qF '"Arşiv işleri"' "$js"
     run ! grep -qF 'location.hash = "#/dosyalar/arsiv"' "$V2_ROOT/console/arsiv.js"

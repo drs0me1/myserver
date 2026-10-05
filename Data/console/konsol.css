@@ -250,9 +250,7 @@ dialog#sh { width: min(560px, calc(100vw - 32px)); }
 .opt input { margin-top: 3px; accent-color: var(--danger); }
 .opt small { display: block; color: var(--muted); font-size: 12.5px; }
 
-/* Dosyalar (DD-145): solda kısayol sütunu, sağda liste. */
-.fswrap { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; }
-.fsrail { display: grid; align-content: start; gap: 3px; padding: 12px 10px; background: var(--tint); border: 1px solid var(--tint-line); border-radius: 12px; }
+/* Dosyalar: sağ sütundaki konum düğmeleri (DD-232). */
 .rl { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 9px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
 .rl:hover { background: var(--surface); }
 .rl.cur { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
@@ -261,8 +259,6 @@ dialog#sh { width: min(560px, calc(100vw - 32px)); }
 .rl-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rl-c { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .rl.cur .rl-c { color: var(--accent); }
-.fspanel { background: var(--tint); border: 1px solid var(--tint-line); border-radius: 12px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
-.fspanel .fs-body { display: grid; gap: 14px; }
 
 /* araç çubuğu: arama ve yükleme */
 .fs-search { display: flex; align-items: center; gap: 6px; min-width: 9rem; flex: 0 1 15rem; margin-left: 6px; padding: 5px 9px; border: 1px solid transparent; border-radius: 8px; background: var(--surface-2); }
@@ -345,8 +341,6 @@ dialog::backdrop { background: rgba(10, 14, 12, .5); }
   .mobile-brand { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .mobile-brand .wordmark { font-size: 26px; }
   .toast { bottom: 84px; }
-  .fswrap { grid-template-columns: minmax(0, 1fr); }
-  .fsrail { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; }
   .fs-t .tr, .trash-t .tr { grid-template-columns: 26px minmax(0, 1fr) auto; }
   .trash-t .tr { grid-template-columns: minmax(0, 1fr) auto auto; }
   .fs-t .c-date, .fs-t .head { display: none; }

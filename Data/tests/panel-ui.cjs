@@ -301,10 +301,12 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await refreshResources();
     await page.waitForFunction(() => document.querySelectorAll("#genel-tiles .tile").length === 0);
     await page.locator('.nav a[href="#/dosyalar"]').click();
-    await page.getByRole("button", {name:"media ayrıntıları",exact:true}).waitFor();
+    await page.locator('#fs-table [data-item="media"]').waitFor();
     assert.equal(await page.locator("#title").innerText(),"Dosyalar");
     assert.equal(await page.locator('#home-clock,#home-date').count(),0,"the clock/date replaces only the home title");
-    assert.equal(await page.locator("#fs-detail:visible").count(),0);
+    // DD-232: nothing selected: the right column describes the open folder.
+    assert.equal(await page.locator("#fs-detail h2").innerText(),"Sunucu");
+    assert.equal(await page.locator("#fs-rail").getByRole("button",{name:"Çöp",exact:true}).count(),1);
     assert.equal(await page.locator("#resource-mem").innerText(),"%25");
     assert.equal(await page.locator("#resource-disk").innerText(),"%28");
     await page.screenshot({path:path.join(shots,"model-a-files.png"),fullPage:true});
@@ -561,7 +563,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.equal(await page.locator('.nav [data-route="torrent"]:visible').count(),0);
     assert.equal(await page.locator("#mod-log-output").isVisible(),false);
     await navigate("#/dosyalar");
-    await page.getByRole("button",{name:"media ayrıntıları",exact:true}).click();
+    await page.locator('#fs-table [data-item="media"]').click();
     await page.locator("#fs-detail").getByRole("button",{name:"Arşiv oluştur",exact:true}).click();
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     await page.locator("#archive-name").fill("media-backup");
@@ -589,7 +591,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     const archiveBar = page.locator("#archive-bar");
     await archiveBar.getByText("media-backup.zip",{exact:true}).waitFor();
     assert.equal(await page.evaluate(() => location.hash),"#/dosyalar");
-    assert.equal(await page.locator("#fs-tabs").getByRole("button",{name:"Arşiv işleri",exact:true}).count(),0);
+    assert.equal(await page.getByRole("button",{name:"Arşiv işleri",exact:true}).count(),0);
     assert.match(await archiveBar.innerText(),/Çalışıyor · İşleniyor/);
     assert.equal(submitted.operation,"zip");
     assert.equal(submitted.name,"media-backup.zip");
@@ -598,8 +600,8 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await archiveBar.getByRole("button",{name:"İptal et",exact:true}).click();
     await archiveBar.waitFor({state:"hidden"});
     await page.getByText("media-backup.zip:",{exact:false}).first().waitFor();
-    await page.getByRole("button",{name:"sample.zip ayrıntıları",exact:true}).click();
-    await page.locator("#fs-detail").getByRole("button",{name:"Arşiv açıcı",exact:true}).click();
+    await page.locator('#fs-table [data-item="sample.zip"]').click();
+    await page.locator("#fs-detail").getByRole("button",{name:"Arşivi aç",exact:true}).click();
     assert.equal(await page.locator("#archive-nested,#archive-layers,.archive-form .archive-limits").count(),0);
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     await page.locator("#sh").getByRole("button",{name:"Arşivi aç",exact:true}).click();
@@ -609,10 +611,10 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     jobs[0].status = "done"; jobs[0].result = "sample"; jobs[0].message = "Tamamlandı; kaynaklar korundu.";
     await archiveBar.waitFor({state:"hidden"});
     await page.getByText("sample: Tamamlandı",{exact:false}).first().waitFor();
-    await page.getByRole("button",{name:"media ayrıntıları",exact:true}).waitFor();
+    await page.locator('#fs-table [data-item="media"]').waitFor();
     for (const filename of ["sample.rar","sample.r00","sample.part01.rar"]) {
-      await page.getByRole("button",{name:filename+" ayrıntıları",exact:true}).click();
-      await page.locator("#fs-detail").getByRole("button",{name:"Arşiv açıcı",exact:true}).click();
+      await page.locator(`#fs-table [data-item="${filename}"]`).click();
+      await page.locator("#fs-detail").getByRole("button",{name:"Arşivi aç",exact:true}).click();
       assert.equal(await page.locator("#archive-name").inputValue(),"sample");
       assert(!/ZIP|RAR|katman|işlenen veri|10.000/.test(await page.locator("#sh").innerText()));
       await page.locator("#sh").getByRole("button",{name:"Arşivi aç",exact:true}).click();
@@ -623,13 +625,13 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
       await archiveBar.waitFor({state:"hidden"});
     }
     await navigate("#/dosyalar");
-    await page.getByRole("button",{name:"media ayrıntıları",exact:true}).waitFor();
-    await page.getByRole("button",{name:"not-an-archive.txt ayrıntıları",exact:true}).click();
-    assert.equal(await page.locator("#fs-detail").getByRole("button",{name:"Arşiv açıcı",exact:true}).count(),0);
-    await page.getByRole("button",{name:longArchiveFolder+" ayrıntıları",exact:true}).click();
+    await page.locator('#fs-table [data-item="media"]').waitFor();
+    await page.locator('#fs-table [data-item="not-an-archive.txt"]').click();
+    assert.equal(await page.locator("#fs-detail").getByRole("button",{name:"Arşivi aç",exact:true}).count(),0);
+    await page.locator(`#fs-table [data-item="${longArchiveFolder}"]`).click();
     await page.locator("#fs-detail").getByRole("button",{name:"Klasörü aç",exact:true}).click();
-    await page.getByRole("button",{name:"sample.rar ayrıntıları",exact:true}).click();
-    await page.locator("#fs-detail").getByRole("button",{name:"Arşiv açıcı",exact:true}).click();
+    await page.locator('#fs-table [data-item="sample.rar"]').click();
+    await page.locator("#fs-detail").getByRole("button",{name:"Arşivi aç",exact:true}).click();
     await page.getByRole("button",{name:"Hedef klasör seç",exact:true}).click();
     await page.locator("#archive-picker").getByRole("button",{name:longArchiveFolder,exact:true}).click();
     for (const width of [1440,736,390,320]) {

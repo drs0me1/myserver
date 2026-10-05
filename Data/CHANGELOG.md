@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Finder-style Files and a two-card sidebar (v2-211)
+
+- Files shows folders and files as icons, with a column on the right: Favoriler (Sunucu and its
+  folders), Konumlar (Paylaşımlar, Çöp), the details and actions of the selection, and the disk.
+  The bottom action bar is gone; every action is in the right column.
+- One click selects, a second click opens; Ctrl/Cmd and Shift select several items, shown as one
+  two-document icon with a count. The list view is one click away (▦/☰) and remembered per browser.
+- The sidebar's server resources are a separate card under the navigation (DD-232).
+
 ### 2026-10-05 — Ana Menü widgets: Sunucu and Hız 1×1, Ağ 2×2 (v2-210)
 
 - The network chart is gone. "Hız" is a small card with the server's live download/upload, shown

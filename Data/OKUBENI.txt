@@ -135,7 +135,8 @@ Klasör WebDAV (v2-128; v2-129'dan beri yerleşik):
 
 Konsol Model A · App Store (v2-131):
   Açılış sayfası Dosyalar. Tek sol menü: Dosyalar, App Store, kurulu uygulamalar, Ayarlar.
-  Masaüstü uygulama dock'u ve pencere düğmeleri yoktur; dosya seçince işlem dock'u açılır.
+  Masaüstü uygulama dock'u ve pencere düğmeleri yoktur; Dosyalar Finder gibidir: solda simgeler,
+  sağda konumlar ve seçilen ögenin işlemleri (v2-211).
   Mobilde aynı menü Menü düğmesiyle açılır.
   Bu bir KDE veya işletim sistemi oturumu değil, sunucu yönetim panelidir.
   Dosyalar, WebDAV ve arşiv araçları yerleşiktir. Tailscale, DNS/Caddy ve güvenlik duvarı korunur.

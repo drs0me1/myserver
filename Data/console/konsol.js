@@ -9,6 +9,7 @@
     shield: '<path d="M9 2.2l5.6 2v4.4c0 3.4-2.4 5.9-5.6 7.2-3.2-1.3-5.6-3.8-5.6-7.2V4.2z"/>',
     folder: '<path d="M2.2 5.2c0-.9.7-1.6 1.6-1.6h3.1l1.7 1.9h5.6c.9 0 1.6.7 1.6 1.6v6.1c0 .9-.7 1.6-1.6 1.6H3.8c-.9 0-1.6-.7-1.6-1.6z"/>',
     stack: '<rect x="2.6" y="2.8" width="12.8" height="4.4" rx="1.2"/><rect x="2.6" y="10.8" width="12.8" height="4.4" rx="1.2"/><path d="M5.2 5h.1M5.2 13h.1"/>',
+    grid: '<rect x="2.8" y="2.8" width="5.2" height="5.2" rx="1.2"/><rect x="10" y="2.8" width="5.2" height="5.2" rx="1.2"/><rect x="2.8" y="10" width="5.2" height="5.2" rx="1.2"/><rect x="10" y="10" width="5.2" height="5.2" rx="1.2"/>',
     list: '<path d="M6.6 4.6h8.4M6.6 9h8.4M6.6 13.4h8.4"/><circle cx="3.3" cy="4.6" r=".95" fill="currentColor" stroke="none"/><circle cx="3.3" cy="9" r=".95" fill="currentColor" stroke="none"/><circle cx="3.3" cy="13.4" r=".95" fill="currentColor" stroke="none"/>',
     download: '<path d="M9 2.8v8.4M5.6 7.9L9 11.3l3.4-3.4M3.2 14.6h11.6"/>',
     disk: '<ellipse cx="9" cy="4.6" rx="6" ry="2.2"/><path d="M3 4.6v8.8c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2V4.6M3 9c0 1.2 2.7 2.2 6 2.2S15 10.2 15 9"/>',
@@ -363,7 +364,9 @@
 
   /* ---------- Dosyalar ---------- */
   let fsPath = [], fsView = "files", fsList = null, fsTrash = null, fsAdding = false, fsRename = null;
-  let fsFocus = "";
+  // DD-232: Finder-style Files: an icon grid (or the list) and, on the right, places, the selection's details and actions.
+  let fsLayout = "grid";
+  try { fsLayout = localStorage.getItem("konsol-files-view") === "list" ? "list" : "grid"; } catch (e) { /* özel pencere */ }
   /* DD-145: kısayol sütunu, arama, çoklu seçim ve listenin içine bırakarak yükleme. */
   let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
   /* DD-144: kök kullanıcı alanı (/srv); adı arka uçtan gelir, hiçbir yerde sabit yazılmaz. */
@@ -378,6 +381,19 @@
   const kindOf = (item) => (item.type === "dir" ? "dir" : /\.(txt|log|nfo|srt|sub|md|json|conf|ini|csv|yml|yaml)$/i.test(item.name) ? "text"
     : /\.(mkv|mp4|avi|mov|m4v|ts|webm)$/i.test(item.name) ? "video" : "file");
   const isText = (item) => kindOf(item) === "text";
+  // Büyük simgeler: klasör ve uzantı etiketli belge; etiketin rengi dosya türünden gelir.
+  const extOf = (name) => { const m = /\.([A-Za-z0-9]{1,5})$/.exec(name); return m ? m[1].toUpperCase().slice(0, 4) : ""; };
+  const extTone = (name) => /\.(zip|rar|7z|tar|gz|tgz|bz2|xz|r\d\d|part\d+\.rar)$/i.test(name) ? "x-arc"
+    : /\.(mkv|mp4|avi|mov|m4v|ts|webm|mp3|flac|wav|m4a)$/i.test(name) ? "x-media"
+    : /\.(jpe?g|png|gif|webp|heic|svg)$/i.test(name) ? "x-img"
+    : /\.(pdf)$/i.test(name) ? "x-pdf" : /\.(iso|img|dmg)$/i.test(name) ? "x-disk" : "x-doc";
+  const folderArt = () => svgFrom('<svg class="fx-art fx-folder" viewBox="0 0 64 52" aria-hidden="true"><path class="back" d="M4 8a4 4 0 0 1 4-4h16l6 6h26a4 4 0 0 1 4 4v4H4z"/><rect class="front" x="4" y="14" width="56" height="34" rx="5"/><rect class="shine" x="4" y="14" width="56" height="6"/></svg>');
+  const docArt = (name) => {
+    const ext = extOf(name).replace(/[^A-Z0-9]/g, "");
+    return svgFrom(`<svg class="fx-art fx-doc ${extTone(name)}" viewBox="0 0 52 64" aria-hidden="true"><path class="page" d="M8 2h26l14 14v42a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z"/><path class="fold" d="M34 2v10a4 4 0 0 0 4 4h10"/>${ext ? `<rect class="tag" x="7" y="40" width="38" height="14" rx="3"/><text x="26" y="50.5" text-anchor="middle">${ext}</text>` : ""}</svg>`);
+  };
+  const stackArt = (count) => svgFrom(`<svg class="fx-art fx-stack" viewBox="0 0 72 76" aria-hidden="true"><path class="page2" d="M22 4h24l12 12v44a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z"/><path class="page" d="M12 14h24l12 12v42a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z"/><path class="fold" d="M36 14v8a4 4 0 0 0 4 4h8"/><circle class="badge" cx="50" cy="62" r="11"/><text x="50" y="66.5" text-anchor="middle">${Math.min(count, 99)}</text></svg>`);
+  const itemArt = (item) => (item.type === "dir" ? folderArt() : docArt(item.name));
 
   function loadFs() {
     return api(`/api/list?path=${enc(pathText(fsPath))}`).then((r) => {
@@ -400,7 +416,6 @@
   }
   function fsGo(parts) {
     fsPath = parts;
-    fsFocus = "";
     fsAdding = false;
     fsRename = null;
     fsList = null;
@@ -418,20 +433,33 @@
     else if (v === "files" && !fsList) loadFs();
   }
 
-  /* ---- kısayol sütunu: kök, üst klasörler, paylaşımlar, çöp, disk ---- */
+  /* ---- sağ menü (DD-232): Favoriler (kök ve kök klasörleri), Konumlar (Paylaşımlar, Çöp), disk ---- */
   function railBtn(o) {
     return h("button", { type: "button", class: "rl" + (o.cur ? " cur" : ""), "aria-current": o.cur ? "true" : "false", title: o.title, onclick: o.onclick },
       h("span", { class: `rl-ico ${o.tone}` }, svg(o.icon)),
       h("span", { class: "rl-nm" }, o.title),
-      o.count ? h("span", { class: "rl-c" }, String(o.count)) : null);
+      o.count != null && o.count !== "" ? h("span", { class: "rl-c" }, String(o.count)) : null);
   }
   function renderRail() {
     const rail = $("fs-rail");
-    rail.hidden = fsView !== "files";
+    if (!rail) return;
+    const files = fsView === "files", trash = S.fs && S.fs.trash ? S.fs.trash.count : null;
+    const shares = S.share && Array.isArray(S.share.items) ? S.share.items.length : null;
     rail.replaceChildren(
-      railBtn({ cur: !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", onclick: () => fsOpen([]) }),
-      ...(fsRootDirs || []).map((d) => railBtn({ cur: fsPath[0] === d.name, icon: "folder", tone: "t-dir",
-        title: d.name, onclick: () => fsOpen([d.name]) })));
+      h("p", { class: "fx-group" }, "Favoriler"),
+      railBtn({ cur: files && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: fsRoot(), onclick: () => fsOpen([]) }),
+      ...(fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
+        title: d.name, onclick: () => fsOpen([d.name]) })),
+      h("p", { class: "fx-group" }, "Konumlar"),
+      railBtn({ cur: fsView === "shares", icon: "share", tone: "t-dir", title: "Paylaşımlar", count: shares || null, onclick: () => fsSetView("shares") }),
+      railBtn({ cur: fsView === "trash", icon: "trash", tone: "t-dir", title: "Çöp", count: trash || null, onclick: () => fsSetView("trash") }));
+    const disk = $("fs-disk"), d = S.fs && S.fs.disk;
+    if (disk) {
+      const known = d && d.total > 0, pct = known ? Math.round(100 * (d.total - d.free) / d.total) : 0;
+      disk.replaceChildren(h("small", null, `Disk · ${fsRoot()}`),
+        h("progress", { max: "100", value: String(pct), "aria-label": "Disk doluluğu", hidden: !known }),
+        h("small", null, known ? `${bytes(d.total - d.free)} / ${bytes(d.total)} · ${bytes(d.free)} boş` : "Disk bilgisi yok"));
+    }
   }
   function fsOpen(parts) {
     if (fsView !== "files") { fsView = "files"; location.hash = "#/dosyalar"; }
@@ -445,39 +473,45 @@
     return q ? all.filter((e) => e.name.toLocaleLowerCase("tr").includes(q)) : all;
   }
   const selItems = () => fsShown().filter((e) => fsSel.has(e.name));
-  function clearSel() { if (!fsSel.size) return; fsSel.clear(); renderDock(); renderRows(); }
+  function clearSel() { if (!fsSel.size) return; fsSel.clear(); renderRows(); renderDetail(); }
+  // Izgarada tık: tek seçim; seçili tek ögeye yeniden tık (ya da çift tık) onu açar. Ctrl/Cmd ekler, Shift aralık seçer.
+  function openItem(item) {
+    if (item.type === "dir") fsGo(fsPath.concat(item.name)); else if (isText(item)) openText(item); else download(item);
+  }
+  function pickItem(item, e) {
+    if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) { toggleSel(item.name, e.shiftKey); return; }
+    if (fsSel.size === 1 && fsSel.has(item.name)) { openItem(item); return; }
+    fsSel = new Set([item.name]); fsLast = item.name;
+    renderRows(); renderDetail();
+    document.querySelector(`[data-item="${CSS.escape(item.name)}"]`)?.focus();
+  }
   function toggleSel(name, range) {
     const names = fsShown().map((e) => e.name);
     if (range && fsSel.size) {
       const last = names.indexOf(fsLast), now = names.indexOf(name);
       if (last >= 0 && now >= 0) {
         for (let i = Math.min(last, now); i <= Math.max(last, now); i++) fsSel.add(names[i]);
-        fsLast = name; renderDock(); renderRows(); return;
+        fsLast = name; renderRows(); renderDetail(); return;
       }
     }
     if (fsSel.has(name)) fsSel.delete(name); else fsSel.add(name);
     fsSel.forEach((n) => { if (inTemp(pathText(fsPath.concat(n)))) fsSel.delete(n); });
     fsLast = name;
-    renderDock();
     renderRows();
+    renderDetail();
   }
 
   function renderFs() {
     renderRail();
-    $("fs-tabs").replaceChildren(...[["files", "Dosyalar"], ["shares", "Paylaşımlar"], ["trash", "Çöp"]].map(([id, label]) =>
-      h("button", { type: "button", "aria-pressed": fsView === id, onclick: () => fsSetView(id) }, label)));
     const body = $("fs-body");
     body.textContent = "";
-    body.classList.remove("with-dock");
-    if (fsView === "trash") { renderTrashList(body); return; }
-    if (fsView === "shares") { renderShareList(body); return; }
-    if (!fsList) { body.append(h("p", { class: "hint-s" }, "Yükleniyor…")); return; }
-    if (!fsList.entries.some((x) => x.name === fsFocus)) fsFocus = "";
+    $("fs-panel").dataset.fs = fsView;
+    if (fsView === "trash") { body.append(h("h2", { class: "fx-title" }, "Çöp")); renderTrashList(body); renderDetail(); return; }
+    if (fsView === "shares") { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); renderDetail(); return; }
+    if (!fsList) { body.append(h("p", { class: "hint-s" }, "Yükleniyor…")); renderDetail(); return; }
     // DD-183: a running archive job shows here (progress, cancel); results go to Günlük.
     const archiveBar = h("div", { id: "archive-bar", class: "archive-bars", hidden: true });
-    body.append(archiveBar, h("div", { id: "fs-bar" }), h("div", { class: "fs09-layout list" },
-      h("div", { id: "fs-rows" }), h("aside", { id: "fs-detail", class: "fs09-detail", "aria-label": "Öge ayrıntıları" })),
-      h("div", { id:"fs-dock", class:"fs-dock-wrap", hidden:true }));
+    body.append(h("div", { id: "fs-bar" }), archiveBar, h("div", { id: "fs-rows", class: "fx-rows " + fsLayout }));
     archiveTools.mount(archiveBar);
     initDrop();
     renderBar();
@@ -485,35 +519,9 @@
     renderDetail();
   }
 
-  function renderDock() {
-    const dock = $("fs-dock");
-    if (!dock) return;
-    const sel = selItems();
-    dock.hidden = !sel.length;
-    $("fs-body").classList.toggle("with-dock", !!sel.length);
-    dock.replaceChildren();
-    if (sel.length) {
-      const one = sel.length === 1 ? sel[0] : null;
-      const canExtract = !!one && one.type !== "dir" && archiveTools.canExtract(one.name);
-      const canShare = !!one && one.type === "dir" && !inTemp(pathText(fsPath.concat(one.name)));
-      const action = (icon, label, attrs) => h("button", { type:"button", class:"fs-dock-action", ...attrs }, svg(icon), h("span", {}, label));
-      dock.append(h("div", { class: "fs-dock", role:"group", "aria-label":"Seçilen ögeler için işlemler" },
-        h("div", {class:"fs-dock-selection"},
-          h("span", { class: "sel-cnt", "aria-live":"polite" }, `${sel.length} öge seçili`),
-          h("button", { type: "button", class: "pf-btn", title: "Seçimi bırak", "aria-label": "Seçimi bırak", onclick: clearSel }, svg("close"))),
-        h("div", {class:"fs-dock-actions"},
-          action("download", "İndir", { disabled:sel.every(i => i.type === "dir"), onclick:() => sel.forEach(i => i.type !== "dir" && download(i)) }),
-          action("move", "Taşı", { onclick:() => openMove(sel) }),
-          action("box", "Arşiv oluştur", { onclick:() => archiveTools.open("zip", pathText(fsPath), sel) }),
-          action("boxOpen", "Arşiv açıcı", { disabled:!canExtract, onclick:() => canExtract && archiveTools.open("unzip", pathText(fsPath), sel) }),
-          action("share", "Paylaş", { disabled:!canShare, title:one ? "" : "Paylaşım tek tek verilir", onclick:() => canShare && openShareCreate(one, pathText(fsPath.concat(one.name))) }),
-          action("trash", "Çöpe at", { class:"fs-dock-action fs-dock-danger", onclick:() => askTrash(sel) }))));
-    }
-  }
   function renderBar() {
     const bar = $("fs-bar");
     if (!bar) return;
-    renderDock();
     const shown = fsShown();
     const crumbs = h("ol", { class: "crumbs" },
       h("li", null, h("button", { type: "button", class: "crumb root" + (fsPath.length ? "" : " cur"), onclick: () => fsGo([]) }, fsRoot())),
@@ -530,14 +538,19 @@
       h("span", { class: "fs-search" }, svg("search"),
         h("input", { type: "search", id: "fs-q", value: fsQuery, placeholder: "Bu klasörde ara", "aria-label": "Bu klasörde ara",
           autocomplete: "off", spellcheck: "false",
-          oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDock(); updateMeta(); },
-          onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDock(); updateMeta(); } } })),
+          oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); updateMeta(); },
+          onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDetail(); updateMeta(); } } })),
+      h("span", { class: "fx-views", role: "group", "aria-label": "Görünüm" }, ...[["grid", "Simgeler", "grid"], ["list", "Liste", "list"]].map(([id, label, icon]) =>
+        h("button", { type: "button", class: "pf-btn", "aria-pressed": fsLayout === id ? "true" : "false", "aria-label": label, title: label, onclick: () => {
+          fsLayout = id; try { localStorage.setItem("konsol-files-view", id); } catch (e) { /* özel pencere */ }
+          $("fs-rows").className = "fx-rows " + fsLayout; renderBar(); renderRows();
+        } }, svg(icon)))),
       picker,
       h("button", { type: "button", class: "btn btn-sm", onclick: () => $("fs-file").click() }, svg("upload"), "Yükle"),
-      h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör",
-        onclick: () => { fsAdding = true; renderRows(); const i = $("nf-name"); if (i) i.focus(); } }, svg("plus")),
+      h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör", onclick: startNewFolder }, svg("plus")),
       h("span", { class: "pf-meta", id: "fs-meta" }, `${shown.length} öge · ${bytes(sum)}`)));
   }
+  function startNewFolder() { fsAdding = true; renderRows(); const i = $("nf-name"); if (i) i.focus(); }
   function updateMeta() {
     const meta = $("fs-meta");
     if (!meta) return;
@@ -555,6 +568,21 @@
     if (inTemp(pathText(fsPath))) {
       kids.push(h("div", { class: "offbar" }, h("div", null, h("strong", null, `${protectedOwner(pathText(fsPath))} bu klasöre yazıyor. `),
         h("span", null, "Buradaki dosyaları taşımak ya da silmek süren indirmeyi bozar."))));
+    }
+    if (fsLayout === "grid") {
+      const grid = h("div", { class: "fx-grid" + (dragDepth ? " dragging" : ""), id: "fs-table", role: "group", "aria-label": `${fsHere()} içeriği`,
+        onclick: (e) => { if (e.target === e.currentTarget) clearSel(); } },
+        dragDepth ? h("div", { class: "droptip" }, svg("upload"), h("span", null, "Bırakın — "), h("b", null, fsHere()), h("span", null, " içine yüklenir")) : null,
+        ...fsUps.filter((u) => u.path === pathText(fsPath)).map(upTile),
+        ...shown.map(fsTile));
+      if (fsAdding) grid.append(newFolderTile());
+      if (!shown.length && !fsAdding && !fsUps.length) grid.append(h("div", { class: "empty-row" },
+        h("strong", null, fsQuery.trim() ? "Eşleşen öge yok" : "Bu klasör boş"),
+        h("span", null, fsQuery.trim() ? "Aramayı değiştirin ya da Esc ile temizleyin." : "Dosyaları buraya sürükleyin ya da Yükle ile seçin.")));
+      kids.push(grid);
+      if (fsList.skipped) kids.push(h("p", { class: "hint-s" }, `${fsList.skipped} öge gösterilmedi (adı geçersiz).`));
+      box.replaceChildren(...kids);
+      return;
     }
     const table = h("div", { class: "table fs-t" + (dragDepth ? " dragging" : ""), id: "fs-table" },
       dragDepth ? h("div", { class: "droptip" }, svg("upload"), h("span", null, "Bırakın — "), h("b", null, fsHere()), h("span", null, " içine yüklenir")) : null,
@@ -585,6 +613,14 @@
       h("span", { class: "c-date", id: `upm-${u.id}` }, upText(u, pct)),
       h("span", { class: "acts" }, h("button", { type: "button", class: "ib del", title: "İptal", "aria-label": "Yüklemeyi iptal et",
         onclick: () => cancelUp(u) }, svg("close"))));
+  }
+  function upTile(u) {
+    const pct = u.size ? Math.min(100, Math.round((100 * u.sent) / u.size)) : 0;
+    return h("div", { class: "fx-item up" + (u.state === "err" ? " err" : ""), id: `up-${u.id}` }, docArt(u.name),
+      h("span", { class: "fx-name" }, u.name),
+      h("span", { class: "uprog" }, h("i", { id: `upb-${u.id}`, style: { width: `${pct}%` } })),
+      h("span", { class: "fx-sub", id: `upm-${u.id}` }, upText(u, pct)),
+      h("button", { type: "button", class: "ib del fx-cancel", title: "İptal", "aria-label": "Yüklemeyi iptal et", onclick: () => cancelUp(u) }, svg("close")));
   }
   const upText = (u, pct) => (u.state === "err" ? u.error || "yüklenemedi" : u.state === "wait" ? "sırada" : `%${pct}`);
   function upTick(u) {
@@ -685,6 +721,35 @@
     return sh ? h("span", { class: "shchip", title: sh.url }, svg("share"), sharesPage.stateText(sh)) : null;
   }
 
+  function fsTile(item) {
+    const dir = item.type === "dir", here = pathText(fsPath.concat(item.name)), on = fsSel.has(item.name), sh = shareOf(here);
+    const sub = dir ? `${item.count == null ? "?" : item.count} öge` : bytes(item.size);
+    if (fsRename === item.name) {
+      return h("div", { class: "fx-item on" }, itemArt(item),
+        h("input", { type: "text", id: "rn-name", class: "inline-input fx-rename", value: item.name, maxlength: "255", autocomplete: "off", spellcheck: "false",
+          "aria-label": "Yeni ad",
+          onkeydown: (e) => {
+            if (e.key === "Escape") { fsRename = null; renderFs(); }
+            if (e.key === "Enter") { e.preventDefault(); doRename(item, e.target.value.trim()); }
+          },
+          onblur: (e) => doRename(item, e.target.value.trim()) }));
+    }
+    return h("button", { type: "button", class: "fx-item" + (on ? " on" : ""), "data-item": item.name, "aria-pressed": on ? "true" : "false",
+      "aria-label": `${item.name}, ${dir ? "klasör" : "dosya"}, ${sub}`, title: item.name,
+      onclick: (e) => pickItem(item, e), ondblclick: () => openItem(item),
+      onkeydown: (e) => { if (e.key === "Escape") clearSel(); } },
+      itemArt(item), sh ? h("span", { class: "fx-badge", title: "Paylaşılıyor" }, svg("share")) : null,
+      h("span", { class: "fx-name" }, item.name), h("span", { class: "fx-sub" }, sub));
+  }
+  function newFolderTile() {
+    return h("div", { class: "fx-item on" }, folderArt(),
+      h("input", { type: "text", id: "nf-name", class: "inline-input fx-rename", maxlength: "255", autocomplete: "off", spellcheck: "false",
+        placeholder: "klasör adı", "aria-label": "Yeni klasör adı",
+        onkeydown: (e) => {
+          if (e.key === "Escape") { fsAdding = false; renderFs(); }
+          if (e.key === "Enter") { e.preventDefault(); createFolder(e.target.value.trim()); }
+        } }));
+  }
   function fsRow(item) {
     const kind = kindOf(item), dir = item.type === "dir";
     const name = fsRename === item.name
@@ -704,7 +769,7 @@
     const on = fsSel.has(item.name);
     // Bir paketin yazdığı klasör seçilmez, paylaşılmaz: süren indirme bozulmasın.
     const locked = inTemp(here) || inTemp(pathText(fsPath));
-    return h("div", { class: "tr" + (on ? " on" : "") + (fsFocus === item.name ? " focused" : "") },
+    return h("div", { class: "tr" + (on ? " on" : "") + (on && fsSel.size === 1 ? " focused" : "") },
       h("span", { class: "c-sel" },
         locked ? null : h("button", { type: "button", class: "chk" + (on ? " on" : ""), role: "checkbox", "aria-checked": on ? "true" : "false",
           "aria-label": `${item.name} seç`, onclick: (e) => toggleSel(item.name, e.shiftKey) }, on ? svg("check") : null)),
@@ -712,8 +777,8 @@
       h("span", { class: "c-size" }, bytes(item.size)),
       h("span", { class: "c-date" }, since(item.mtime)),
       h("span", { class: "acts" },
-        h("button", { type: "button", class: "btn btn-sm btn-quiet fs09-info", "aria-label": `${item.name} ayrıntıları`,
-          onclick: () => { fsFocus = item.name; renderRows(); renderDetail(); } }, "Ayrıntılar"),
+        h("button", { type: "button", class: "btn btn-sm btn-quiet fx-info", "aria-label": `${item.name} ayrıntıları`,
+          onclick: () => { fsSel = new Set([item.name]); fsLast = item.name; renderRows(); renderDetail(); } }, "Ayrıntılar"),
         inTemp(here) || inTemp(pathText(fsPath)) ? null : shareBtn(item, here),
         dir ? null : h("button", { type: "button", class: "ib", "aria-label": "İndir", title: "İndir", onclick: () => download(item) }, svg("download")),
         h("button", { type: "button", class: "ib", "aria-label": "Yeniden adlandır", title: "Yeniden adlandır", onclick: () => { fsRename = item.name; renderFs(); const i = $("rn-name"); if (i) { i.focus(); i.select(); } } }, svg("pencil")),
@@ -880,37 +945,63 @@
   const renderShareList = (body) => sharesPage.list(body);
   const openShareCreate = (item, path) => sharesPage.create(item, path);
   const openShareInfo = (sh) => sharesPage.edit(sh);
+  // DD-232: the right column's detail: the open folder (nothing selected), one item, or the selection;
+  // every file action lives here (the floating selection dock and the per-row detail pane are gone).
   function renderDetail() {
     const box = $("fs-detail");
     if (!box) return;
-    box.hidden = !fsFocus;
-    box.parentElement.classList.toggle("with-detail", !!fsFocus);
-    const item = fsList && fsList.entries.find((x) => x.name === fsFocus);
-    if (!item) {
-      box.replaceChildren(h("div", { class: "dav-empty" }, svg("folder"), h("h3", null, "Bir öge seçin"), h("p", null, "Ayrıntılar ile bilgileri ve paylaşım ayarlarını açın.")));
+    box.hidden = fsView !== "files" || !fsList;
+    if (box.hidden) { box.replaceChildren(); return; }
+    const sel = selItems();
+    const action = (label, icon, fn, attrs = {}) => h("button", { type: "button", class: "btn btn-sm btn-quiet" + (attrs.danger ? " fx-danger" : ""),
+      disabled: !!attrs.disabled, title: attrs.title || null, "data-act": attrs.act || null, onclick: fn }, svg(icon), label);
+    const head = (art, title, sub) => h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art),
+      h("h2", { id: "fs-detail-title" }, title), h("small", null, sub));
+    if (!sel.length) {
+      const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : "Sunucu";
+      box.replaceChildren(head(folderArt(), name, `${fsHere()} · ${shown.length} öge · ${bytes(shown.reduce((t, e) => t + (e.size || 0), 0))}`),
+        h("p", { class: "hint-s fx-hint" }, "Bir öge seçin; işlemleri burada görünür."),
+        h("div", { class: "fx-acts" },
+          action("Yeni klasör", "plus", startNewFolder, { act: "yeni" }),
+          action("Yükle", "upload", () => $("fs-file")?.click(), { act: "yukle" })));
       return;
     }
-    const path = pathText(fsPath.concat(item.name)), sh = shareOf(path), directory = item.type === "dir";
+    if (sel.length > 1) {
+      const dirs = sel.filter((i) => i.type === "dir").length, files = sel.length - dirs;
+      const kinds = [dirs ? `${dirs} klasör` : "", files ? `${files} dosya` : ""].filter(Boolean).join(", ");
+      box.replaceChildren(head(stackArt(sel.length), `${sel.length} öge seçili`, `${kinds} · ${bytes(sel.reduce((t, e) => t + (e.size || 0), 0))}`),
+        h("div", { class: "fx-acts" },
+          action("İndir", "download", () => sel.forEach((i) => i.type !== "dir" && download(i)), { disabled: !files, act: "indir" }),
+          action("Taşı", "move", () => openMove(sel), { act: "tasi" }),
+          action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), sel), { act: "arsiv" }),
+          action("Arşivi aç", "boxOpen", () => {}, { disabled: true, title: "Tek bir arşiv seçin", act: "ac-arsiv" }),
+          action("Paylaş", "share", () => {}, { disabled: true, title: "Paylaşım tek tek verilir", act: "paylas" }),
+          action("Çöpe at", "trash", () => askTrash(sel), { danger: true, act: "cop" })),
+        h("button", { type: "button", class: "linkbtn fx-clear", onclick: clearSel }, "Seçimi bırak"));
+      return;
+    }
+    const item = sel[0], path = pathText(fsPath.concat(item.name)), sh = shareOf(path), directory = item.type === "dir";
     const eligible = directory && !inTemp(path) && !protectedList().some((p) => p.path.startsWith(path + "/")) && !path.split("/").some((p) => p.startsWith("."));
-    const action = (label, icon, fn) => h("button", { type: "button", class: "btn btn-sm btn-quiet", onclick: fn }, svg(icon), label);
-    box.replaceChildren(h("div", { class: "fs09-detail-head" }, h("span", { class: "ticon t-dir" }, svg(directory ? "folder" : "file")),
-      h("div", null, h("h2", null, item.name), h("small", null, `${fsRoot()}/${path}`)),
-      h("button", {type:"button", class:"ib", "aria-label":"Ayrıntıları kapat", onclick:() => { fsFocus = ""; renderRows(); renderDetail(); }}, svg("close"))),
-      h("div", { class: "fs09-detail-body" },
-        h("div", { class: "dav-pair" }, h("small", null, directory ? "Klasör" : "Dosya"),
-          h("span", null, `${bytes(item.size)} · ${directory ? (item.count ?? "?") + " öge" : "Son değişiklik " + since(item.mtime)}`)),
-        h("div", { class: "dav-actions" },
-          directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name))) : action("İndir", "download", () => download(item)),
-          action("Adlandır", "pencil", () => { fsRename = item.name; renderFs(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }),
-          action("Taşı", "move", () => openMove(item)), action("Çöpe taşı", "trash", () => askTrash(item))),
-        !inTemp(path) ? h("div", {class:"dav-actions"},
-          action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item])),
-          !directory && archiveTools.canExtract(item.name) ? action("Arşiv açıcı", "box", () => archiveTools.open("unzip", pathText(fsPath), [item])) : null) : null,
-        sh ? sharesPage.info(sh) : eligible ? h("div", { class: "dav-summary" },
-            h("p", { class: "hint-s" }, "Bu klasör paylaşılmıyor. Bağımsız kullanıcı ve parolayla yalnız bu klasörü açabilirsiniz."),
-            h("button", { type: "button", class: "btn btn-primary", onclick: () => openShareCreate(item, path) }, svg("share"), "WebDAV ile paylaş"))
-          : h("p", { class: "hint-s" }, directory ? "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin." : "WebDAV paylaşımı klasörlere verilir; dosyayı bir klasöre yerleştirin."),
-        sharesPage.warning()));
+    const canExtract = !directory && archiveTools.canExtract(item.name), locked = inTemp(path);
+    const type = directory ? "Klasör" : isText(item) ? "Metin dosyası" : extOf(item.name) ? `${extOf(item.name)} dosyası` : "Dosya";
+    box.replaceChildren(
+      head(itemArt(item), item.name, `${type} · ${directory ? (item.count ?? "?") + " öge" : bytes(item.size)}`),
+      h("dl", { class: "fx-facts" },
+        h("div", null, h("dt", null, "Konum"), h("dd", { title: fsHere() }, fsHere())),
+        h("div", null, h("dt", null, "Değiştirme"), h("dd", null, since(item.mtime))),
+        directory ? h("div", null, h("dt", null, "Paylaşım"), h("dd", null, sh ? sharesPage.stateText(sh) : "—")) : null,
+        locked ? h("div", null, h("dt", null, "Yazan"), h("dd", null, protectedOwner(path))) : null),
+      h("div", { class: "fx-acts" },
+        directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name)), { act: "ac" })
+          : action("İndir", "download", () => download(item), { act: "indir" }),
+        action("Adlandır", "pencil", () => { fsRename = item.name; renderRows(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }, { act: "adlandir" }),
+        action("Taşı", "move", () => openMove(item), { act: "tasi" }),
+        locked ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item]), { act: "arsiv" }),
+        canExtract && !locked ? action("Arşivi aç", "boxOpen", () => archiveTools.open("unzip", pathText(fsPath), [item]), { act: "ac-arsiv" }) : null,
+        eligible && !sh ? action("Paylaş", "share", () => openShareCreate(item, path), { act: "paylas" }) : null,
+        action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })),
+      sh ? sharesPage.info(sh) : directory && !eligible ? h("p", { class: "hint-s" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : null,
+      directory ? sharesPage.warning() : null);
   }
 
   /* çöp */

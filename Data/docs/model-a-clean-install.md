@@ -8,15 +8,15 @@ one compact network widget and only installed application cards. The sidebar con
 Ana Menü, Files, App Store, Konteynerler, installed applications and Settings, then live
 CPU/RAM/disk indicators and IP/version/uptime. Mobile uses the same sidebar behind an
 accessible menu button. The old desktop dock, Applications and window controls are
-removed. Files has a contextual
-action dock for selected items (DD-170); it is not an application launcher.
+removed. Files is a Finder-style
+window whose right-hand column holds places and the selection's actions (DD-232).
 App Store uses compact cards with no description below the name. Install/Open stays on the card;
 technical details, logs, service controls and removal share an optional panel.
 
 | Area | Responsibility |
 | --- | --- |
 | Ana Menü | Five-second refresh; network uses two of six desktop slots; narrower cards with start/stop → settings → logs |
-| Files | Files, Shares, Trash; list view (DD-229); details when selected; running archive-job bar |
+| Files | Icons or list; right column: Favoriler, Konumlar (Shares, Trash), details/actions, disk (DD-232); running archive-job bar |
 | App Store | Install/remove optional WireGuard/qBittorrent, progress and service logs |
 | qBittorrent | Start/stop, Web UI, first login, account and new-download directory |
 | WireGuard | Existing networks, peers, profiles and switches |

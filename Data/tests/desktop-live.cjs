@@ -25,8 +25,8 @@ assert(/^archive-test-[a-f0-9]+$/.test(fixture || ""), "Pass the owned live arch
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(base);
     await page.getByRole("heading", {name:"Dosyalar", exact:true}).waitFor();
-    await page.getByRole("button", {name:fixture + " ayrıntıları", exact:true}).click();
-    await page.getByRole("button", {name:"Klasörü aç", exact:true}).click();
+    await page.locator(`#fs-table [data-item="${fixture}"]`).click();
+    await page.locator('#fs-detail [data-act="ac"]').click();
     const selectFixture = async () => {
       await page.getByRole("button",{name:"Hedef klasör seç",exact:true}).click();
       await page.locator("#archive-picker").getByRole("button",{name:"Sunucu",exact:true}).click();
@@ -34,9 +34,9 @@ assert(/^archive-test-[a-f0-9]+$/.test(fixture || ""), "Pass the owned live arch
       await page.getByRole("button",{name:"Bu klasörü seç",exact:true}).click();
       assert.equal(await page.locator("#archive-target").textContent(),"/srv/"+fixture);
     };
-    await page.getByRole("checkbox", {name:"source seç", exact:true}).click();
-    await page.screenshot({path:path.join(screenshots,"dock-desktop.png"),fullPage:true});
-    await page.locator("#fs-dock").getByRole("button", {name:"Arşiv oluştur", exact:true}).click();
+    await page.locator('#fs-table [data-item="source"]').click();
+    await page.screenshot({path:path.join(screenshots,"detail-desktop.png"),fullPage:true});
+    await page.locator('#fs-detail [data-act="arsiv"]').click();
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     await selectFixture();
     await page.locator("#archive-name").fill("../outside");
@@ -48,8 +48,8 @@ assert(/^archive-test-[a-f0-9]+$/.test(fixture || ""), "Pass the owned live arch
     // DD-183: no jobs page; the running-job bar goes away and the list (the destination) refreshes.
     await page.locator("#archive-bar").getByText("browser.zip",{exact:true}).waitFor();
     await page.locator("#archive-bar").waitFor({state:"hidden", timeout:60000});
-    await page.getByRole("button", {name:"browser.zip ayrıntıları", exact:true}).click();
-    await page.locator("#fs-detail").getByRole("button", {name:"Arşiv açıcı", exact:true}).click();
+    await page.locator('#fs-table [data-item="browser.zip"]').click();
+    await page.locator('#fs-detail [data-act="ac-arsiv"]').click();
     assert.equal(await page.locator("#archive-nested,#archive-layers").count(), 0);
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     await selectFixture();
@@ -57,10 +57,10 @@ assert(/^archive-test-[a-f0-9]+$/.test(fixture || ""), "Pass the owned live arch
     await page.screenshot({path:path.join(screenshots,"archive-dialog.png"),fullPage:true});
     await page.locator("#sh").getByRole("button", {name:"Arşivi aç", exact:true}).click();
     await page.locator("#archive-bar").waitFor({state:"hidden", timeout:60000});
-    await page.getByRole("button", {name:"browser-expanded ayrıntıları", exact:true}).waitFor();
+    await page.locator('#fs-table [data-item="browser-expanded"]').waitFor();
     await page.waitForURL("**/#/dosyalar");
     await page.screenshot({path:path.join(screenshots,"files-desktop.png"),fullPage:true});
-    await page.locator("#fs-tabs").getByRole("button", {name:"Paylaşımlar", exact:true}).click();
+    await page.locator("#fs-rail").getByTitle("Paylaşımlar", {exact:true}).click();
     await page.locator(".dav-shares").waitFor();
     assert.equal(await page.locator('.desktop-dock,#window-min,[data-view="genel"],[data-view="uygulamalar"]').count(),0);
     await page.waitForFunction(() => document.querySelector("#resource-cpu").textContent.startsWith("%"));

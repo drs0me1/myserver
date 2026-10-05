@@ -13,6 +13,32 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-232: Finder-style Files window and a two-card sidebar (v2-211)
+
+- **Request (user, 2026-10-05):** Files like Finder — icons on the left, a "Dosyalar" menu on the
+  right; "alt menüdeki özellikleri … sağdaki menüye taşıyalım ve alt bilgi alanını kaldıralım";
+  a multi-selection shown as "tek simge … iki dosya biçiminde"; the sidebar's server resources
+  as a separate card under the navigation; "nrm menüsünü değiştirmeyelim" otherwise. Approved
+  from mock-ups.
+- **Window:** one glass window: contents left, a right column with Favoriler (Sunucu = the files
+  root, then the root's folders), Konumlar (Paylaşımlar, Çöp with counts), the detail area and the
+  disk. The Files/Paylaşımlar/Çöp tabs and the bottom selection dock (DD-170's dock) are gone;
+  every file action lives in the detail area. Under 1100 px the column becomes a strip of places
+  above the contents and the detail follows the contents, so share cards and the trash table keep
+  the full width; the trash table follows the window's own width (container query).
+- **Icons:** folders and file types are inline SVG drawn by `konsol.js` (extension tag, colour per
+  kind), no image assets. A shared folder carries a small share badge.
+- **Selection:** a click selects one item, a second click (or a double click) opens it; Ctrl/Cmd
+  adds, Shift selects a range, Escape or a click on empty space clears. The detail shows the open
+  folder (nothing selected), one item with only the actions that apply, or "N öge seçili" with one
+  two-document icon and a count badge and six fixed action slots (Arşivi aç and Paylaş disabled).
+  Folders a package writes into stay unselectable in the list view, as before.
+- **List view:** the previous table stays one click away (▦/☰ in the bar). The choice is the only
+  value Files keeps in `localStorage` (`konsol-files-view`): a per-browser convenience, no
+  secret, and the page works without it (defaults to icons).
+- **Sidebar:** `.side` is a transparent column holding two glass cards, `.side-main` (brand,
+  navigation, sign-out) and `.resources` (CPU/RAM/disk); nothing else in it changed.
+
 ### DD-231: Home widgets in 1×1 and 2×2 cells; live rates split from application traffic (v2-210)
 
 - **Request (user, 2026-10-05):** remove the network chart, keep the numbers; show the overall

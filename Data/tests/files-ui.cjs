@@ -65,7 +65,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         await locator.waitFor({state:"visible"});
         geometry = await locator.evaluate((el, rerender) => {
           // Deterministically exercise replacement between resolution and reading.
-          if (rerender) document.querySelector('#fs-tabs [aria-pressed="true"]').click();
+          if (rerender) document.querySelector('#fs-rail [aria-current="true"]').click();
           const rect = node => { const r=node.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}; };
           return {group:rect(el),text:rect(el.querySelector("code")),button:rect(el.querySelector("button")),
             rendered:el.isConnected && el.checkVisibility(), gap:getComputedStyle(el).columnGap};
@@ -93,6 +93,11 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         assert.deepEqual(await card.locator(".dav-infuse dd").allTextContents(),[url.hostname,url.port || (url.protocol === "https:" ? "443" : "80"),url.pathname]);
       }
     };
+    // DD-232: grid tiles select on click (a second click opens); the right column holds the actions.
+    const tile = name => page.locator(`#fs-table [data-item="${name}"]`);
+    const select = async name => { if (await tile(name).getAttribute("aria-pressed") !== "true") await tile(name).click(); };
+    const act = key => page.locator(`#fs-detail [data-act="${key}"]`);
+    const rail = title => page.locator("#fs-rail").getByTitle(title,{exact:true});
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => { if (/Content Security Policy|Refused to/.test(m.text())) errors.push(m.text()); });
@@ -161,10 +166,10 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(result) });
     });
     await page.goto((process.env.KONSOL_URL || "http://127.0.0.1:8766") + "/#/dosyalar");
-    await page.getByRole("button", { name: "media ayrıntıları", exact: true }).click();
+    await select("media");
     assert.match(await page.locator("#fs-detail").innerText(), /media/);
     await page.screenshot({ path: path.join(shots, "desktop-list.png"), fullPage: true });
-    await page.getByRole("button", { name: "WebDAV ile paylaş", exact: true }).click();
+    await act("paylas").click();
     const tailscale = page.locator("#dav-tailscale"), wan = page.locator("#dav-wan"), ackWan = page.locator("#dav-ack-wan");
     const createButton = page.getByRole("button",{name:"Paylaşımı oluştur",exact:true});
     const closed = () => page.waitForFunction(()=>!document.querySelector("#sh").open);
@@ -195,12 +200,12 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.deepEqual(submitted,{path:"media",username:"family-media",password:"Pass8!xy",connections:{
       tailscale:{enabled:true,permission:"rw",days:7,ack_write:true},wan:{enabled:false,permission:"ro",days:7}}});
     assert(!JSON.stringify(await page.evaluate(()=>({...localStorage,...sessionStorage}))).includes("Pass8!xy"));
-    await page.getByRole("button",{name:"media ayrıntıları",exact:true}).click();
+    await select("media");
     await checkShareAddresses(page.locator("#fs-detail"));
     await page.reload();
-    await page.getByRole("button",{name:"media ayrıntıları",exact:true}).click();
+    await select("media");
     await checkShareAddresses(page.locator("#fs-detail"));
-    await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
+    await rail("Paylaşımlar").click();
     const row = page.locator(".dav-share-row").first();
     const card = scope => row.locator('.dav-connection[data-network="'+scope+'"]');
     const permission = scope => card(scope).getByRole("combobox").nth(0);
@@ -339,22 +344,22 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert(await page.locator("#cf").isVisible()); await page.locator("#cf-cancel").click();
     // DD-193: with Tailscale publication closed the create form starts that switch off and locked.
     shares.tail_enabled = false; await refreshShares();
-    await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
-    await page.getByRole("button",{name:"Belgeler ve uzun klasör adı ayrıntıları",exact:true}).click();
-    await page.getByRole("button",{name:"WebDAV ile paylaş",exact:true}).click();
+    await rail("Sunucu").click();
+    await select("Belgeler ve uzun klasör adı");
+    await act("paylas").click();
     assert.equal(await tailscale.getAttribute("aria-checked"),"false");
     assert(await tailscale.isDisabled());
     assert.match(await page.locator('#sh .dav-connection[data-network="tailscale"]').innerText(),/Tailscale yayını kapalı/);
     await page.locator("#sh").getByRole("button",{name:"Vazgeç",exact:true}).click(); await closed();
     shares.tail_enabled = true;
-    await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
+    await rail("Paylaşımlar").click();
     // Creation supports paused, WAN-only and dual accounts, independent permissions/expiry.
     for (const selected of [[],["wan"],["tailscale","wan"]]) {
       shares.wan = {...wanStatus};
       await refreshShares();
-      await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
-      await page.getByRole("button",{name:"Belgeler ve uzun klasör adı ayrıntıları",exact:true}).click();
-      await page.getByRole("button",{name:"WebDAV ile paylaş",exact:true}).click();
+      await rail("Sunucu").click();
+      await select("Belgeler ve uzun klasör adı");
+      await act("paylas").click();
       await page.getByLabel("Kullanıcı adı",{exact:true}).fill("wan-documents");
       await sharePassword.fill("WanPass8!");
       if (!selected.includes("tailscale")) await tailscale.click();
@@ -380,9 +385,9 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       await page.locator("#cf-cancel").click(); assert.equal(shareWrites.length,beforeRemove);
       await page.locator("#fs-detail").getByRole("button",{name:"Kaldır",exact:true}).click();
       await page.locator("#cf-go").click();
-      await page.getByRole("button",{name:"WebDAV ile paylaş",exact:true}).waitFor();
+      await act("paylas").waitFor();
       assert.equal(shares.items.length,1);
-      await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
+      await rail("Paylaşımlar").click();
     }
     shares.wan = {...wanStatus,scheme:"https",mode:"https",domain:"dav.example.test",port:443};
     await refreshShares();
@@ -410,24 +415,24 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           assert(await page.locator("#sh").evaluate(d=>d.scrollWidth<=d.clientWidth+1));
           await page.getByRole("button",{name:"Vazgeç",exact:true}).click();
         }
-        await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
-        await page.getByRole("button",{name:"media ayrıntıları",exact:true}).click();
+        await rail("Sunucu").click();
+        await select("media");
         await checkShareAddresses(page.locator("#fs-detail"));
-        // One list view; the old card/list switch is gone.
-        assert.equal(await page.getByRole("button",{name:"Kartlar",exact:true}).count(),0);
-        assert(await page.locator(".fs09-layout.list").count()===1);
+        // Finder grid by default; the icon/list switch sits in the bar.
+        assert(await page.locator(".fx-rows.grid #fs-table.fx-grid").count()===1);
+        assert.equal(await page.locator('.fx-views [aria-pressed="true"]').getAttribute("aria-label"),"Simgeler");
         assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"list overflow "+width);
-        await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
+        await rail("Paylaşımlar").click();
       }
     }
-    await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
+    await rail("Sunucu").click();
     // Move-to-trash is a short confirmation, with full names and no explanatory rows.
     for (const theme of ["light", "dark"]) {
       await page.emulateMedia({colorScheme:theme});
       for (const width of [1440,1024,736,390,320]) {
         await page.setViewportSize({width,height:950});
-        await page.getByRole('button',{name:longFile+' ayrıntıları',exact:true}).click();
-        await page.locator('#fs-detail').getByRole('button',{name:'Çöpe taşı',exact:true}).click();
+        await select(longFile);
+        await act("cop").click();
         assert.equal(await page.locator('#cf-title').textContent(), 'Çöpe taşınsın mı?');
         assert.equal(await page.locator('#cf-sub').textContent(), longFile);
         assert.equal(await page.locator('#cf-sub').getAttribute('title'), longFile);
@@ -445,48 +450,43 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       }
     }
     assert.deepEqual(deleted,[]);
-    // Model B keeps six stable icon/label slots for every selection type.
-    const dock = page.locator(".fs-dock"), dockActions = page.locator(".fs-dock-actions");
-    const actionNames = ["İndir","Taşı","Arşiv oluştur","Arşiv açıcı","Paylaş","Çöpe at"];
-    const checkActions = async disabled => {
-      assert.deepEqual(await dockActions.locator("button span").allTextContents(),actionNames);
-      assert.deepEqual(await dockActions.locator("button").evaluateAll(buttons=>buttons.map(b=>b.disabled)),disabled);
-      assert.equal(await dock.locator(".sel-cnt").textContent(),"1 öge seçili");
-    };
-    await page.getByRole('checkbox',{name:longFile+' seç',exact:true}).click();
-    await checkActions([false,false,false,true,true,false]);
-    await dock.getByRole("button",{name:"Seçimi bırak",exact:true}).focus();
-    await page.keyboard.press("Tab");
-    assert.equal(await page.locator(":focus").textContent(),"İndir");
-    assert(await page.locator(":focus").evaluate(b=>getComputedStyle(b).boxShadow!=="none"));
-    await page.keyboard.press("Tab"); await page.keyboard.press("Enter");
+    // DD-232: the detail column lists only the actions that apply; a multi-selection keeps six stable slots.
+    const acts = () => page.locator("#fs-detail .fx-acts button").evaluateAll(bs=>bs.map(b=>[b.dataset.act,b.disabled]));
+    const title = () => page.locator("#fs-detail-title").textContent();
+    await select(longFile);
+    assert.deepEqual(await acts(),[["indir",false],["adlandir",false],["tasi",false],["arsiv",false],["cop",false]]);
+    await act("tasi").click();
     await page.locator("#sh .movelist .fname").first().waitFor();
     await page.locator("#sh").getByRole("button",{name:"Vazgeç",exact:true}).click();
-    await dock.getByRole("button",{name:"Arşiv oluştur",exact:true}).click();
+    await act("arsiv").click();
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     assert.equal(await page.locator("#sh h3").textContent(),"Arşiv oluştur");
     await page.locator("#sh").getByRole("button",{name:"Vazgeç",exact:true}).click();
-    await page.keyboard.press("Escape");
-    assert(await page.locator("#fs-dock").isHidden());
-    await page.getByRole('checkbox',{name:'sample.part02.rar seç',exact:true}).click();
-    await checkActions([false,false,false,false,true,false]);
-    await dock.getByRole("button",{name:"Arşiv açıcı",exact:true}).click();
+    await tile(longFile).press("Escape");
+    assert.equal(await title(),"Sunucu","Escape returns the detail to the open folder");
+    await select("sample.part02.rar");
+    assert.deepEqual((await acts()).map(a=>a[0]),["indir","adlandir","tasi","arsiv","ac-arsiv","cop"]);
+    await act("ac-arsiv").click();
     assert.equal(await page.locator("#sh h3").textContent(),"Arşiv açıcı");
     assert.equal(await page.locator("#archive-name").inputValue(),"sample");
     assert.equal(await page.locator("#archive-target").textContent(),"/srv/downloads");
     await page.locator("#sh").getByRole("button",{name:"Vazgeç",exact:true}).click();
-    await dock.getByRole("button",{name:"Seçimi bırak",exact:true}).click();
-    assert(await page.locator("#fs-dock").isHidden());
-    await page.getByRole('checkbox',{name:'media seç',exact:true}).click();
-    await checkActions([true,false,false,true,false,false]);
-    await dock.getByRole("button",{name:"Paylaş",exact:true}).click();
+    await page.locator("#fs-table").click({position:{x:4,y:4}});
+    assert.equal(await title(),"Sunucu","Clicking empty grid space clears the selection");
+    await select("media");
+    assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","cop"],"A shared folder shows its share instead of Paylaş");
+    assert.equal(await page.locator("#fs-detail .dav-connection").count(),2);
+    await select("Belgeler ve uzun klasör adı");
+    assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","paylas","cop"]);
+    await act("paylas").click();
     await page.getByLabel("Kullanıcı adı",{exact:true}).waitFor();
     await page.locator("#sh").getByRole("button",{name:"Vazgeç",exact:true}).click();
-    await dock.getByRole("button",{name:"Seçimi bırak",exact:true}).click();
-    await page.getByRole('checkbox',{name:longFile+' seç',exact:true}).click();
-    await page.getByRole('checkbox',{name:'media seç',exact:true}).click();
-    assert.deepEqual(await dockActions.locator("button").evaluateAll(buttons=>buttons.map(b=>b.disabled)),[false,false,false,true,true,false]);
-    await dock.getByRole("button",{name:"İndir",exact:true}).click();
+    await select(longFile);
+    await tile("media").click({modifiers:["Control"]});
+    assert.equal(await title(),"2 öge seçili");
+    assert.equal(await page.locator("#fs-detail .fx-stack text").textContent(),"2","One two-document icon with a count");
+    assert.deepEqual(await acts(),[["indir",false],["tasi",false],["arsiv",false],["ac-arsiv",true],["paylas",true],["cop",false]]);
+    await act("indir").click();
     assert.deepEqual(await page.evaluate(()=>window.requestedDownloads.map(url=>{
       const u=new URL(url); return {path:u.pathname,file:u.searchParams.get("path")};
     })),[{path:"/api/download",file:longFile}],"Download links exclude selected folders");
@@ -495,53 +495,54 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       for (const width of [2560,1440,1024,761,760,600,390,320]) {
         await page.setViewportSize({width,height:800});
         assert(await page.getByRole("navigation",{name:"Konum",exact:true}).isVisible(), "Selection preserves the address bar");
-        const geometry = await page.locator(".fs-dock").evaluate(d=>{
+        const geometry = await page.locator("#fs-detail").evaluate(d=>{
           const r=d.getBoundingClientRect();
-          return {bottom:r.bottom,height:r.height,inside:r.left>=0 && r.right<=innerWidth,scroll:document.documentElement.scrollWidth,
-            controls:[...d.querySelectorAll('button')].every(b=>{const x=b.getBoundingClientRect(); return x.left>=r.left && x.right<=r.right && x.top>=r.top && x.bottom<=r.bottom;})};
+          return {inside:r.left>=0 && r.right<=innerWidth+1,scroll:document.documentElement.scrollWidth,
+            controls:[...d.querySelectorAll('button')].every(b=>{const x=b.getBoundingClientRect(); return x.left>=r.left-1 && x.right<=r.right+1 && b.scrollWidth<=b.clientWidth+1;})};
         });
-        assert(geometry.inside && geometry.controls && geometry.scroll<=width+1 && geometry.height<=220 && geometry.bottom<=800,`dock overflow ${theme}/${width}: ${JSON.stringify(geometry)}`);
-        const icons = await dockActions.locator("button").evaluateAll(buttons=>buttons.map(b=>{
-          const r=b.getBoundingClientRect(), icon=b.querySelector("svg").getBoundingClientRect(), label=b.querySelector("span").getBoundingClientRect();
-          return {width:r.width,top:r.top,above:icon.bottom<label.top,inside:label.left>=r.left && label.right<=r.right && label.bottom<=r.bottom};
-        }));
-        assert(icons.every(b=>Math.abs(b.width-icons[0].width)<1 && b.above && b.inside),`equal icon/label cells ${theme}/${width}`);
-        assert.equal(new Set(icons.map(b=>b.top)).size,width<=600?2:1,"Desktop row / mobile 3×2 grid");
-        assert(await dock.locator(".fs-dock-selection").evaluate(header=>header.querySelector("span").getBoundingClientRect().right<header.querySelector("button").getBoundingClientRect().left));
-        assert.equal(await dock.locator(".fs-dock-danger").evaluate(b=>getComputedStyle(b).backgroundColor),"rgba(0, 0, 0, 0)","Trash has no filled danger rectangle");
-        if (await page.locator("#toast").isVisible()) {
-          assert(await page.evaluate(()=>document.querySelector('#toast').getBoundingClientRect().bottom < document.querySelector('.fs-dock').getBoundingClientRect().top),"Notifications must not cover dock actions");
-        }
-        await page.screenshot({path:path.join(shots,`dock-${theme}-${width}.png`),fullPage:true});
+        assert(geometry.inside && geometry.controls && geometry.scroll<=width+1,`detail overflow ${theme}/${width}: ${JSON.stringify(geometry)}`);
+        const tiles = await page.locator("#fs-table .fx-item").evaluateAll(items=>items.map(i=>{const r=i.getBoundingClientRect();return {left:r.left,right:r.right,w:r.width};}));
+        assert(tiles.every(t=>t.left>=0 && t.right<=width+1 && t.w>=80),`tile overflow ${theme}/${width}`);
+        assert.equal(await page.locator(".fs-dock, #fs-dock").count(),0,"No bottom dock");
+        await page.screenshot({path:path.join(shots,`detail-${theme}-${width}.png`),fullPage:true});
       }
     }
+    await page.setViewportSize({width:1440,height:1000});
     await page.getByRole("searchbox",{name:"Bu klasörde ara"}).fill("no-match");
-    assert(await page.locator("#fs-dock").isHidden());
+    assert.equal(await title(),"Sunucu");
     await page.getByRole("searchbox",{name:"Bu klasörde ara"}).fill("");
-    assert(await page.locator("#fs-dock").isVisible());
-    await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
-    assert.equal(await page.locator("#fs-dock").count(),0);
-    await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
-    await page.getByRole('button',{name:'Çöpe at',exact:true}).click();
+    assert.equal(await title(),"2 öge seçili");
+    await rail("Paylaşımlar").click();
+    assert(await page.locator("#fs-detail").isHidden());
+    await rail("Sunucu").click();
+    await tile(longFile).waitFor();
+    await select(longFile); await tile("media").click({modifiers:["Control"]});
+    await act("cop").click();
     assert.equal(await page.locator('#cf-title').textContent(),'2 öge çöpe taşınsın mı?');
     await page.keyboard.press('Escape'); assert.deepEqual(deleted,[]);
-    await page.getByRole('button',{name:'Çöpe at',exact:true}).click();
+    await act("cop").click();
     await page.locator('#cf-go').click();
-    await page.waitForFunction(()=>!document.querySelector('#cf').open && document.querySelector('#fs-dock').hidden);
+    await page.waitForFunction(()=>!document.querySelector('#cf').open && document.querySelector('#fs-detail-title')?.textContent!=="2 öge seçili");
     assert.equal(deleted.length,1);
     assert.equal(deleted[0].path,'');
     assert.deepEqual(deleted[0].names.slice().sort(), ['media',longFile].sort());
-    await page.getByRole('button',{name:'media ayrıntıları',exact:true}).click();
-    await page.getByRole("button", { name: "Klasörü aç", exact: true }).click();
-    await page.getByRole("button", { name: "movies ayrıntıları", exact: true }).waitFor();
+    // List view stays available and remembered per browser.
+    await page.locator(".fx-views").getByRole("button",{name:"Liste",exact:true}).click();
+    await page.locator("#fs-table.fs-t").waitFor();
+    assert.equal(await page.evaluate(()=>localStorage.getItem("konsol-files-view")),"list");
+    await page.locator(".fx-views").getByRole("button",{name:"Simgeler",exact:true}).click();
+    await page.locator("#fs-table.fx-grid").waitFor();
+    await select("media");
+    await act("ac").click();
+    await tile("movies").waitFor();
     await page.getByRole("searchbox", { name: "Bu klasörde ara" }).fill("series");
-    assert.equal(await page.getByRole("button", { name: "movies ayrıntıları", exact: true }).count(), 0);
-    assert.equal(await page.getByRole("button", { name: "series ayrıntıları", exact: true }).count(), 1);
-    const trashTab = page.locator("#fs-tabs").getByRole("button", {name:"Çöp",exact:true});
+    assert.equal(await tile("movies").count(), 0);
+    assert.equal(await tile("series").count(), 1);
+    const trashTab = rail("Çöp");
     await trashTab.click();
     await page.getByText("Çöp boş", {exact:true}).waitFor();
     trash = [...trashFixtures];
-    await page.getByRole("button", {name:"Dosyalar",exact:true}).click();
+    await rail("Sunucu").click();
     await trashTab.click();
     await page.locator(".trash-t > .tr:not(.head)").nth(3).waitFor();
     for (const theme of ["light", "dark"]) {
@@ -564,7 +565,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           assert(row.parts.every(p=>p.scroll<=p.client+1), `trash text clipped ${width}`);
           assert(row.cells.every(c=>c.x>=geometry.table.x && c.right<=geometry.table.right), `trash cell escaped ${width}`);
           assert(row.buttons.every(b=>b.x>=actions.x && b.right<=actions.right+1 && b.h>=30), `trash actions escaped ${width}`);
-          if (width>1100) {
+          if (geometry.head[0].w>0) {  // wide table: the trash follows the Finder window's own width
             row.cells.forEach((c,i)=>assert(Math.abs(c.x-geometry.head[i].x)<1, `trash header alignment ${width}`));
             assert(name.right<=size.x && size.right<=date.x && date.right<=actions.x, `trash cell overlap ${width}`);
           } else {
@@ -596,6 +597,6 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.getByText("Çöp boş",{exact:true}).waitFor();
     assert.deepEqual(trashWrites.at(-1),{path:"/api/trash/empty",data:{confirm:"onayla"}});
     assert.deepEqual(errors, []);
-    console.log("PASS: schema4 twin cards, independent partial writes/RO/RW/expiry, paused creation, HTTP consent, HTTPS, global gates, expired candidates, shared account edits, failed saves/retry/busy/poll guards, Infuse/copy, responsive light/dark/CSP; existing dock, trash and Files regressions. Screenshots: " + shots);
+    console.log("PASS: schema4 twin cards, independent partial writes/RO/RW/expiry, paused creation, HTTP consent, HTTPS, global gates, expired candidates, shared account edits, failed saves/retry/busy/poll guards, Infuse/copy, responsive light/dark/CSP; Finder grid/detail column/multi-selection, trash and Files regressions. Screenshots: " + shots);
   } finally { await browser.close(); }
 })().catch((e) => { console.error(e); process.exit(1); });

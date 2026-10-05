@@ -806,8 +806,8 @@ Contract in §5–§7 and `folder-shares.md`.
   path is explicitly supplied. Both switches may be off. Share edits still
   restart active WebDAV and interrupt all transfers; retain the UI warning.
   See §5–7.
-- **Archives (DD-166, DD-170):** selecting files opens a contextual action
-  dock. Archive creation produces ZIP; the archive opener automatically
+- **Archives (DD-166, DD-170, DD-232):** selecting files shows their actions in
+  the Files window's right-hand detail column. Archive creation produces ZIP; the archive opener automatically
   detects multipart RAR and nested ZIP/RAR (unencrypted RAR3/RAR5, solid and
   multipart sets) through an unprivileged, resource-limited RAR helper, never a
   shell extraction command. The destination defaults to downloads with a

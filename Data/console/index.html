@@ -36,6 +36,8 @@
 </header>
 <div class="shell">
   <aside class="side" id="panel-sidebar" aria-label="Sunucu konsolu">
+    <!-- DD-232: two stacked cards: navigation on top, server resources below. -->
+    <div class="side-card side-main">
     <div class="brand"><span class="wordmark"><span id="brand-host">sunucu</span><span class="dot">.</span></span><small id="brand-sub">Konsol</small></div>
     <nav class="nav" aria-label="Bölümler">
       <a href="#/genel" data-route="genel" data-icon="home">Ana Menü</a>
@@ -47,7 +49,8 @@
     </nav>
     <!-- DD-230: the address facts live in Ana Menü's "Sunucu" widget; resources close the sidebar. -->
     <div class="side-foot"><button type="button" class="linkbtn" id="logout" hidden>Çıkış yap</button></div>
-    <section class="resources" aria-label="Sunucu kaynakları">
+    </div>
+    <section class="side-card resources" aria-label="Sunucu kaynakları">
       <p class="resource-status" id="resource-status" role="status">Kaynaklar okunuyor…</p>
       <div class="resource"><div><span>İşlemci</span><strong id="resource-cpu">—</strong></div><progress id="bar-cpu" max="100" value="0" aria-label="İşlemci kullanımı" hidden></progress><small id="detail-cpu">Örnek bekleniyor</small></div>
       <div class="resource"><div><span>RAM</span><strong id="resource-mem">—</strong></div><progress id="bar-mem" max="100" value="0" aria-label="Bellek kullanımı" hidden></progress><small id="detail-mem">—</small></div>
@@ -74,11 +77,15 @@
 
       <!-- DOSYALAR -->
       <section data-view="dosyalar" hidden>
-        <nav id="fs-tabs" class="fs09-tabs" aria-label="Dosya bölümleri"></nav>
-        <!-- Folder shortcuts, selection actions and uploads share one workspace. -->
-        <div class="fswrap">
-          <nav class="fsrail" id="fs-rail" aria-label="Klasörler"></nav>
-          <div class="fspanel" id="fs-panel"><div id="fs-body" class="fs-body"></div></div>
+        <!-- DD-232: Finder-style window: contents on the left; places, the selection's details/actions and
+             the disk on the right. Uploads drop anywhere in the window. -->
+        <div class="fx" id="fs-panel">
+          <div class="fx-main"><div id="fs-body" class="fs-body"></div></div>
+          <aside class="fx-side" aria-label="Dosya konumları ve ayrıntılar">
+            <nav class="fx-nav" id="fs-rail" aria-label="Konumlar"></nav>
+            <section class="fx-detail" id="fs-detail" aria-labelledby="fs-detail-title" aria-live="polite" hidden></section>
+            <div class="fx-disk" id="fs-disk"></div>
+          </aside>
         </div>
       </section>
 
