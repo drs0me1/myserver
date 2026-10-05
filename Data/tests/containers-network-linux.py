@@ -6,6 +6,7 @@ Requires iproute2, nftables and Python; never changes the host network namespace
 This exercises our actual nft guard with Netavark-shaped DNAT/SNAT and permissive
 foreign filter chains, including what a container may open itself (DD-224): the
 internet yes; tailnet, WireGuard, private, link-local and IPv6 destinations no.
+DD-229: the container opens nothing on the host itself, only DNS on its bridge gateway.
 Real Podman/Quadlet lifecycle is a separate live check.
 """
 import importlib.util
@@ -55,6 +56,30 @@ def serve(kind):
         while True:
             d,a=s.recvfrom(1024);s.sendto(d,a)
 for k in (socket.SOCK_STREAM,socket.SOCK_DGRAM): threading.Thread(target=serve,args=(k,),daemon=True).start()
+time.sleep(300)
+'''
+# DD-229: listeners on the host itself (any address), plus a stand-in for aardvark-dns on port 53.
+HOST_SERVER = r'''
+import socket, sys, threading, time
+port = int(sys.argv[1])
+def client(c):
+    with c:
+        while True:
+            data = c.recv(1024)
+            if not data: return
+            c.sendall(data)
+def serve(kind):
+    s = socket.socket(socket.AF_INET, kind)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("0.0.0.0", port))
+    if kind == socket.SOCK_STREAM:
+        s.listen()
+        while True:
+            c, _ = s.accept(); threading.Thread(target=client, args=(c,), daemon=True).start()
+    else:
+        while True:
+            d, a = s.recvfrom(1024); s.sendto(d, a)
+for k in (socket.SOCK_STREAM, socket.SOCK_DGRAM): threading.Thread(target=serve, args=(k,), daemon=True).start()
 time.sleep(300)
 '''
 PROBE = r'''
@@ -182,6 +207,29 @@ def main():
                 probe(ctr, "198.51.100.2", 8080, protocol, True)
                 for address in ("100.64.0.2", "10.8.0.2", "192.168.77.2", "169.254.169.2", "2001:db8:1::2", "2001:db8:4::2"):
                     probe(ctr, address, 8080, protocol, False)
+            # DD-229: the host's own services are closed to the container on every host address;
+            # only DNS on the container's bridge gateway answers. (No host INPUT chain exists in this
+            # fixture: the guard alone decides.)
+            for port in (9090, 53):
+                children.append(subprocess.Popen(["python3", "-c", HOST_SERVER, str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE))
+            for port in (9090, 53):
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        with socket.create_connection(("127.0.0.1", port), timeout=.1):
+                            break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            raise AssertionError("host echo server not ready: %d" % port)
+                        time.sleep(.05)
+            for protocol in ("tcp", "udp"):
+                probe(ctr, "10.250.0.1", 53, protocol, True)
+                for address in ("10.250.0.1", "192.0.2.1", "100.64.0.1", "10.8.0.1", "198.51.100.1"):
+                    probe(ctr, address, 9090, protocol, False)
+                for address in ("192.0.2.1", "100.64.0.1", "10.8.0.1"):
+                    probe(ctr, address, 53, protocol, False)
+                # Other networks still reach the host's services: the input guard names only container bridges.
+                probe(tail, "100.64.0.1", 9090, protocol, True)
             for protocol in ("tcp", "udp"):
                 probe([], "127.0.0.1", 18080, protocol, True)
                 probe(tail, "100.64.0.1", 18081, protocol, True)
@@ -219,7 +267,16 @@ def main():
                 pass
             else:
                 raise AssertionError("health accepted changed owned rules")
-            print(f"PASS: {probes} TCP/UDP IPv4/IPv6 packet probes (publications and container egress), scope revocation, foreign chains preserved, rule-integrity check")
+            net.apply(env)
+            assert net.check(env)
+            cmd("nft", "insert", "rule", "inet", env["KONTEYNER_NFT_TABLE"], "input", "accept")
+            try:
+                net.check(env)
+            except net.NetworkError:
+                pass
+            else:
+                raise AssertionError("health accepted a changed input chain")
+            print(f"PASS: {probes} TCP/UDP IPv4/IPv6 packet probes (publications, container egress and the closed host side), scope revocation, foreign chains preserved, rule-integrity check")
     finally:
         for child in reversed(children):
             if child.poll() is None:

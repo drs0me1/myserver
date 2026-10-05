@@ -11,7 +11,7 @@ const magaza = path.join(__dirname, "../magaza");
 const meta = (id) => JSON.parse(fs.readFileSync(path.join(magaza, id, "konsol.json"), "utf8")
   .replace(/__DOWNLOADS_PATH__/g, "/srv/downloads").replace(/__[A-Z_]+__/g, "x"));
 const modules = [
-  { id: "wireguard", installed: false, state: "", runtime: "konsol", live: "-", busy: false, progress: null, durdurulabilir: false, konsol: meta("wireguard") },
+  { id: "wireguard", installed: false, state: "", runtime: "konsol", live: "-", busy: false, progress: null, durdurulabilir: true, konsol: meta("wireguard") },
   { id: "torrent", installed: false, state: "", runtime: "konteyner", live: "-", busy: false, progress: null, durdurulabilir: true, konsol: meta("torrent") },
 ];
 const durum = { installed: true, running: true, unit: "qbittorrent.service", container: "qbittorrent", profile: "/var/lib/qbittorrent",
@@ -244,36 +244,37 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
       .evaluateAll((els) => els.map((e) => [e.dataset.act,e.tagName, e.innerText.trim(), e.getAttribute("aria-label"), e.getAttribute("title"),
         e.querySelectorAll("svg").length, e.closest("a.tile-link") === null]));
     const iconOnly = async () => {
-      assert.deepEqual(await row("torrent"), [["servis","BUTTON", "", "qBittorrent: Durdur", "qBittorrent: Durdur", 1, true],
+      // DD-229: the service action is a word; settings (gear) and logs (terminal) are icons.
+      assert.deepEqual(await row("torrent"), [["servis","BUTTON", "Durdur", "qBittorrent: Durdur", "qBittorrent: Durdur", 0, true],
         ["ayar","BUTTON", "", "qBittorrent ayarları", "qBittorrent ayarları", 1, true],
-        ["gunluk","BUTTON", "", "qBittorrent günlükleri", "qBittorrent günlükleri", 1, true]], "service, settings, logs in order; icon-only controls outside the launch link");
-      // WireGuard has a page but no form and cannot stop as a whole (its networks switch one by one).
-      assert.deepEqual(await row("wireguard"), [["servis","SPAN","",null,null,0,true],
+        ["gunluk","BUTTON", "", "qBittorrent günlükleri", "qBittorrent günlükleri", 1, true]], "service, settings, logs in order; controls outside the launch link");
+      // WireGuard stops as a whole now; its settings are its page.
+      assert.deepEqual(await row("wireguard"), [["servis","BUTTON","Durdur","WireGuard: Durdur","WireGuard: Durdur",0,true],
         ["ayar","A", "", "WireGuard ayarları", "WireGuard ayarları", 1, true],
         ["gunluk","BUTTON","","WireGuard günlükleri","WireGuard günlükleri",1,true]]);
       for (const id of ["torrent","wireguard"])
         assert.equal(await page.locator(`#genel-tiles [data-tile="${id}"] .tile-actions > *`).count(),3,"no extra footer slots");
-      const blank = page.locator('#genel-tiles [data-tile="wireguard"] .tile-act-empty[data-act="servis"]');
-      assert.equal(await blank.count(),1);
-      assert.deepEqual(await blank.evaluate(el => [el.childNodes.length,el.tabIndex,el.getAttribute("role"),el.getAttribute("href"),el.onclick]),[0,-1,null,null,null],
-        "unsupported service slot has no content, focus, role, link or click handler");
-      await page.locator('#genel-tiles [data-tile="wireguard"] [data-act="ayar"]').focus();
+      const icon = (sel) => page.locator(sel + " svg").evaluate((el) => el.innerHTML);
+      assert.match(await icon('#genel-tiles [data-tile="torrent"] [data-act="ayar"]'), /<circle cx="9" cy="9" r="2.3"/, "settings is the gear");
+      assert.match(await icon('#genel-tiles [data-tile="torrent"] [data-act="gunluk"]'), /<rect x="1.8" y="3"/, "logs is the terminal");
+      await page.locator('#genel-tiles [data-tile="wireguard"] [data-act="servis"]').focus();
       await page.keyboard.press("Tab");
-      assert(await page.locator('#genel-tiles [data-tile="wireguard"] [data-act="gunluk"]').evaluate(el => document.activeElement === el),"Tab skips the blank service slot");
+      assert(await page.locator('#genel-tiles [data-tile="wireguard"] [data-act="ayar"]').evaluate(el => document.activeElement === el),"Tab follows the visible row");
     };
     // Computed look of an action now (rest, hover, pressed): transparent, borderless, no shadow, no text.
     const bare = (sel) => page.locator(sel).evaluate((el) => { const c = getComputedStyle(el);
       return [c.backgroundColor, c.borderTopStyle === "none" || c.borderTopWidth === "0px", c.boxShadow, el.innerText.trim()]; });
     const BARE = ["rgba(0, 0, 0, 0)", true, "none", ""];
+    const bareFor = (sel) => sel.includes('"servis"') ? [...BARE.slice(0, 3), "Durdur"] : BARE;
     const looks = async () => {
       for (const sel of ['#genel-tiles [data-tile="torrent"] [data-act="ayar"]', '#genel-tiles [data-tile="torrent"] [data-act="servis"]',
         '#genel-tiles [data-tile="torrent"] [data-act="gunluk"]', '#genel-tiles [data-tile="wireguard"] [data-act="ayar"]',
         '#genel-tiles [data-tile="wireguard"] [data-act="gunluk"]']) {
-        assert.deepEqual(await bare(sel), BARE, `${sel} at rest`);
+        assert.deepEqual(await bare(sel), bareFor(sel), `${sel} at rest`);
         await page.locator(sel).hover();
-        assert.deepEqual(await bare(sel), BARE, `${sel} on hover`);
+        assert.deepEqual(await bare(sel), bareFor(sel), `${sel} on hover`);
         await page.mouse.down();
-        assert.deepEqual(await bare(sel), BARE, `${sel} while pressed`);
+        assert.deepEqual(await bare(sel), bareFor(sel), `${sel} while pressed`);
         await page.mouse.move(1, 1); await page.mouse.up();
       }
     };
@@ -296,8 +297,9 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     assert(Math.abs(actBox.y - svcBox.y) < 2, "one row");
     assert(actBox.height <= 44 && actBox.width <= 70, `compact: ${JSON.stringify(actBox)}`);
     for (const b of [settingsBtn, serviceBtn,tile.locator('[data-act="gunluk"]')]) {
-      const hit = await b.evaluate((el) => { const r=el.getBoundingClientRect(),s=el.querySelector("svg").getBoundingClientRect();
-        return r.width>=44 && r.height>=44 && s.width===18 && s.height===18 &&
+      // DD-229: the service action is a word (no glyph); settings and logs keep their 18 px icon.
+      const hit = await b.evaluate((el) => { const r=el.getBoundingClientRect(),g=el.querySelector("svg"),s=g&&g.getBoundingClientRect();
+        return r.width>=44 && r.height>=44 && (s ? s.width===18 && s.height===18 : el.innerText.trim().length>0) &&
           [[r.left+r.width/2,r.top+1],[r.right-1,r.top+r.height/2],[r.left+1,r.top+r.height/2],[r.left+r.width/2,r.bottom-1]].every(([x,y]) => {
             const target=document.elementFromPoint(x,y); return target===el || el.contains(target);
           }); });
@@ -439,7 +441,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await page.locator("#cf-go").click();
     while (lifecycle.length < 1) await page.waitForTimeout(10);
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-disabled") === "true");
-    assert.deepEqual(await svc(), ["qBittorrent: Durduruluyor…", "qBittorrent: Durduruluyor…", "true", true, ""], "busy, no text; focus back on the action after the confirmation");
+    assert.deepEqual(await svc(), ["qBittorrent: Durduruluyor…", "qBittorrent: Durduruluyor…", "true", true, "Durdur"], "busy: the word stays, dimmed; focus back on the action after the confirmation");
     // Measured in one step: the 1.5 s progress poll redraws the row and would detach a held element.
     assert(await page.evaluate(() => { const t = document.querySelector('#genel-tiles .tile[data-tile="torrent"]'), b = t.querySelector('[data-act="servis"]');
       const tr = t.getBoundingClientRect(), br = b.getBoundingClientRect(); return br.left >= tr.left && br.right <= tr.right; }), "the busy action stays inside the tile");
@@ -457,7 +459,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     Object.assign(modules[1], { busy: false, state: "durduruldu", live: "exited", progress: { action: "durdur", step: "bitti", total: 0, text: "durduruldu" } });
     await poll();
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Başlat");
-    assert.deepEqual(await svc(), ["qBittorrent: Başlat", "qBittorrent: Başlat", "false", true, ""], "the name follows the finished operation; focus kept");
+    assert.deepEqual(await svc(), ["qBittorrent: Başlat", "qBittorrent: Başlat", "false", true, "Başlat"], "the name follows the finished operation; focus kept");
     assert.deepEqual(lifecycle[0], { action: "durdur", body: { veri: false } });
 
     /* ---- A stopped app opens its page, not a dead link; its settings still open and save ---- */
@@ -495,7 +497,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await page.waitForTimeout(200);
     assert.equal(await elsewhere.evaluate((el) => document.activeElement === el), true, "a finishing request leaves focus where the operator put it");
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Başlatılıyor…");
-    assert.deepEqual([(await svc())[0], (await svc())[4]], ["qBittorrent: Başlatılıyor…", ""]);
+    assert.deepEqual([(await svc())[0], (await svc())[4]], ["qBittorrent: Başlatılıyor…", "Başlat"]);
     Object.assign(modules[1], { busy: false, state: "calisiyor", live: "running", progress: { action: "baslat", step: "bitti", total: 0, text: "başlatıldı" } });
     await poll();
     await page.waitForFunction(() => document.querySelector('#genel-tiles [data-tile="torrent"] [data-act="servis"]')?.getAttribute("aria-label") === "qBittorrent: Durdur");
@@ -537,19 +539,32 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
           }));
           assert(slots.every(s => s.width>0 && s.height>0 && Math.abs(s.y-slots[0].y)<2),"all three slots reserve space on one row");
           assert(slots[0].x+slots[0].width<=slots[1].x && slots[1].x+slots[1].width<=slots[2].x,"slots remain ordered without overlap");
-          for (const button of await actions.locator("button,a").all()) {
-            await button.scrollIntoViewIfNeeded();
-            assert(await button.isVisible());
-            const hitTest = await button.evaluate(el => {
-              const r=el.getBoundingClientRect(),svg=el.querySelector("svg"),s=svg.getBoundingClientRect();
-              const point={x:r.x+r.width/2,y:r.y+r.height/2},hit=document.elementFromPoint(point.x,point.y);
-              const describe = node => node && ({tag:node.tagName,id:node.id,class:node.getAttribute("class"),label:node.getAttribute("aria-label")});
-              return {ok:(hit===el || el.contains(hit)) && s.width>0 && s.height>0 && getComputedStyle(svg).visibility!=="hidden",
-                control:describe(el),rect:{x:r.x,y:r.y,width:r.width,height:r.height},point,scroll:{x:scrollX,y:scrollY},
-                viewport:{width:innerWidth,height:innerHeight},glyph:{width:s.width,height:s.height,visibility:getComputedStyle(svg).visibility},
-                hit:describe(hit),stack:document.elementsFromPoint(point.x,point.y).slice(0,6).map(describe)};
-            });
-            const hitShot=path.join(shots,`hit-target-${id}-${await button.getAttribute("data-act")}-${width}-${colorScheme}.png`);
+          // Each control is found again by its slot, and the check repeats once if the five-second poll
+          // redraws the tile in the middle of it (a detached element measures 0×0).
+          for (const act of await actions.locator("button,a").evaluateAll(els => els.map(el => el.dataset.act))) {
+            const button = actions.locator(`[data-act="${act}"]`);
+            let hitTest;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                await button.scrollIntoViewIfNeeded();
+                assert(await button.isVisible());
+                hitTest = await button.evaluate(el => {
+                  const r=el.getBoundingClientRect(),svg=el.querySelector("svg")||el,s=svg.getBoundingClientRect();
+                  const point={x:r.x+r.width/2,y:r.y+r.height/2},hit=document.elementFromPoint(point.x,point.y);
+                  const describe = node => node && ({tag:node.tagName,id:node.id,class:node.getAttribute("class"),label:node.getAttribute("aria-label")});
+                  return {ok:el.isConnected && (hit===el || el.contains(hit)) && s.width>0 && s.height>0 && getComputedStyle(svg).visibility!=="hidden",
+                    attached:el.isConnected,
+                    control:describe(el),rect:{x:r.x,y:r.y,width:r.width,height:r.height},point,scroll:{x:scrollX,y:scrollY},
+                    viewport:{width:innerWidth,height:innerHeight},glyph:{width:s.width,height:s.height,visibility:getComputedStyle(svg).visibility},
+                    hit:describe(hit),stack:document.elementsFromPoint(point.x,point.y).slice(0,6).map(describe)};
+                });
+              } catch (err) {
+                if (!/not attached|detached/i.test(String(err)) || attempt === 2) throw err;
+                continue;
+              }
+              if (hitTest.ok || hitTest.attached && hitTest.rect.width > 0) break;
+            }
+            const hitShot=path.join(shots,`hit-target-${id}-${act}-${width}-${colorScheme}.png`);
             if (!hitTest.ok) await page.screenshot({path:hitShot});
             assert(hitTest.ok,`visible control receives its center hit at ${width}/${colorScheme}: ${JSON.stringify(hitTest)}; screenshot: ${hitShot}`);
             await button.click({trial:true});
@@ -573,6 +588,8 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await page.waitForTimeout(100);
     await noOverflow();
     await page.screenshot({ path: path.join(shots, "overview-390-dark.png"), fullPage: true });
+    // DD-229: the bar is fixed bottom-right; scrolled to the end, the last row stays clear of it.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     const phoneEditLayout = await page.evaluate(() => {
       const bar=document.querySelector("#genel-edit").getBoundingClientRect();
       const rect=r => ({x:r.x,y:r.y,width:r.width,height:r.height});
@@ -590,7 +607,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     assert(phoneRow.x >= phoneTile.x && phoneRow.x + phoneRow.width <= phoneTile.x + phoneTile.width + 1, "the action row fits the phone tile");
     await iconOnly();
     for (const sel of ['#genel-tiles [data-tile="torrent"] [data-act="ayar"]', '#genel-tiles [data-tile="torrent"] [data-act="servis"]'])
-      assert.deepEqual(await bare(sel), BARE, `${sel} at 390 px dark`);
+      assert.deepEqual(await bare(sel), bareFor(sel), `${sel} at 390 px dark`);
     // Keyboard order matches the visible row: service → settings → logs.
     await page.locator('#genel-tiles [data-tile="torrent"] [data-act="servis"]').focus();
     await page.keyboard.press("Tab");
@@ -631,7 +648,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
     await secure.close();
 
     assert.deepEqual(errors, []);
-    console.log("PASS: install form and settings regressions; native app launch/noopener/public channel; installed-only home; three ordered icon slots with blank noninteractive WireGuard service; safe GET logs in dialog; stop/start confirmation, progress, refusal and focus; edit reorder; desktop/320/390 light/dark overflow, glyphs and visible hit targets. Screenshots: " + shots);
+    console.log("PASS: install form and settings regressions; native app launch/noopener/public channel; installed-only home; three ordered action slots (word, gear, terminal), WireGuard stop/start; safe GET logs in dialog; stop/start confirmation, progress, refusal and focus; edit reorder; desktop/320/390 light/dark overflow, glyphs and visible hit targets. Screenshots: " + shots);
   } catch (err) { if (errors.length) console.error("Browser errors:",errors); throw err;
   } finally { await browser.close(); }
 })().catch((err) => { console.error(err); process.exit(1); });

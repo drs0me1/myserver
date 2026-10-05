@@ -514,8 +514,9 @@ Contract in §5–§7 and `folder-shares.md`.
     its Konsol page instead; the public address never links a private name. Beneath the
     icon of every installed App Store application's tile is a row with three fixed
     positions: **Durdur/Başlat**, **Ayarlar**, **Günlükler**. Desktop cards are approximately
-    16% narrower than v191, retaining their normal height and 44 px action targets. The actions are bare icons
-    (no visible text, background or border; accessible names and tooltips remain),
+    16% narrower than v191, retaining their normal height and 44 px action targets. **Durdur/Başlat**
+    is a word; **Ayarlar** is a gear and **Günlükler** a terminal icon (**DD-229**); all are bare
+    (no background or border; accessible names and tooltips remain),
     siblings of the launch link and absent in edit mode. Unsupported actions leave a
     blank, non-interactive slot so supported actions stay aligned. **Ayarlar**
     opens the package's declared `form` (read/write routes) in a dialog for the same fields
@@ -524,12 +525,12 @@ Contract in §5–§7 and `folder-shares.md`.
     package's page; **Durdur/Başlat** appears only for `durdurulabilir` packages, asks the
     App Store's stop confirmation before stopping and uses the same lifecycle request and
     progress; it is locked (`aria-disabled`, still focusable) from the click until the
-    operation ends, shows a refusal and follows the server's state. WireGuard leaves
-    the start/stop position blank. **Günlükler** opens a dialog backed by the existing
+    operation ends, shows a refusal and follows the server's state. WireGuard stops
+    and starts as a whole (**DD-229**). **Günlükler** opens a dialog backed by the existing
     module journal. Settings stay usable while the app is stopped. The page stays
     reachable from App Store details and its route.
-  - **Home layout and network card (DD-206, DD-212/213).** "Düzenle" (bottom-left, below the
-    tiles, sticky on desktop and in normal flow on phones) lets the operator move tiles (dragging with mouse or finger, or arrow
+  - **Home layout and network card (DD-206, DD-212/213, DD-229).** "Düzenle" (fixed to the
+    screen's bottom-right corner; the page keeps room below the last row) lets the operator move tiles (dragging with mouse or finger, or arrow
     buttons) and hide or show the sole network widget (`ag`). Its width is fixed at
     two of six desktop slots (four slots on narrower screens, two on phones); there are
     no width controls. "Bitti" saves, "Vazgeç"/Escape drops the
@@ -614,8 +615,10 @@ Contract in §5–§7 and `folder-shares.md`.
       ingress, including direct/IPv6 paths. It also limits what a container opens itself:
       the internet yes; IPv6, anything out of `tailscale0` and the `VPN_BLOCK_DEST4` ranges
       (private, CGNAT, link-local, loopback, multicast) no. Replies to its publications
-      still pass (**DD-224**). Bridge DNS uses Aardvark with TCP/UDP 53
-      limited to the incoming bridge's own address. No host networking or runtime socket
+      still pass (**DD-224**). The same table's input chain closes the host itself: a
+      container opens nothing on any host address (bridge gateway, WAN, Tailscale, WireGuard,
+      loopback); only replies to host-opened connections and Aardvark's TCP/UDP 53 on the
+      incoming bridge's own address pass (**DD-229**), independent of MASTER-INPUT. No host networking or runtime socket
       mount is offered for generic containers. Bind mounts use existing, non-hidden,
       non-symlink user folders under `SERVER_ROOT`, excluding protected app/share paths.
       They are checked again and pinned at every start (**DD-226**). The unit's
@@ -887,8 +890,11 @@ Contract in §5–§7 and `folder-shares.md`.
 - A clean install includes Files, folder WebDAV and archive tools. Optional applications
   are installed/removed from Konsol → App Store. The catalogue is the set of packages
   under `Data/magaza/<id>/` whose manifest is not built-in: today `wireguard` and
-  `torrent`. qBittorrent also supports start/stop; WireGuard has its own network
-  switches. Public verbs reject `dosya`/`paylasim`: they are built-ins, not
+  `torrent`. Both support start/stop. Stopping WireGuard (**DD-229**) records its
+  enabled networks in `WG_STOPPED_FILE`, disables them and marks the package `durduruldu`, so
+  the firewall drops its UDP ports, forwarding and NAT; it stays down across reboots and
+  installer re-runs, and `master-wg` refuses to open or add a network until Start, which
+  reopens only the recorded networks. Its per-network switches remain. Public verbs reject `dosya`/`paylasim`: they are built-ins, not
   installable/removable applications. Podman is base infrastructure, not a catalogue
   item (§1.3, **DD-208**).
 - **Container applications (DD-209).** `PAKET_CALISMA=konteyner` marks an application

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Overview controls, stopping WireGuard, containers kept off the host (v2-207)
+
+- Ana Menü: "Düzenle" sits in the bottom-right corner of the screen. Application tiles say
+  "Durdur"/"Başlat" in words; settings is a gear and logs a terminal icon.
+- WireGuard can be stopped and started from its tile and from App Store. Stopping closes every
+  network and removes WireGuard's ports and forwarding from the firewall; it stays stopped after
+  a reboot or an installer run. Starting reopens the networks that were open before (DD-229).
+- Files has only the list view; the "Kartlar" view is gone.
+- Containers can no longer open connections to the server itself (any of its addresses), only
+  DNS on their own network gateway. Before, this relied on the host firewall alone (DD-229).
+
 ### 2026-10-05 — Install on the server with one curl line (v2-206)
 
 - The repository is public (`drs0me1/myserver`). On the server:

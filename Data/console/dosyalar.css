@@ -60,16 +60,6 @@ body:has([data-view="dosyalar"]:not([hidden]) #fs-body.with-dock) .toast { botto
 .fs09-layout .fs-t > .tr .fname > span:last-child { min-width:0; }
 .fs09-layout .fs-t > .tr.head { font-size:11px; }
 .fs09-layout .fs-t > .tr.head > span:last-child { width:76px; }
-.fs09-view { display:flex; gap:3px; background:var(--surface-2); padding:3px; border-radius:7px; }
-.fs09-view button { font-size:12px; border:0; padding:5px 9px; background:none; color:var(--muted); border-radius:5px; }
-.fs09-view [aria-pressed="true"] { background:var(--surface); color:var(--ink); }
-.fs09-layout.cards #fs-table { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; background:none; border:0; }
-.fs09-layout.cards #fs-table > .tr.head { display:none; }
-.fs09-layout.cards #fs-table > .tr { display:flex; flex-wrap:wrap; align-content:start; border:1px solid var(--line); border-radius:9px; background:var(--surface); padding:15px; }
-.fs09-layout.cards #fs-table > .tr.focused { background:var(--accent-soft); }
-.fs09-layout.cards #fs-table > .tr .fname { flex:1; min-width:calc(100% - 36px); align-items:flex-start; }
-.fs09-layout.cards #fs-table > .tr > .acts { flex:1 1 100%; }
-.fs09-layout.cards #fs-table .empty-row { grid-column:1/-1; }
 .dav-actions { display:flex; align-items:center; flex-wrap:wrap; gap:7px; }
 .dav-actions > .btn { white-space:normal; text-align:left; }
 .dav-actions > .sw { padding:0; flex:0 0 46px; }
@@ -182,7 +172,6 @@ body:has([data-view="dosyalar"]:not([hidden]) #fs-body.with-dock) .toast { botto
   .fs09-tabs { gap:18px; }
   .fs09-tabs button { font-size:12px; }
   [data-view="dosyalar"] #fs-bar .fs-search { order:2; width:100%; max-width:none; }
-  .fs09-layout.cards #fs-table { grid-template-columns:minmax(0,1fr); }
   .dav-share-top { padding:12px; }
   .fs09-layout .fs-t > .tr { padding:12px 8px; }
 }

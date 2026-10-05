@@ -44,6 +44,8 @@
     search: '<circle cx="8" cy="8" r="4.8"/><path d="M11.6 11.6L15.4 15.4"/>',
     close: '<path d="M4.8 4.8l8.4 8.4M13.2 4.8l-8.4 8.4"/>',
     key: '<circle cx="5.8" cy="12" r="3.2"/><path d="M8.1 9.7l6.5-6.5M12.4 5.4l1.9 1.9M10.6 7.2l1.5 1.5"/>',
+    gear: '<path d="M14.56 7.76 L16.34 8.04 L16.34 9.96 L14.56 10.24 L13.81 12.05 L14.87 13.51 L13.51 14.87 L12.05 13.81 L10.24 14.56 L9.96 16.34 L8.04 16.34 L7.76 14.56 L5.95 13.81 L4.49 14.87 L3.13 13.51 L4.19 12.05 L3.44 10.24 L1.66 9.96 L1.66 8.04 L3.44 7.76 L4.19 5.95 L3.13 4.49 L4.49 3.13 L5.95 4.19 L7.76 3.44 L8.04 1.66 L9.96 1.66 L10.24 3.44 L12.05 4.19 L13.51 3.13 L14.87 4.49 L13.81 5.95Z"/><circle cx="9" cy="9" r="2.3"/>',
+    terminal: '<rect x="1.8" y="3" width="14.4" height="12" rx="2"/><path d="M5 7.2l2.4 1.8L5 10.8M9.4 11.4h3.6"/>',
     sliders: '<path d="M3 5h7M13.5 5H15M3 13h2.5M9 13h6"/><circle cx="11.8" cy="5" r="1.8"/><circle cx="7.2" cy="13" r="1.8"/>',
     chev: '<path d="M7 4.5L11.5 9 7 13.5"/>',
     chevl: '<path d="M11 4.5L6.5 9 11 13.5"/>',
@@ -350,8 +352,7 @@
 
   /* ---------- Dosyalar ---------- */
   let fsPath = [], fsView = "files", fsList = null, fsTrash = null, fsAdding = false, fsRename = null;
-  let fsFocus = "", fsLayout = "list";
-  try { fsLayout = localStorage.getItem("konsol-files-view") === "cards" ? "cards" : "list"; } catch (e) { /* özel pencere */ }
+  let fsFocus = "";
   /* DD-145: kısayol sütunu, arama, çoklu seçim ve listenin içine bırakarak yükleme. */
   let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
   /* DD-144: kök kullanıcı alanı (/srv); adı arka uçtan gelir, hiçbir yerde sabit yazılmaz. */
@@ -463,7 +464,7 @@
     if (!fsList.entries.some((x) => x.name === fsFocus)) fsFocus = "";
     // DD-183: a running archive job shows here (progress, cancel); results go to Günlük.
     const archiveBar = h("div", { id: "archive-bar", class: "archive-bars", hidden: true });
-    body.append(archiveBar, h("div", { id: "fs-bar" }), h("div", { class: "fs09-layout " + fsLayout },
+    body.append(archiveBar, h("div", { id: "fs-bar" }), h("div", { class: "fs09-layout list" },
       h("div", { id: "fs-rows" }), h("aside", { id: "fs-detail", class: "fs09-detail", "aria-label": "Öge ayrıntıları" })),
       h("div", { id:"fs-dock", class:"fs-dock-wrap", hidden:true }));
     archiveTools.mount(archiveBar);
@@ -520,10 +521,6 @@
           autocomplete: "off", spellcheck: "false",
           oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDock(); updateMeta(); },
           onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDock(); updateMeta(); } } })),
-      h("div", { class: "fs09-view", "aria-label": "Görünüm" }, ...[["list", "Liste"], ["cards", "Kartlar"]].map(([id, label]) =>
-        h("button", { type: "button", "aria-pressed": fsLayout === id, onclick: () => {
-          fsLayout = id; try { localStorage.setItem("konsol-files-view", id); } catch (e) { /* özel pencere */ } renderFs();
-        } }, label))),
       picker,
       h("button", { type: "button", class: "btn btn-sm", onclick: () => $("fs-file").click() }, svg("upload"), "Yükle"),
       h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör",
@@ -1727,8 +1724,8 @@
   }
   // Ayarlar: the package's declared form (dialog), else its page. Durdur/Başlat follows the server's state and
   // progress: busy (or a request on its way) marks it aria-disabled — still focusable, so keyboard focus
-  // survives the poll redraws — and clicks are ignored until the operation ends. v2-189: icons only; the
-  // name is the accessible label and the tooltip.
+  // survives the poll redraws — and clicks are ignored until the operation ends. DD-229: the service action
+  // is a word (Durdur/Başlat), settings a gear and logs a terminal icon; the name is the label and tooltip.
   const tilePending = new Map();   // id → the action whose request is on its way
   function appActions(def) {
     const m = (MODS || []).find((x) => x.id === def.key);
@@ -1742,14 +1739,14 @@
       const word = !busy ? (running ? "Durdur" : "Başlat") : doing === "durdur" ? "Durduruluyor…" : doing === "baslat" ? "Başlatılıyor…"
         : running ? "Durdur" : "Başlat";
       kids.push(h("button", { type: "button", class: "tile-act", "data-act": "servis", "aria-disabled": busy ? "true" : "false",
-        ...named(`${def.name}: ${word}`), onclick: () => tileService(m.id) }, svg(busy ? "clock" : running ? "pause" : "play")));
+        ...named(`${def.name}: ${word}`), onclick: () => tileService(m.id) }, running ? "Durdur" : "Başlat"));
     } else kids.push(blank("servis"));
     if (def.settings === "form") kids.push(h("button", { type: "button", class: "tile-act", "data-act": "ayar", ...named(`${def.name} ayarları`),
-      onclick: () => appForm(m.id, "ayar") }, svg("sliders")));
-    else if (def.settings) kids.push(h("a", { class: "tile-act", "data-act": "ayar", href: def.settings, ...named(`${def.name} ayarları`) }, svg("sliders")));
+      onclick: () => appForm(m.id, "ayar") }, svg("gear")));
+    else if (def.settings) kids.push(h("a", { class: "tile-act", "data-act": "ayar", href: def.settings, ...named(`${def.name} ayarları`) }, svg("gear")));
     else kids.push(blank("ayar"));
     kids.push(h("button", { type: "button", class: "tile-act", "data-act": "gunluk", ...named(`${def.name} günlükleri`),
-      onclick: () => appLog(m.id) }, svg("list")));
+      onclick: () => appLog(m.id) }, svg("terminal")));
     return h("div", { class: "tile-actions", role: "group", "aria-label": `${def.name} işlemleri` }, ...kids);
   }
   function appLog(id) {

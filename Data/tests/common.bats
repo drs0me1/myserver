@@ -1885,6 +1885,55 @@ mm() {
     run ! grep -qE 'torrent_|wg_|qbittorrent|wireguard' "$V2_ROOT/scripts/master-modul"
 }
 
+@test "WireGuard stops as a whole and restarts only the networks that were open (DD-229)" {
+    grep -qx 'PAKET_DURDURULABILIR=1' "$V2_ROOT/magaza/wireguard/paket.env"
+    grep -q '^WG_STOPPED_FILE="/etc/wireguard/.durduruldu"$' "$V2_ROOT/magaza/wireguard/wireguard.env"
+    mkdir -p "$TMP/wg" "$TMP/en"
+    printf 'wg0\t61001\tinet\nwg1\t61020\tinet\nwg2\t61021\tinet\n' >"$TMP/wg/networks"
+    touch "$TMP/en/wg-quick@wg0.service" "$TMP/en/wg-quick@wg2.service"   # wg1 was closed on its own
+    local harness='
+        set -Eeuo pipefail
+        MODULES_DIR="" PAKET_ID=wireguard
+        WG_CONF_DIR="$T/wg" WG_NETWORKS_FILE="$T/wg/networks" WG_STOPPED_FILE="$T/wg/.durduruldu"
+        WG_MODULES_LOAD_FILE="$T/mod" SBIN_DIR=/x UNIT_DIR=/x
+        need_keys() { :; }; warn() { echo "WARN $*" >&2; }; fail_step() { echo "FAIL $*"; exit 3; }
+        registry_set() { echo "$2" >"$T/state"; }
+        firewall_apply() { echo "fw $(cat "$T/state")" >>"$T/log"; }
+        systemctl() {
+            case "$1" in
+                is-enabled) [[ -e "$T/en/$3" ]] ;;
+                enable) touch "$T/en/$4" ;;
+                disable) rm -f "$T/en/$4" ;;
+                list-unit-files|list-units) ls "$T/en" ;;
+                restart) echo "restart $2" >>"$T/log" ;;
+            esac
+        }
+        source "$V2_ROOT/magaza/wireguard/kanca"
+        wg_layer() { :; }   # no kernel module in a test
+        "$@"'
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$harness" _ paket_durdur
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP/wg/.durduruldu")" = $'wg0\nwg2' ]
+    [ -z "$(ls "$TMP/en")" ]
+    [ "$(cat "$TMP/state")" = durduruldu ]
+    [ "$(tail -n 1 "$TMP/log")" = "fw durduruldu" ]
+    # A second stop keeps the original list.
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$harness" _ paket_durdur
+    [ "$(cat "$TMP/wg/.durduruldu")" = $'wg0\nwg2' ]
+    # An installer re-run leaves a stopped WireGuard down.
+    awk '/^paket_uygula\(\)/,/^}$/' "$V2_ROOT/magaza/wireguard/kanca" | grep -qF '[[ "${1:-}" == durduruldu ]] || wg_networks_up >/dev/null'
+    # Start: firewall first (state calisiyor), then only wg0 and wg2; the list is removed.
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$harness" _ paket_baslat
+    [ "$status" -eq 0 ]
+    [ "$(ls "$TMP/en" | tr '\n' ' ')" = 'wg-quick@wg0.service wg-quick@wg2.service ' ]
+    [ ! -e "$TMP/wg/.durduruldu" ]
+    [ "$(cat "$TMP/state")" = calisiyor ]
+    [ "$(tail -n 1 "$TMP/log")" = "fw calisiyor" ]
+    # While stopped, master-wg refuses to open or add a network.
+    grep -q '^not_stopped() {$' "$V2_ROOT/magaza/wireguard/master-wg"
+    [ "$(grep -c '^    not_stopped$' "$V2_ROOT/magaza/wireguard/master-wg")" -eq 2 ]
+}
+
 share_fixture() {
     # Real registry preparation; fake host services and network probes.
     modul_fixture
@@ -2258,7 +2307,7 @@ EOF
 import json, sys
 items = {m["id"]: m for m in json.load(open(sys.argv[1]))["items"]}
 assert items["wireguard"]["konsol"]["ad"] == "WireGuard" and items["wireguard"]["sayfa"] == ["sayfa.js", "sayfa.css"], items["wireguard"]
-assert items["wireguard"]["durdurulabilir"] is False and items["torrent"]["durdurulabilir"] is True
+assert items["wireguard"]["durdurulabilir"] is True and items["torrent"]["durdurulabilir"] is True
 assert items["torrent"]["konsol"]["sayfa"]["rota"] == "torrent" and "sayfa" not in items["torrent"], items["torrent"]
 assert "torrent.ayc" in items["torrent"]["konsol"]["neler"][1][1]
 PY
@@ -3117,7 +3166,7 @@ PY
     grep -qF '"aria-label": name, title: name' <<<"$actions"
     grep -qF '"data-act": "gunluk"' <<<"$actions"
     grep -qF 'onclick: () => appLog(m.id)' <<<"$actions"
-    grep -qE '^\.tile-actions \{ .*display:grid; grid-template-columns:repeat\(3,44px\);' "$css"
+    grep -qE '^\.tile-actions \{ .*display:grid; grid-template-columns:minmax\(44px,auto\) 44px 44px;' "$css"
     grep -qE '^\.tile-act \{ .*width:44px; height:44px;' "$css"
     grep -qF '.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     grep -qE '^\.tile \{ .*min-height:193px;' "$css"
@@ -3159,10 +3208,11 @@ PY
 
 @test "overview layout and network card (DD-206, DD-213): two of six slots, server rates and cumulative app totals" {
     local js="$V2_ROOT/console/konsol.js" html="$V2_ROOT/console/index.html" css="$V2_ROOT/console/panel.css" backend="$V2_ROOT/panel/master-panel"
-    # Düzenle sits below the tiles and sticks to the bottom-left of a long page (never over the last row).
+    # DD-229: Düzenle is fixed to the screen's bottom-right corner; the page keeps room below the last row.
     grep -qF '<div class="edit-bar" id="genel-edit" role="toolbar" aria-label="Ana Menü düzeni"></div>' "$html"
     [ "$(grep -n 'id="genel-edit"' "$html" | cut -d: -f1)" -gt "$(grep -n 'id="genel-tiles"' "$html" | cut -d: -f1)" ]
-    grep -q '^\.edit-bar { position:sticky;' "$css"
+    grep -q '^\.edit-bar { position:fixed; z-index:30; right:' "$css"
+    grep -qF 'section[data-view="genel"] { padding-bottom:72px; }' "$css"
     # The tiles wait for the module list (no jump), and Düzenle waits for both the layout and the list.
     grep -qF 'const defs = modsSettled ? orderedTiles() : [];' "$js"
     grep -qF 'disabled: !layoutLoaded || !modsSettled, onclick: startEdit' "$js"
@@ -3189,8 +3239,8 @@ PY
     grep -qF 'self.audit(user, "duzen", detail, True)' "$backend"
     grep -qF 'api("/api/konsol/duzen")' "$js"
     grep -qF 'post("/api/konsol/duzen", reset ? { sifirla: true } : { duzen: draft })' "$js"
-    # The Files view mode stays a per-browser convenience; the overview layout never touches browser storage.
-    [ "$(grep -c 'localStorage' "$js")" -eq 2 ] && grep -q 'localStorage.setItem("konsol-files-view"' "$js"
+    # Files has one list view (no card mode); neither it nor the overview layout touches browser storage.
+    run ! grep -qE 'localStorage|konsol-files-view|"Kartlar"' "$js"
     run ! grep -qE 'sessionStorage' "$js"
     run ! grep -qiE 'qbittorrent|wireguard|torrent' "$js" "$css" "$html"
     # Application columns show cumulative byte totals; only the server section shows live rates.
@@ -4437,6 +4487,7 @@ EOF
     cat >"$TMP/mods/wireguard/wireguard.env" <<EOF
 WG_CONF_DIR=$TMP/etc/wireguard
 WG_NETWORKS_FILE=$TMP/etc/wireguard/networks
+WG_STOPPED_FILE=$TMP/etc/wireguard/.durduruldu
 WG_MODULES_LOAD_FILE=$TMP/modload/master-stack-wireguard.conf
 EOF
     cat >"$TMP/mbin/systemctl" <<EOF
@@ -4444,7 +4495,7 @@ EOF
 printf '%s\n' "\$*" >>"$TMP/systemctl-calls"
 case "\$*" in
     "restart master-firewall.service")
-        if grep -q '^wireguard' "$TMP/moduller" 2>/dev/null; then echo firewall-wg >>"$TMP/order"; else echo firewall-nowg >>"$TMP/order"; fi ;;
+        if grep -q '^wireguard'\$'\t''calisiyor' "$TMP/moduller" 2>/dev/null; then echo firewall-wg >>"$TMP/order"; else echo firewall-nowg >>"$TMP/order"; fi ;;
     "enable --now master-files-panel.service") touch "$TMP/files-active" ;;
     "disable --now master-files-panel.service") rm -f "$TMP/files-active" ;;
     "is-active --quiet master-files-panel.service") [ -e "$TMP/files-active" ] ;;
@@ -4822,8 +4873,22 @@ PY
     [ "$(grep -c 'caddy-wg@wg1' "$TMP/systemctl-calls")" -eq 0 ]
     # Existing keys and networks are applied, never made.
     [ "$(cat "$TMP/etc/wireguard/wg0.conf")" = '[Interface]' ]
+    # DD-229: Durdur records the open networks, closes them and drops WireGuard from the firewall;
+    # Başlat applies the firewall first, then reopens exactly those networks.
+    : >"$TMP/order" ; : >"$TMP/systemctl-calls"
     run mm durdur wireguard
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 0 ]
+    grep -qx "$(printf 'wireguard\tdurduruldu')" "$TMP/moduller"
+    [ "$(cat "$TMP/etc/wireguard/.durduruldu")" = "$(printf 'wg0\nwg1')" ]
+    grep -qx 'disable --now --quiet wg-quick@wg0.service' "$TMP/systemctl-calls"
+    grep -qx 'disable --now --quiet wg-quick@wg1.service' "$TMP/systemctl-calls"
+    [ "$(cat "$TMP/order")" = firewall-nowg ]
+    : >"$TMP/order"
+    run mm baslat wireguard
+    [ "$status" -eq 0 ]
+    grep -qx "$(printf 'wireguard\tcalisiyor')" "$TMP/moduller"
+    [ "$(tr '\n' ' ' <"$TMP/order")" = 'firewall-wg up wg-quick@wg0 up wg-quick@wg1 ' ]
+    [ ! -e "$TMP/etc/wireguard/.durduruldu" ]
     # Removal: networks close, the module leaves the registry before the firewall is re-applied,
     # the keys stay; a reinstall brings the networks back.
     printf 'wg-quick@wg0.service enabled enabled\ncaddy-wg@wg0.service enabled enabled\n' >"$TMP/wg-units"

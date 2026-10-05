@@ -162,8 +162,10 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .net-app .v { font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .net-empty { color:var(--muted); text-align:left!important; line-height:1.6; }
 
-/* ---- edit mode: below the tiles; sticky on desktop, normal flow on phones so cards stay clear ---- */
-.edit-bar { position:sticky; z-index:30; bottom:16px; justify-self:start; width:max-content; max-width:100%; margin-top:18px;
+/* ---- edit mode: fixed to the bottom-right corner of the screen; the page keeps room below the tiles ---- */
+section[data-view="genel"] { padding-bottom:72px; }
+.edit-bar { position:fixed; z-index:30; right:max(24px, env(safe-area-inset-right)); bottom:max(20px, env(safe-area-inset-bottom));
+  width:max-content; max-width:calc(100vw - 32px);
   display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:6px; border-radius:999px;
   background:var(--glass-2); border:1px solid var(--glass-line); box-shadow:var(--glass-shadow);
   -webkit-backdrop-filter:blur(var(--blur)) saturate(150%); backdrop-filter:blur(var(--blur)) saturate(150%); }
@@ -204,11 +206,12 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .tile-link::after { content:""; position:absolute; inset:0; border-radius:inherit; }
 .tile-link:focus-visible { outline:none; }
 .tile-link:focus-visible::after { outline:2px solid var(--accent); outline-offset:2px; }
-.tile-actions { position:relative; z-index:1; display:grid; grid-template-columns:repeat(3,44px); justify-content:center; max-width:100%; }
+.tile-actions { position:relative; z-index:1; display:grid; grid-template-columns:minmax(44px,auto) 44px 44px; justify-content:center; max-width:100%; }
 .tile-act { position:relative; display:grid; place-items:center; width:44px; height:44px; padding:0; border:0; border-radius:8px;
   background:none; box-shadow:none; color:var(--muted); font:inherit; text-decoration:none; cursor:pointer; }
 .tile-act-empty { cursor:default; pointer-events:none; }
 .tile-act svg { width:18px; height:18px; }
+.tile-act[data-act="servis"] { width:auto; min-width:44px; padding:0 2px; font-size:11px; font-weight:600; white-space:nowrap; }
 .tile-act:hover, .tile-act:active { color:var(--ink); background:none; }
 .tile-act:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .tile-act[aria-disabled="true"] { opacity:.55; cursor:progress; }
@@ -289,7 +292,6 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .fs09-layout.list .fs-t > .tr .c-size,.fs09-layout.list .fs-t > .tr .c-date { display:block; }
 .fs09-layout.list.with-detail .fs-t:not(.trash-t) > .tr { grid-template-columns:24px minmax(0,1fr) 86px; }
 .fs09-layout.list.with-detail .fs-t > .tr .c-size,.fs09-layout.list.with-detail .fs-t > .tr .c-date { display:none; }
-.fs09-layout.cards #fs-table { grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); }
 .fs09-layout .fs-t > .tr.focused { background:var(--accent-soft); }
 /* DD-183: running archive job, one line above the Files list; no jobs page. */
 .archive-bars { display:grid; gap:8px; margin:0 0 14px; }
@@ -318,7 +320,7 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
   .nav .settings-link { margin-top:10px; }
   .main { padding:18px 14px 36px; }
   .content { gap:18px; }
-  .edit-bar { position:static; }
+  .edit-bar { right:max(14px, env(safe-area-inset-right)); bottom:max(14px, env(safe-area-inset-bottom)); }
   .edit-bar .edit-hint { display:none; }
   .as-tabs,.fs09-tabs { gap:17px; flex-wrap:wrap; }
   .as-tabs button,.fs09-tabs button { font-size:12px; }

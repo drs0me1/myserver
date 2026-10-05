@@ -1,4 +1,4 @@
-/* Production Files UI: independent account forms, navigation, list/cards, trash. */
+/* Production Files UI: independent account forms, navigation, list view, trash. */
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os");
@@ -413,15 +413,14 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
         await page.getByRole("button",{name:"media ayrıntıları",exact:true}).click();
         await checkShareAddresses(page.locator("#fs-detail"));
-        for (const mode of ["Kartlar","Liste"]) {
-          await page.getByRole("button",{name:mode,exact:true}).click();
-          assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),mode+" overflow "+width);
-        }
+        // One list view; the old card/list switch is gone.
+        assert.equal(await page.getByRole("button",{name:"Kartlar",exact:true}).count(),0);
+        assert(await page.locator(".fs09-layout.list").count()===1);
+        assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),"list overflow "+width);
         await page.locator("#fs-tabs").getByRole("button",{name:"Paylaşımlar",exact:true}).click();
       }
     }
     await page.locator("#fs-tabs").getByRole("button",{name:"Dosyalar",exact:true}).click();
-    await page.getByRole("button",{name:"Kartlar",exact:true}).click();
     // Move-to-trash is a short confirmation, with full names and no explanatory rows.
     for (const theme of ["light", "dark"]) {
       await page.emulateMedia({colorScheme:theme});

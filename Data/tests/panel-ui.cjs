@@ -187,7 +187,10 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     // Edit mode changes app order and network visibility; no width controls remain.
     const bar = page.locator("#genel-edit"), order = () => page.locator("#genel-tiles .tile").evaluateAll(els => els.map(e => e.dataset.tile));
     const barBox = await bar.boundingBox(), gridBox0 = await page.locator("#genel-widgets").boundingBox(), tilesBox = await page.locator("#genel-tiles").boundingBox();
-    assert(Math.abs(barBox.x - gridBox0.x) < 2 && barBox.y >= tilesBox.y + tilesBox.height, `Düzenle sits bottom-left, below the tiles: ${JSON.stringify(barBox)}`);
+    const view = page.viewportSize();
+    assert(barBox.x + barBox.width > view.width - 40 && barBox.y + barBox.height > view.height - 40,
+      `DD-229: Düzenle sits in the screen's bottom-right corner: ${JSON.stringify(barBox)}`);
+    void gridBox0; void tilesBox;
     await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
     await bar.getByRole("button",{name:"Bitti",exact:true}).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement.id),"genel-bitti");
@@ -260,15 +263,20 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await page.getByText("Ana Menü varsayılan düzene döndü.",{exact:true}).first().waitFor();
     assert.deepEqual(layoutWrites.at(-1),{sifirla:true});
-    // On phones the bar stays in document flow below the tiles and is reachable by scrolling.
+    // DD-229: on phones too the bar is fixed in the bottom-right corner, and scrolled to the end the
+    // last row of tiles stays clear of it.
     await page.setViewportSize({width:390,height:760});
     await page.evaluate(() => window.scrollTo(0,0));
-    const phoneBar = await bar.boundingBox(), phoneTilesBefore = await page.locator("#genel-tiles").boundingBox();
-    assert(phoneBar.y >= phoneTilesBefore.y + phoneTilesBefore.height,"the phone edit bar stays below the application tiles");
-    await bar.scrollIntoViewIfNeeded();
-    const visiblePhoneBar = await bar.boundingBox();
-    assert(visiblePhoneBar.x <= 20 && visiblePhoneBar.y >= 0 && visiblePhoneBar.y + visiblePhoneBar.height <= 760,
-      `the edit bar is reachable by scrolling on a phone: ${JSON.stringify(visiblePhoneBar)}`);
+    const phoneBar = await bar.boundingBox();
+    assert(phoneBar.x + phoneBar.width >= 390 - 20 && phoneBar.x + phoneBar.width <= 390 && phoneBar.y + phoneBar.height >= 760 - 20 && phoneBar.y + phoneBar.height <= 760,
+      `the edit bar sits in the phone's bottom-right corner: ${JSON.stringify(phoneBar)}`);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const clear = await page.evaluate(() => {
+      const b = document.querySelector("#genel-edit").getBoundingClientRect();
+      return [...document.querySelectorAll("#genel-tiles .tile")].every((t) => { const r = t.getBoundingClientRect();
+        return !(b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top); });
+    });
+    assert(clear, "scrolled to the end, no tile sits under the edit bar");
     await page.evaluate(() => window.scrollTo(0,document.documentElement.scrollHeight));
     const phoneEnd = await bar.boundingBox(), phoneTiles = await page.locator("#genel-tiles").boundingBox();
     assert(phoneEnd.y >= phoneTiles.y + phoneTiles.height, "at the end of the page the bar does not cover the last row");

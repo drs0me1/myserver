@@ -11,6 +11,7 @@
   ],
   "notlar": ["Debian paketleri + Konsol sayfası", "port ağ kurulunca açılır"],
   "gunluk_kaynak": "journalctl -u wg-quick@*",
+  "durdur_notu": "Bütün ağlar kapanır, UDP portları ve yönlendirme kalkar; cihazlar bağlanamaz. Başlatınca önceden açık olan ağlar geri gelir.",
   "kaldir": {
     "neler": [
       ["shield", "Bütün ağlar kapanır, UDP portları ve kurallar kalkar."],

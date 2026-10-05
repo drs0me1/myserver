@@ -187,7 +187,7 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(items["wireguard"]["konsol"]["ad"], "WireGuard")
         self.assertEqual(items["wireguard"]["konsol"]["sayfa"]["rota"], "wireguard")
         self.assertEqual(items["wireguard"]["sayfa"], ["sayfa.js", "sayfa.css"])
-        self.assertFalse(items["wireguard"]["durdurulabilir"])
+        self.assertTrue(items["wireguard"]["durdurulabilir"])  # DD-229: the whole of WireGuard stops
         self.assertEqual(items["torrent"]["konsol"]["ad"], "qBittorrent")
         self.assertIn("torrent.test", items["torrent"]["konsol"]["neler"][1][1])
         self.assertTrue(items["torrent"]["durdurulabilir"])

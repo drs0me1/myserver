@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Rootful bridge publication validation and the project's independent forwarding guard.
 
-Netavark owns DNAT/SNAT. We own only one nft inet table at forward priority -10;
-an ACCEPT in Netavark/Tailscale's filter chains cannot bypass its DROP. No foreign
+Netavark owns DNAT/SNAT. We own only one nft inet table with a forward and an input
+chain at priority -10; an ACCEPT in Netavark/Tailscale's filter chains cannot bypass
+its DROP. The input chain closes the host itself to containers (DD-229). No foreign
 table is flushed. The locked writers (master-firewall, the container worker and the
 package engine) install it; container units only check it before they start, including
 at boot, and retry until it is in place (DD-223).
@@ -412,11 +413,27 @@ def policy(env, definitions, run=None):
     table, prefix = _config(env)
     owner = {"family": "inet", "table": table}
     objects = [{"table": {"family": "inet", "name": table}},
-               {"chain": dict(owner, name="forward", type="filter", hook="forward", prio=-10, policy="accept")}]
+               {"chain": dict(owner, name="forward", type="filter", hook="forward", prio=-10, policy="accept")},
+               {"chain": dict(owner, name="input", type="filter", hook="input", prio=-10, policy="accept")}]
+    inputs = []
     def rule(*expr):
         objects.append({"rule": dict(owner, chain="forward", expr=list(expr))})
     meta = lambda key: {"meta": {"key": key}}
     ct = lambda key, **kw: {"ct": dict(key=key, **kw)}
+    # DD-229: a container opens nothing on the host itself (any host address: bridge gateway, WAN,
+    # Tailscale, WireGuard, loopback through route_localnet). Only replies to connections the host
+    # opened and DNS to its own bridge gateway (aardvark-dns) are let in. This is the project's own
+    # input guard; it holds even if the host INPUT chain is missing or another chain accepts first.
+    def input_rule(*expr):
+        inputs.append({"rule": dict(owner, chain="input", expr=list(expr))})
+    input_rule(_match(meta("iifname"), prefix + "*", "!="), {"return": None})
+    for state in ("established", "related"):
+        input_rule(_match(ct("direction"), "reply"), _match(ct("state"), state, "in"), {"return": None})
+    for protocol in ("udp", "tcp"):
+        input_rule(_match(meta("nfproto"), "ipv4"), _match(meta("l4proto"), protocol),
+                   _match({"payload": {"protocol": protocol, "field": "dport"}}, 53),
+                   _match({"fib": {"result": "type", "flags": ["daddr", "iif"]}}, "local"), {"return": None})
+    input_rule({"drop": None})
     # DD-181/DD-224: traffic that neither leaves nor enters a bridge (exit node, WireGuard) passes after one rule.
     rule(_match(meta("iifname"), prefix + "*", "!="), _match(meta("oifname"), prefix + "*", "!="), {"return": None})
     # Only replies to container-originated traffic bypass publication checks. Original-direction
@@ -494,7 +511,8 @@ def policy(env, definitions, run=None):
                 if row["address"] == tail:
                     publish(bridge, _iface(env["TAILSCALE_IF"]), tail, row)
     rule({"drop": None})
-    return objects
+    # nft lists chains before rules, and rules chain by chain; the health check compares in that order.
+    return objects + inputs
 
 
 def same_policy(expected, actual):

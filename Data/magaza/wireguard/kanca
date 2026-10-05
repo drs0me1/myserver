@@ -10,7 +10,7 @@
 [[ -z "${MODULES_DIR:-}" || ! -f "$MODULES_DIR/wireguard/wireguard.env" ]] || source "$MODULES_DIR/wireguard/wireguard.env"
 
 paket_gerekli() {
-    need_keys WG_CONF_DIR WG_NETWORKS_FILE WG_MODULES_LOAD_FILE SBIN_DIR UNIT_DIR MODULES_DIR
+    need_keys WG_CONF_DIR WG_NETWORKS_FILE WG_STOPPED_FILE WG_MODULES_LOAD_FILE SBIN_DIR UNIT_DIR MODULES_DIR
 }
 
 wg_layer() {
@@ -51,6 +51,43 @@ wg_networks_down() {
     )
 }
 
+# DD-229: bütün WireGuard'ı durdurur. O an açık (enabled) ağlar listelenir ki Başlat yalnız onları açsın
+# (Konsol'dan tek tek kapatılmış ağ kapalı kalır). Liste önce yazılır: master-wg bu sırada ağ açamaz.
+# Zaten durdurulmuşsa eski liste korunur.
+wg_networks_stop() {
+    local iface tmp
+    if [[ ! -e "$WG_STOPPED_FILE" ]]; then
+        tmp="$(mktemp "$(dirname -- "$WG_STOPPED_FILE")/.durdur.XXXXXX")"
+        if [[ -f "$WG_NETWORKS_FILE" ]]; then
+            while IFS=$'\t' read -r iface _; do
+                [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+                ! systemctl is-enabled --quiet "wg-quick@$iface.service" 2>/dev/null || printf '%s\n' "$iface"
+            done <"$WG_NETWORKS_FILE" >"$tmp"
+        fi
+        chmod 0600 "$tmp"
+        mv -f -- "$tmp" "$WG_STOPPED_FILE"
+    fi
+    wg_networks_down
+}
+
+# Durdurmadan önce açık olan ağlar yeniden açılır; liste yoksa kayıttaki bütün ağlar.
+wg_networks_resume() {
+    local iface
+    if [[ -f "$WG_STOPPED_FILE" ]]; then
+        while IFS= read -r iface; do
+            [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+            # Durmuşken silinen ağ atlanır.
+            if [[ ! -f "$WG_NETWORKS_FILE" ]] || ! awk -F'\t' -v i="$iface" '$1 == i {f = 1} END {exit !f}' "$WG_NETWORKS_FILE"; then
+                continue
+            fi
+            systemctl enable --now --quiet "wg-quick@$iface.service" >/dev/null 2>&1 || warn "$iface açılamadı"
+        done <"$WG_STOPPED_FILE"
+        rm -f -- "$WG_STOPPED_FILE"
+    else
+        wg_networks_up >/dev/null
+    fi
+}
+
 # --veri: ağ anahtarları, cihaz profilleri ve ağ kaydı. Klasör kalır.
 wg_drop_data() {
     [[ -d "$WG_CONF_DIR" && ! -L "$WG_CONF_DIR" ]] || return 0
@@ -87,10 +124,43 @@ paket_kur() {
 paket_kaldir() {
     paket_gerekli
     wg_networks_down
-    rm -f -- "$WG_MODULES_LOAD_FILE"
+    rm -f -- "$WG_MODULES_LOAD_FILE" "$WG_STOPPED_FILE"
     # Kayıt önce silinir: güvenlik duvarı WireGuard portlarını ve kurallarını kaldırır.
     registry_set "$PAKET_ID" ""
     firewall_apply || warn "güvenlik duvarı yeniden uygulanamadı"
+}
+
+# DD-229: Durdur bütün ağları kapatır; kayıt "durduruldu" olunca güvenlik duvarı WireGuard'ın UDP
+# portlarını, yönlendirmesini ve NAT'ını kaldırır. Açılışta da kapalı kalır (birimler devre dışı).
+paket_durdur() {
+    paket_gerekli
+    wg_networks_stop
+    registry_set "$PAKET_ID" durduruldu
+    firewall_apply || warn "güvenlik duvarı yeniden uygulanamadı"
+}
+
+# Başlat: önce güvenlik duvarı (portlar ve yönlendirme), sonra durdurmadan önce açık olan ağlar.
+paket_baslat() {
+    paket_gerekli
+    wg_layer || fail_step "$FAIL"
+    registry_set "$PAKET_ID" calisiyor
+    firewall_apply || {
+        registry_set "$PAKET_ID" durduruldu
+        firewall_apply || true
+        fail_step "güvenlik duvarı uygulanamadı"
+    }
+    wg_networks_resume
+}
+
+paket_yeniden_baslat() {
+    local iface
+    paket_gerekli
+    [[ -f "$WG_NETWORKS_FILE" ]] || return 0
+    while IFS=$'\t' read -r iface _; do
+        [[ "$iface" =~ ^wg[0-9]$ ]] || continue
+        systemctl is-enabled --quiet "wg-quick@$iface.service" 2>/dev/null || continue
+        systemctl restart "wg-quick@$iface.service" >/dev/null 2>&1 || warn "$iface yeniden başlatılamadı"
+    done <"$WG_NETWORKS_FILE"
 }
 
 paket_veri_sil() {
@@ -104,7 +174,8 @@ paket_uygula() { # KAYIT_DURUMU
     paket_ekler_koy || fail_step "$FAIL"
     paket_sayfa_koy || fail_step "$FAIL"
     wg_layer || fail_step "$FAIL"
-    wg_networks_up >/dev/null
+    # DD-229: durdurulmuş WireGuard kurulumun yeniden çalışmasıyla açılmaz.
+    [[ "${1:-}" == durduruldu ]] || wg_networks_up >/dev/null
 }
 
 # DD-198: güvenlik duvarına bildirim. Kayıttaki her ağ bir "vpn" satırıdır: WAN UDP ucu,

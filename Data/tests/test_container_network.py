@@ -236,7 +236,7 @@ class NetworkTests(unittest.TestCase):
         self.assertIn('"100.64.0.1"', text)
         self.assertNotIn('"ip6"', text, "IPv6 ingress is denied, not implicitly opened")
         self.assertNotIn('18080', text, "local publications get no forward permit")
-        self.assertEqual(policy[-1]["rule"]["expr"][-1], {"drop": None})
+        self.assertEqual(self.egress_rules(policy)[-1][-1], {"drop": None})
 
     def package(self, quadlet, state="calisiyor", network_name="torrent"):
         """DD-217: a registered package on its own bridge with a placed Quadlet (None: stopped, no unit)."""
@@ -267,7 +267,7 @@ class NetworkTests(unittest.TestCase):
         self.assertNotIn("61006", text, "the loopback interface needs no forward path")
         self.assertNotIn("198.51.100.9", text, "an address that is not the server's WAN or Tailscale one is not let through")
         self.assertNotIn("tailscale0", text)
-        self.assertEqual(policy[-1]["rule"]["expr"][-1], {"drop": None})
+        self.assertEqual(self.egress_rules(policy)[-1][-1], {"drop": None})
 
     def test_stopped_unregistered_or_mismatched_package_publishes_nothing(self):
         self.package(None)
@@ -281,7 +281,7 @@ class NetworkTests(unittest.TestCase):
         self.package("[Container]\nNetwork=host\nPublishPort=192.0.2.1:61008:61008/tcp\n")
         policy = network.policy(self.env, [], run=self.runner)
         self.assertEqual(self.rules_for(policy, bridge), [])
-        self.assertEqual(policy[-1]["rule"]["expr"][-1], {"drop": None})
+        self.assertEqual(self.egress_rules(policy)[-1][-1], {"drop": None})
 
     def test_policy_identity_and_corrupt_definitions_fail_closed(self):
         with self.assertRaises(network.NetworkError):
@@ -291,7 +291,38 @@ class NetworkTests(unittest.TestCase):
             network.policy(self.env, network.read_definitions(self.env), run=self.runner)
 
     def egress_rules(self, objects):
-        return [o["rule"]["expr"] for o in objects if "rule" in o]
+        return [o["rule"]["expr"] for o in objects if "rule" in o and o["rule"]["chain"] == "forward"]
+
+    def input_rules(self, objects):
+        return [o["rule"]["expr"] for o in objects if "rule" in o and o["rule"]["chain"] == "input"]
+
+    def test_containers_open_nothing_on_the_host_but_gateway_dns(self):
+        # DD-229: the input chain at -10 ends in a drop for anything a bridge opens to the host itself;
+        # only replies to host-opened connections and DNS to the address of the incoming bridge pass.
+        self.package("[Container]\nNetwork=torrent\nPublishPort=192.0.2.1:61008:61008/tcp\n")
+        rows = [{"name": "example", "network": "bridge", "ports": [port("public", 18082, public_ack=True)]}]
+        policy = network.policy(self.env, rows, run=self.runner)
+        chains = [o["chain"] for o in policy if "chain" in o]
+        self.assertEqual([(c["name"], c["hook"], c["prio"], c["policy"]) for c in chains],
+                         [("forward", "forward", -10, "accept"), ("input", "input", -10, "accept")])
+        # nft lists chains first, then the rules chain by chain: the input rules come last.
+        kinds = ["table" if "table" in o else "chain" if "chain" in o else o["rule"]["chain"] for o in policy]
+        self.assertEqual(kinds, sorted(kinds, key=["table", "chain", "forward", "input"].index))
+        m = lambda key, right, op="==": {"match": {"op": op, "left": {"meta": {"key": key}}, "right": right}}
+        ct = lambda key, right, op="==": {"match": {"op": op, "left": {"ct": {"key": key}}, "right": right}}
+        fib = {"match": {"op": "==", "left": {"fib": {"result": "type", "flags": ["daddr", "iif"]}}, "right": "local"}}
+        dport = lambda proto: {"match": {"op": "==", "left": {"payload": {"protocol": proto, "field": "dport"}}, "right": 53}}
+        self.assertEqual(self.input_rules(policy), [
+            [m("iifname", "ksl*", "!="), {"return": None}],
+            [ct("direction", "reply"), ct("state", "established", "in"), {"return": None}],
+            [ct("direction", "reply"), ct("state", "related", "in"), {"return": None}],
+            [m("nfproto", "ipv4"), m("l4proto", "udp"), dport("udp"), fib, {"return": None}],
+            [m("nfproto", "ipv4"), m("l4proto", "tcp"), dport("tcp"), fib, {"return": None}],
+            [{"drop": None}]])
+        # Publications never open the host side: no port but DNS appears in the input chain.
+        text = json.dumps(self.input_rules(policy))
+        for value in ("18082", "61008", "192.0.2.1", "100.64.0.1", "accept"):
+            self.assertNotIn(value, text)
 
     def test_container_egress_rules_come_after_the_hot_path_and_replies(self):
         # DD-224: exit-node/WireGuard traffic leaves after one rule; replies to publications pass

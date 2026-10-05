@@ -210,6 +210,12 @@ net_teardown() {
 # Sıra: dosyalar ve kayıt → güvenlik duvarı (port açılır, yönlendirme ve NAT gelir)
 # → wg-quick@wgN. Bir adım düşerse ağın bütün
 # izleri silinir ve güvenlik duvarı eski haline döner.
+# DD-229: WireGuard bütünüyle durdurulmuşken ağ açılmaz ve eklenmez; önce Başlat.
+not_stopped() {
+    [[ -z "${WG_STOPPED_FILE:-}" || ! -e "$WG_STOPPED_FILE" ]] ||
+        die "WireGuard durduruldu; önce Ana Menü ya da App Store'dan başlatın"
+}
+
 cmd_net_add() {
     local port="$1" dns label="$3" id="" iface="" p s4 n4 s6 n6 base4 base6 priv tmp
     [[ "$port" =~ ^[1-9][0-9]{3,4}$ && "$port" -ge 1024 && "$port" -le 65535 ]] ||
@@ -221,6 +227,7 @@ cmd_net_add() {
     [[ -n "$NETWORKS_FILE" ]] || die "wireguard.env'de WG_NETWORKS_FILE yok; önce güncel kurulumu çalıştırın"
 
     take_lock
+    not_stopped
     for p in "ssh:${SSH_PUBLIC_PORT:-}" "tailscale:${TAILSCALE_UDP_PORT:-}" \
         "dns:${DNS_PORT:-53}" "http:${CADDY_HTTP_PORT:-80}" $(declared_ports) \
         $([[ ! -f "$NETWORKS_FILE" ]] || awk -F'\t' '{print $1 ":" $2}' "$NETWORKS_FILE"); do
@@ -540,6 +547,7 @@ cmd_net() {
     local want="$1" unit="wg-quick@${WG_INTERFACE}.service"
     [[ "$want" == ac || "$want" == kapat ]] || die "kullanım: master-wg [--if wgN] net ac|kapat"
     [[ -f "$WG_CONF_FILE" ]] || die "$WG_CONF_FILE yok; önce kurulumu çalıştırın"
+    not_stopped
     if [[ "$want" == kapat ]]; then
         systemctl disable --now "$unit" >/dev/null 2>&1 || die "$WG_INTERFACE kapatılamadı"
         [[ "$(unit_active "$unit")" == 0 ]] || die "$WG_INTERFACE hâlâ çalışıyor"

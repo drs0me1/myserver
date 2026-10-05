@@ -13,6 +13,44 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-229: Overview controls, WireGuard as a whole, and a host closed to containers (v2-207)
+
+- **Request (user, 2026-10-05):** "düzenle seçeneğini ekranın sağ en altına alalım", "wireguard
+  kartının altına da durdur başlat ekleyelim. durdurma tüm wireguard fonksiyonunu durdurabilelim",
+  "durdur/başlat yazı olarak yazsın, ayarlar için dişli çark simgesi, log için de konsol-terminal
+  simgesi", "dosyalar sayfasındaki kartlar görünümünü kaldıralım. liste görünümü default olsun",
+  "podman ağ yönetimini denetleyelim … kontainer içerisinden sunucu içerisine erişimi tamamen
+  kapatalım."
+- **Overview:** "Düzenle" is fixed to the screen's bottom-right corner (supersedes DD-213's
+  bottom-left sticky pill); the overview keeps 72 px below the last row so it never covers a tile
+  once scrolled. The tile actions read "Durdur"/"Başlat" as text, settings is a gear, logs a
+  terminal icon. Files has one list view; the card switch and its browser-storage key are gone.
+- **WireGuard stops as a whole:** `PAKET_DURDURULABILIR=1`. `paket_durdur` first writes the list
+  of enabled `wg-quick@wgN` units to `WG_STOPPED_FILE` (kept on a repeated stop), disables them,
+  marks the package `durduruldu` and reapplies the firewall, which reads only `calisiyor`
+  packages: WireGuard's UDP ports, forwarding and NAT disappear. Disabled units keep it down at
+  boot; `paket_uygula` leaves a stopped WireGuard down on installer re-runs; `master-wg` refuses
+  `net ac` and `net-add` while the file exists. `paket_baslat` applies the firewall first, then
+  reopens only the recorded networks (a network closed on its own stays closed; one deleted while
+  stopped is skipped) and removes the file. Removal deletes the file too.
+- **Audit of container networking (what was already in place):** generic containers cannot use
+  host networking or the default `podman` network; bridges are IPv4; the forward guard (DD-224)
+  blocks the tailnet, VPN ranges, private/CGNAT/link-local/loopback destinations and IPv6, and
+  lets in only the declared publications; MASTER-INPUT accepts only DNS on the bridge's own
+  address from container bridges and drops the rest.
+- **Gap and fix:** traffic a container opens to the host's own addresses takes the input hook,
+  which only MASTER-INPUT guarded. Chains before it in INPUT (Tailscale's `ts-input` accepts its
+  UDP port from any interface) and any moment MASTER-INPUT is missing (boot order, a failed
+  firewall run) left host services reachable from a container. The project's nft table now has
+  an `input` chain at priority -10: anything from a `ksl*` bridge is dropped except replies to
+  host-opened connections (`ct direction reply`, established/related; host → published port
+  still works) and TCP/UDP 53 to an address of the incoming bridge itself (`fib daddr . iif type
+  local`, so 127.0.0.1 via `route_localnet` does not count). Aardvark DNS is the one deliberate
+  exception: without it containers cannot resolve names. The same health check (exact rule
+  comparison) covers the new chain, and container units still start only behind it (DD-223).
+  The namespace test shows the old guard let a container reach a host listener on the bridge
+  gateway; the new one refuses every host address.
+
 ### DD-228: Install from the public repository with one curl line on the server (v2-206)
 
 - **Request (user, 2026-10-05):** "repoyu public yapalım. kurulumun ssh bağlantısı yapması
