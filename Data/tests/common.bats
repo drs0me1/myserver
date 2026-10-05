@@ -1929,6 +1929,27 @@ mm() {
     [ ! -e "$TMP/wg/.durduruldu" ]
     [ "$(cat "$TMP/state")" = calisiyor ]
     [ "$(tail -n 1 "$TMP/log")" = "fw calisiyor" ]
+    # The installer's final check (stage 7) skips the interfaces of a stopped WireGuard and of a
+    # network closed on its own; an open network is still checked (found live on nrm, v2-208).
+    mkdir -p "$TMP/sbin"; printf '#!/bin/bash\nexit 0\n' >"$TMP/sbin/master-wg"; chmod +x "$TMP/sbin/master-wg"; touch "$TMP/mod"
+    local check='set -Eeuo pipefail
+        MODULES_DIR=""
+        WG_CONF_DIR="$T/wg" WG_NETWORKS_FILE="$T/wg/networks" WG_STOPPED_FILE="$T/wg/.durduruldu"
+        WG_MODULES_LOAD_FILE="$T/mod" SBIN_DIR="$T/sbin" FILES_PANEL_PORT=""
+        systemctl() { [[ "$1" == is-enabled && -e "$T/en/$3" ]]; }
+        wg() { echo 1; }
+        source "$V2_ROOT/magaza/wireguard/kanca"
+        paket_denetle'
+    printf 'wg0\n' >"$TMP/wg/.durduruldu"
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$check"
+    [ "$status" -eq 0 ]
+    rm -f "$TMP/wg/.durduruldu" "$TMP"/en/*
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$check"
+    [ "$status" -eq 0 ]
+    touch "$TMP/en/wg-quick@wg0.service"
+    run env T="$TMP" V2_ROOT="$V2_ROOT" bash -c "$check"
+    [ "$status" -ne 0 ]
+    case "$output" in *"wg0 dinleme portu kayıttaki 61001 değil"*) ;; *) false ;; esac
     # While stopped, master-wg refuses to open or add a network.
     grep -q '^not_stopped() {$' "$V2_ROOT/magaza/wireguard/master-wg"
     [ "$(grep -c '^    not_stopped$' "$V2_ROOT/magaza/wireguard/master-wg")" -eq 2 ]

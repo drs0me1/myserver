@@ -56,7 +56,9 @@ with its status and the file that holds it.
   boot; `paket_uygula` leaves a stopped WireGuard down on installer re-runs; `master-wg` refuses
   `net ac` and `net-add` while the file exists. `paket_baslat` applies the firewall first, then
   reopens only the recorded networks (a network closed on its own stays closed; one deleted while
-  stopped is skipped) and removes the file. Removal deletes the file too.
+  stopped is skipped) and removes the file. Removal deletes the file too. The installer's final
+  check (`paket_denetle`) skips the interfaces of a stopped WireGuard and of a network closed on
+  its own (v2-209; v2-207/208 stopped an installer run on a stopped WireGuard).
 - **Audit of container networking (what was already in place):** generic containers cannot use
   host networking or the default `podman` network; bridges are IPv4; the forward guard (DD-224)
   blocks the tailnet, VPN ranges, private/CGNAT/link-local/loopback destinations and IPv6, and

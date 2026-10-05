@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Installer accepts a stopped WireGuard (v2-209)
+
+- An installer run with WireGuard stopped from Ana Menü/App Store ended with "wg0 dinleme portu
+  kayıttaki 61001 değil": the final check expected every network up. It now skips the interfaces
+  of a stopped WireGuard and of a network closed on its own; open networks are still checked
+  (found on the test server, DD-229).
+
 ### 2026-10-05 — Home widgets aligned to the tiles, "Sunucu" widget, uniform Store cards (v2-208)
 
 - Application tiles say "Dur"/"Başla" in a larger type.

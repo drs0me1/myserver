@@ -217,9 +217,13 @@ paket_denetle() {
     "${SBIN_DIR:?}/master-wg" version >/dev/null 2>&1 || { echo "master-wg çalışmıyor ($SBIN_DIR/master-wg)" >&2; return 1; }
     [[ -f "$WG_MODULES_LOAD_FILE" ]] || { echo "çekirdek modülü dosyası yok: $WG_MODULES_LOAD_FILE" >&2; return 1; }
     [[ -f "$WG_NETWORKS_FILE" ]] || return 0
+    # DD-229: durdurulmuş WireGuard'ın ağları kapalıdır; arayüz denetlenmez. Konsol'dan tek başına
+    # kapatılmış (birimi devre dışı) ağ da atlanır: kapalı olması beklenen durumdur.
+    [[ -z "${WG_STOPPED_FILE:-}" || ! -e "$WG_STOPPED_FILE" ]] || return 0
     while IFS=$'\t' read -r iface port policy s4 _; do
         [[ "$iface" =~ ^wg[0-9]$ ]] || continue
         [[ "$policy" == inet ]] || { echo "kayıtta beklenmeyen erişim sütunu: $iface ($policy)" >&2; return 1; }
+        systemctl is-enabled --quiet "wg-quick@$iface.service" 2>/dev/null || continue
         [[ "$(wg show "$iface" listen-port 2>/dev/null || true)" == "$port" ]] ||
             { echo "$iface dinleme portu kayıttaki $port değil" >&2; return 1; }
         ip -4 -o addr show dev "$iface" 2>/dev/null | grep -q " ${s4}/" ||
