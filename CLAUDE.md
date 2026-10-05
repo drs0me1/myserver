@@ -4,10 +4,11 @@ Working guide for any AI assistant in this repository. Read this first.
 
 ## Project Overview
 
-Active code lives under `Data/`; the repository root holds only what the
-operator double-clicks — the current portable installer (`<V2_VERSION>.command`)
-and `wireguard.command` — plus the Git-ignored `kurulum/` (installer inputs and downloaded WireGuard device profiles/QR codes),
-`versiyon/` (frozen copies of verified working versions), this file and `README.md`. Bare paths in this file and in `Data/docs/` (`install.sh`,
+Active code lives under `Data/`; the repository root holds the server bootstrap
+`kur.sh` (run on the server: `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`,
+**DD-228**) and `wireguard.command`, plus the Git-ignored `kurulum/` (`wireguard.command`'s SSH host and downloaded
+WireGuard device profiles/QR codes), this file and `README.md`. The repository is public: never commit host
+addresses, real domains, credentials or personal paths. Bare paths in this file and in `Data/docs/` (`install.sh`,
 `config/defaults.env`, `tests/`, `CHANGELOG.md`, …) are relative to `Data/`.
 
 The installer turns a fresh Debian 13
@@ -45,8 +46,8 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
   until explicitly revoked).** Unless the user says otherwise, on `nrm`
   only: run the installer, `sudo`, mutating `systemctl`, firewall
   changes, wipes, and reboots without per-turn approval. Drive the installer
-  with a scratch test input file, never the operator's `kurulum/kurulum.env`:
-  empty domain, path and ports (defaults). The input file holds no accounts:
+  with `kur.sh` (or `install.sh` from a checkout) and a scratch domain on a first install.
+  The installer asks for no accounts:
   the Konsol account is the operator's, created by them in Settings over
   Tailscale (**DD-205**; the tailnet asks for no sign-in, the public name needs
   the account) — never create or keep one on their behalf; scripted checks use
@@ -65,10 +66,9 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
   superseded by the user's latest test-host instruction. Other hosts are not covered.
   Non-default config values still need the user.
 - **Never open, print or copy `kurulum/kurulum.env`** — it holds the
-  operator's private installer inputs (SSH host and local domain), not service
-  passwords. Downloaded device profiles contain private keys and must also stay
+  operator's SSH host for `wireguard.command`, not service passwords. Downloaded device profiles contain private keys and must also stay
   private. There is no Tailscale auth key any more
-  (**DD-147**): the node joins through the login link. Running the launcher
+  (**DD-147**): the node joins through the login link. Running `wireguard.command`
   with the operator's folder is allowed only when the user asks for it in chat.
 - **Relay only the Tailscale login URL** (`https://login.tailscale.com/a/...`)
   and wait; it expires if left unused.
@@ -91,14 +91,9 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
 - Smallest possible change. No opportunistic refactors.
 - Show the diff before committing. Commit only when the user asks (unless
   a user rule says otherwise for that turn).
-- Keep version history in Git. For every `V2_VERSION` change, rebuild the current
-  portable installer with `Data/dev/export-installer.sh` without `--desktop`.
-  Keep matching `<V2_VERSION>.command` files in the repository root and `Data/app/`,
-  verify them against the final source, and include them in the version's commit
-  when the user requests a commit. Keep only the current installer in these two
-  locations; older versions remain in Git. Do not create Desktop copies or separate
-  version snapshots. Copy outside the repository only on an explicit user request.
-  Leave existing Desktop copies and frozen versions untouched.
+- Keep version history in Git. `kur.sh` installs whatever `main` holds (**DD-228**):
+  every push to `main` reaches the next install, so `main` must stay installable.
+  There is no exported installer to rebuild.
 - Bump `V2_VERSION` in `install.sh` on every behavioural change to the
   installer tree. Record user-facing changes under `[Unreleased]` in
   `CHANGELOG.md` and add a `DD-*` entry when rationale is non-obvious.
@@ -113,10 +108,9 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
 
 | Path | Purpose |
 |------|---------|
-| `<V2_VERSION>.command` (root) | Current portable installer, copied from `Data/app/` by the exporter |
-| `kurulum/kurulum.env` (root) | Installer inputs, Git-ignored, mode 600; template `Data/config/kurulum.env.example` |
+| `kur.sh` (root) | Server bootstrap (**DD-228**): downloads the repository archive (`main` or `KUR_REF`), places the runtime tree in `/root/debian-server-installer` atomically and starts `install.sh` on the terminal |
+| `kurulum/kurulum.env` (root) | `wireguard.command`'s `SSH_HOST`, Git-ignored, mode 600; template `Data/config/kurulum.env.example` |
 | `wireguard.command` (root) | WireGuard peer menu over SSH (**DD-124**, **DD-143**): pick a network, list/add/remove/QR, 7) DNS change, 8) regenerate the network after typing `onayla`. No server backup/restore; only explicitly downloaded device profiles and QR codes are kept on the Mac |
-| `versiyon/` (root) | Copies of verified working versions on the user's request: `<V2_VERSION>/` from a commit via `git archive` (no `Data/app`, no `kurulum/`), each with a Turkish `OKUBENI.txt`; index in `versiyon/OKUBENI.txt`. Frozen: never edit a saved copy |
 | `kurulum/wireguard/` (root) | Only what `wireguard.command` downloads on request: device profiles and their QR pictures (**DD-132**), mode 600. Since **DD-143** the installer never reads this folder and nothing is sent to the server |
 | `Data/magaza/wireguard/master-wg` | Server-side peer tool; the WireGuard package installs it to `/usr/local/sbin` and removes it with the package (**DD-196**) |
 | `Data/scripts/master-modul`, `Data/magaza/<id>/` | Store engine (root; `liste`/`kur`/`baslat`/`durdur`/`kaldir`/`gunluk`/`uygula`/`hesap`) that knows no application, and the packages it runs: `paket.env` manifest, `kanca` hooks, slot files, the package's own settings file (`<id>.env`: `wireguard.env` with every `WG_*` key, `torrent.env` with the interface port and profile; the base carries none, **DD-201/203**), the folders it writes into (`PAKET_KLASORLER`, optional `klasorler.py` report) and the paths the root backend may write for it (`PAKET_ARKAUC_YOLLAR`, **DD-203**; the installer creates them before the backend starts, **DD-207**), an optional traffic module for the overview's network card (`PAKET_TRAFIK`, `trafik.py`: qBittorrent's own all-time statistics file, WireGuard's interface counters, **DD-206**), a container application's quadlet and digest-pinned image (`PAKET_KONTEYNER`, `PAKET_IMAJ`; the engine places the quadlet into `KONTEYNER_BIRIM_DIR`, **DD-209**) and its own bridge network (`PAKET_KONTEYNER_AG`; the engine creates and removes it, the container guard passes only the quadlet's WAN/Tailscale publications, **DD-217**) and the tag Konsol checks for newer builds (`PAKET_IMAJ_KANAL`; updates only on the operator's confirmation, **DD-214**), an install/settings form (`konsol.json` `form` + `PAKET_KUR_AYAR` worker; the engine requires the private seed `RUNTIME_DIR/modul-<id>.kur`, **DD-210**) and the Konsol files `konsol.json` (App Store texts, page declaration), `sayfa.js`/`sayfa.css` (the page, placed under `CONSOLE_WEB_DIR/uygulama/<id>/` while installed) and `api.py` (root-backend module behind `/api/uygulama/<id>/*`; qBittorrent's runs its settings worker `ayar.py` through `ctx.worker`, **DD-202**), rendered by the installer to `/usr/local/share/master-stack/moduller/` (**DD-197**, **DD-200**); registry `/etc/master-stack/moduller`. Folder accounts are managed by `master_shares.py` (**DD-158**) |
@@ -133,8 +127,6 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
 | `Data/scripts/` | Firewall, refresh-tailnet, GRO, wait |
 | `Data/systemd/` | Unit/timer templates |
 | `Data/tests/` | Bats, Python unittest, Playwright and isolated Linux suites; see `Data/tests/README.md` |
-| `Data/dev/export-installer.sh` | Portable `.command` exporter |
-| `Data/app/` | The current exported `<V2_VERSION>.command` only; the exporter removes older ones (**DD-154**; history is in Git) |
 | `Data/docs/contract.md` | What the installer does / refuses |
 | `Data/docs/architecture.md` | Layout and data flow |
 | `Data/docs/design-decisions.md` | `DD-*` rationale |
@@ -176,8 +168,8 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
   local pinned-IP trust/hostname check, not proof of public reachability.
   See `Data/docs/folder-shares.md` for limits and the scoped expiry/recovery timer.
 
-- Root-only, single-host. Inputs come from `kurulum/kurulum.env`; the
-  installer still needs a TTY and one confirmation. No unattended mode.
+- Root-only, single-host. The only input is the local domain, asked on the
+  server terminal (**DD-228**); the installer needs a TTY and one confirmation. No unattended mode.
 - Debian 13 (trixie), Ubuntu 24.04 (noble) or Ubuntu 26.04 (resolute)
   only (**DD-102**). Noble live-verified 2026-08-29; resolute
   live-verified 2026-08-30, including re-run, service restarts and reboot.

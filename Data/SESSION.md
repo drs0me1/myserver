@@ -4,6 +4,19 @@ Cross-session continuity for this repository.
 
 ## Current Task
 
+**2026-10-05 — Public repository and curl install, v2-206 (DD-228):**
+- The repository moved to the public `drs0me1/myserver` as a single snapshot of v2-205. `versiyon/`
+  was left out, and host addresses, domains and local paths in the docs were replaced with
+  documentation examples. The private `drs0me1/debian-server-installer` keeps the full history.
+- Done: root `kur.sh` (curl bootstrap). Stage 0 asks the domain on a first install only (no default; `DEFAULT_LOCAL_DOMAIN` removed) and always runs full-upgrade.
+  Removed `read_input_file`, `INPUT_DIR`/`INPUT_FILE`, the `.command` launcher, the exporter and
+  `Data/app/`. The kurulum.env template keeps only `SSH_HOST`. Tests and docs updated.
+- Verification (cloud session, Linux): bats 182/183, the remaining failure ("wg panel needs no
+  password …") fails identically on unchanged v2-205 in this container. Python 596 OK, shellcheck
+  unchanged, `kur.sh` placement exercised under `script(1)` with a stub installer.
+- Pending: a live `curl … | sudo bash` run on a real server (the cloud session has no SSH access),
+  and Mac-only checks (Bash 3.2 `wireguard.command`, browser suites).
+
 **2026-10-05 — Containers that write server folders run as the Files account, v2-205 (DD-227; committed with this entry):**
 - Measured on nrm first: a generic Konsol container ran as its image's user (alpine: root, 11 effective capabilities).
   Rootful Podman without user namespaces made it host root over every writable `/srv` bind.

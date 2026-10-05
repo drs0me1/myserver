@@ -103,7 +103,7 @@ Two files, two lifetimes, two owners.
 |---|---|---|
 | **Path** | `/etc/master-stack/config.env` | `/etc/master-stack/state.env` |
 | **Contains** | Effective local domain and timezone | Detected facts plus runtime constants: WAN interface/addresses, `TAILSCALE_IPV4/6`, install version, paths/ports, the firewall's `VPN_BLOCK_DEST4/6`; no package setting (WireGuard's live in its package, **DD-201**) |
-| **Source** | `config/defaults.env` + the installer input file `kurulum/kurulum.env` (**DD-119**) | installer / `refresh-tailnet-config` at run time |
+| **Source** | `config/defaults.env` + the domain answered in stage 0 (**DD-228**) | installer / `refresh-tailnet-config` at run time |
 | **Written by** | The installer, once per run | The installer, `refresh-tailnet-config` when an address changes, and `master_settings.py` (only `LOCAL_DOMAIN`) on a confirmed domain change |
 | **Lifetime** | Persistent; each run resolves defaults/input and any confirmed panel domain, then rewrites it | Regenerated from current constants and detected facts |
 | **Hand-editable** | No — initial domain comes from installer input; later domain changes use Settings | No — it will be overwritten |
@@ -126,10 +126,9 @@ reality.
 
 ```
 .
-├── <V2_VERSION>.command               current portable installer (double-click; copied by the exporter)
+├── kur.sh                             server bootstrap: curl … | sudo bash downloads the repo and starts install.sh (DD-228)
 ├── wireguard.command                  WireGuard peer menu (double-click; calls master-wg over SSH)
-├── kurulum/                           installer inputs: kurulum.env; wireguard/ (only profiles + QR .png that wireguard.command was asked to download; DD-143) (Git-ignored)
-├── versiyon/                          frozen copies of verified working versions (<V2_VERSION>/ + OKUBENI.txt; no kurulum/, no Data/app)
+├── kurulum/                           wireguard.command input: kurulum.env (SSH_HOST); wireguard/ (only profiles + QR .png that wireguard.command was asked to download; DD-143) (Git-ignored)
 ├── README.md, CLAUDE.md               entry points
 ├── .cursor/rules/master-stack.mdc     repository rules (not shipped to host)
 └── Data/
@@ -143,8 +142,6 @@ reality.
     ├── panel/                         Konsol root backend (master-panel; loads package API modules), settings and share workers, WebDAV service
     ├── files-panel/                   unprivileged file/archive backend (Python), API only
     ├── console/                       Konsol pages, styles and scripts (one origin, no external loads)
-    ├── app/<V2_VERSION>.command       the current portable install app (older ones in Git)
-    ├── dev/export-installer.sh        build the portable install app (+ .command wrapper)
     ├── docs/                          contract, architecture, design decisions, feature notes; archive/
     ├── tests/                         Bats, Python, browser and Linux suites (not shipped)
     ├── CHANGELOG.md, SESSION.md       change log and working notes (not shipped)
@@ -218,7 +215,7 @@ Update stale summaries instead of treating old wording as a new requirement.
 | `scripts/refresh-tailnet-config` | Detect Tailscale address changes, update state and restart Caddy; bounded failed-Caddy recovery, independent firewall check/reapply and reopening failed WireGuard networks once the firewall check passes (DD-87/94/180) | General module health, file drift, disk space or stack-wide reconciliation |
 | `scripts/wait-tailnet-addr` | Caddy `ExecStartPre`: wait until `tailscale0` carries the expected IPv4; fail fast on a stale one | Caddy configuration |
 | `systemd/` | Ordering, coupling, restart policy and schedules of units, timers and drop-ins | The contents of the scripts they start |
-| `dev/export-installer.sh` | Write `app/<V2_VERSION>.command` and replace the repository-root copy of the current version | Host runtime |
+| `../kur.sh` | Download the repository archive, place the runtime tree atomically and start `install.sh` on the terminal | Anything the installer does |
 | `tests/` | Assert the contract, once per fact | Implementation details of the scripts |
 
 ### 3.3 Placeholder convention
@@ -430,8 +427,8 @@ none of these questions for the installer.
 
 | Stage | Work | Owns |
 |---|---|---|
-| 0 | Gates (root, tty, supported OS, nft `iptables`, ufw inactive, lock, inhibit); detect release change; read/delete input, reject pending Settings transaction, resolve confirmed domain, one confirmation; write `config.env`; full-upgrade question on re-run | operator input |
-| 1 | Suspend third-party restart managers (**DD-103**); `apt update`; optional `full-upgrade`; base packages — only what the base uses (**DD-153**: no gnupg, gawk or apache2-utils); `podman netavark aardvark-dns` without recommends and a `podman info` check (**DD-208**); timezone; unattended-upgrade policy and its 04:00 window (**DD-113**, **DD-184**) | `apt` |
+| 0 | Gates (root, tty, supported OS, nft `iptables`, ufw inactive, lock, inhibit); detect release change; reject pending Settings transaction, keep the confirmed or previous domain, ask it only on a first install (no default), one confirmation; write `config.env` | operator input |
+| 1 | Suspend third-party restart managers (**DD-103**); `apt update`; `full-upgrade` on every run (**DD-228**); base packages — only what the base uses (**DD-153**: no gnupg, gawk or apache2-utils); `podman netavark aardvark-dns` without recommends and a `podman info` check (**DD-208**); timezone; unattended-upgrade policy and its 04:00 window (**DD-113**, **DD-184**) | `apt` |
 | 2 | Tailscale: repository, package, sysctls, UDP GRO, login with 410 recovery, exit-node and SSH preferences | `tailscaled` |
 | 3 | Address detection → `state.env`; selective downloads ownership/mode repair (**DD-84**) | installer |
 | 4 | Install scripts and workers; render module files, units, timers and the firewall-first `wg-quick@` drop-in (**DD-180**); enable the settings guard timer | templates |
@@ -479,12 +476,12 @@ The Caddy cloudsmith repository line (`any-version`, distro-agnostic) is
 ## 8. Implementation status
 
 The `Data/` tree is executable: `install.sh` runs the seven stages on a
-Debian 13 or Ubuntu 24.04/26.04 LTS host. `dev/export-installer.sh` embeds a
-runtime-only tarball — only `install.sh`, `common.sh` and the runtime
+Debian 13 or Ubuntu 24.04/26.04 LTS host. The repository-root `kur.sh`, run on
+the server with `curl … | sudo bash`, downloads the public repository archive and
+copies only the runtime tree — `install.sh`, `common.sh` and the runtime
 directories (`config`, `templates`, `scripts`, `systemd`, `panel`,
-`files-panel`, `console`, `magaza`) — into `app/<V2_VERSION>.command`, copied
-to the repository root as the one installer there, which uploads and starts
-install over `ssh -t`.
+`files-panel`, `console`, `magaza`) — to `/root/debian-server-installer`, then
+starts `install.sh` on the terminal (**DD-228**).
 
 Static checks for this tree:
 

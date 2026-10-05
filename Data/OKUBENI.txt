@@ -1,22 +1,30 @@
-Master Stack — kullanım (yalnız macOS)
+Master Stack — kullanım
 
-Repo kökünde yalnız çift tıklanan dosyalar durur:
-  <sürüm>.command            güncel kurulum (2026.08.06-v2-153.command)
-  wireguard.command          WireGuard menüsü: ağ seç, listele, ekle, çıkar, QR, DNS, ağı yeniden üret (kurulumdan sonra)
-  kurulum/kurulum.env        kurulum girdileri: sunucu ve alan adı (git dışı)
-  kurulum/wireguard/         yalnız istediğinizde inen cihaz profilleri (.conf) ve QR resimleri (.png); kurulum buraya bakmaz (git dışı)
+Kurulum sunucuda tek satırla başlar (v2-206, DD-228). Sunucuya kendiniz SSH ile bağlanın ve:
+  curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash
+  (curl ya da sudo yoksa root olarak önce: apt install -y curl sudo)
+  Kurulum önce sistemi günceller. İlk kurulumda yerel alan adını sorar (varsayılan yok;
+  ör. ev yazarsanız panel adresi panel.ev olur). Yeniden kurulumda mevcut adı kullanır, sormaz;
+  adı sonradan Konsol → Ayarlar'dan değiştirirsiniz. Sonra özeti gösterir ve E bekler.
+  Tailscale: kurulum sırasında giriş bağlantısı gösterilir; tarayıcıda açıp onaylayın (auth key yok).
+  Hesap sorulmaz: Konsol hesabı Ayarlar'da, klasör hesapları Dosyalar'da, qBittorrent hesabı
+  App Store kurulum formunda belirlenir.
+  Yeniden kurulum: aynı satırı yeniden çalıştırın.
+
+Repo kökünde:
+  kur.sh                     sunucuda çalışan kurulum başlatıcısı (yukarıdaki satır)
+  wireguard.command          Mac'te WireGuard menüsü: ağ seç, listele, ekle, çıkar, QR, DNS, ağı yeniden üret (kurulumdan sonra)
+  kurulum/kurulum.env        wireguard.command girdisi: yalnız SSH_HOST (git dışı)
+  kurulum/wireguard/         yalnız istediğinizde inen cihaz profilleri (.conf) ve QR resimleri (.png) (git dışı)
 Diğer her şey Data/ altındadır; elle çalıştırılmaz.
 
-Girdi dosyası (bir kez hazırlanır, her kurulumda aynısı kullanılır):
+wireguard.command girdisi (bir kez hazırlanır):
   mkdir -p kurulum && cp Data/config/kurulum.env.example kurulum/kurulum.env
   chmod 600 kurulum/kurulum.env
-  Dosyayı doldurun: SSH_HOST; alan adı boş kalırsa varsayılan kullanılır.
-  Tailscale: kurulum sırasında giriş bağlantısı gösterilir; tarayıcıda açıp onaylayın (auth key yok, v2-114).
-  Dosyada parola yoktur (v2-118): Konsol parola sormaz, klasör hesabını Dosyalar'da belirlersiniz,
-  qBittorrent'in ilk girişi kendi sayfasındaki İlk giriş bilgileri bölümünde görünür.
+  Dosyada SSH_HOST'u doldurun.
 
 WireGuard — kurulum ağ yaratmaz (v2-109) ve v2-117'den beri WireGuard'ın kendisini de kurmaz:
-  http://panel.ayc → App Store → WireGuard → Kur (paketler, çekirdek modülü, güvenlik duvarı);
+  http://panel.<alan adı> → App Store → WireGuard → Kur (paketler, çekirdek modülü, güvenlik duvarı);
   sonra WireGuard → Yapılandır (wg0, 10.8.0.0/24, UDP 61001 önerilir).
   Modülü kaldırmak bütün ağları kapatır; anahtarlar ve profiller kalır, yeniden kurunca ağlar geri gelir.
   Sunucu yeniden kurulursa WireGuard boş gelir: ağı yeniden kurar, cihazları yeniden eklersiniz.
@@ -39,8 +47,8 @@ WireGuard — kurulum ağ yaratmaz (v2-109) ve v2-117'den beri WireGuard'ın ken
   menüyü kullanmadan önce Mac'te WireGuard'ı kapatın.
 
 Konsol (tarayıcıdan; v2-105):
-  http://panel.ayc — tek yönetim sayfası; yalnız Tailscale'e bağlı cihazdan açılır (WireGuard'dan ve internetten kapalı).
-  Eski adresler (wg.ayc, dosya.ayc, file.ayc) v2-124'ten beri yok; yer imlerini panel.ayc yapın.
+  http://panel.<alan adı> — tek yönetim sayfası; yalnız Tailscale'e bağlı cihazdan açılır (WireGuard'dan ve internetten kapalı).
+  Eski adresler (wg.ayc, dosya.ayc, file.ayc) v2-124'ten beri yok; yer imlerini panel.<alan adı> yapın.
   Parola sorulmaz (v2-114): yalnız Tailscale'deki cihazlar açabilir; erişimi daraltmak Tailscale ACL'iyle.
   Ayarlar (v2-130): Sistem, Güvenlik Duvarı, Caddy, Dnsmasq ve Günlük sekmeleri.
   qBittorrent kurulduğunda kendi sayfası sol menüye eklenir; hesap ve dizin ayarları oradadır.
@@ -60,7 +68,7 @@ Konsol (tarayıcıdan; v2-105):
   onay bitene kadar eski alanın eşleştirmesini de koruyun. Yeni panel adresini açıp 5 dakika içinde
   onaylayın; açılmazsa eski ad kendiliğinden geri gelir. Dosya aktarımlarını önce bitirin.
   Özel DNS kayıtlarının hedefleri/açık-kapalı durumu korunur; IP ile paylaşım adresi değişmez.
-  Onaylı alan adı sonraki kurulumlarda korunur; eski kurulum.env değeri onu geri değiştirmez.
+  Onaylı alan adı sonraki kurulumlarda korunur ve kurulum onu sormaz.
   health.ayc artık yoktur; kurulum gerçek paneli ve API'leri denetler.
   Yerel adları aç/kapatın, yeni ad ekleyin; isterseniz genel sorguları seçtiğiniz public DNS'e yönlendirin.
   Özel alanınızın bulunmayan/kapalı adları dışarı gönderilmez. Tailscale Admin DNS ayrıca ayarlanır.
@@ -183,18 +191,17 @@ qBittorrent (v2-118; modül, sunucuda Debian paketi):
   ve liste silinir; indirilen dosyalar hiçbir durumda silinmez.
   Dozzle kaldırıldı (v2-118): App Store → Ayrıntı içinde Günlük vardır.
 
-A) Temiz kurulum — v2-153
+A) Temiz kurulum
   0. Sunucuyu sıfırlamak ayrı bir işlemdir; kurulum betiği sunucuyu silmez.
      Sıfırlamada korunması gereken veriyi önceden kendiniz yedekleyin.
      SSH host anahtarı değişmişse yeni parmak izini sağlayıcı konsolundan doğrulayın;
      sonra yalnız o sunucunun eski known_hosts kaydını değiştirin. SSH doğrulamasını kapatmayın.
-  1. Güncel .command ve kurulum/ aynı klasörde olmalı. Var olan kurulum.env'yi üzerine yazmayın.
-     İzin 600 veya 400; yalnız SSH_HOST ve isteğe bağlı LOCAL_DOMAIN.
-  2. 2026.08.06-v2-153.command → sunucu/özeti kontrol edin → E.
+  1. Sunucuya SSH ile bağlanın ve kurulum satırını çalıştırın (yukarıda).
+  2. Alan adını yazın (ilk kurulumda; varsayılan yok), özeti kontrol edin → E.
      Tailscale giriş bağlantısı gelirse tarayıcıdan onaylayın.
   3. Tailscale Admin: exit-node onayı, restricted DNS alanı ve yeni sunucunun Tailscale IP'si.
      Sunucuyu sıfırlamak aynı Tailscale IP'sini garanti etmez.
-  4. http://panel.ayc (alanı değiştirdiyseniz panel.<alan>) → Dosyalar açılır.
+  4. http://panel.<alan adı> → Dosyalar açılır.
      Başlangıçta Dosyalar, App Store ve Ayarlar vardır; WebDAV/ZIP ayrıca kurulmaz.
   5. Gerekiyorsa App Store'dan qBittorrent/WireGuard kurun.
      WireGuard → Yapılandır ile ilk ağı oluşturun, sonra cihazları ekleyin.

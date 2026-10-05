@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-205"
+V2_VERSION="2026.08.06-v2-206"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -27,13 +27,6 @@ OS_CHANGED=0
 # Kurulumun indirdiği .deb'ler kurulduktan sonra önbellekte bırakılmaz
 # (~300 MB; DD-125). Başkasının önbelleğe koyduğu dosyaya dokunulmaz.
 APT_OPTS=(-o DPkg::Lock::Timeout=60 -o APT::Keep-Downloaded-Packages=false)
-# DD-119: kurulum girdi dosyasının alanları (şablon: config/kurulum.env.example).
-# Hepsi dosyada yazılı olmalı. Boş alan adı defaults.env varsayılanını alır. Tailscale'e
-# her zaman giriş bağlantısıyla katılınır (DD-147). SSH_HOST'u yalnız launcher okur.
-# Kullanıcı alanı sorulmaz: SERVER_ROOT sabittir (DD-144). Servis hesabı girdisi yok: her
-# modül kendi hesabını Konsol'da gösterir (DD-148, DD-149, DD-151).
-INPUT_KEYS="SSH_HOST LOCAL_DOMAIN"
-INPUT_NONEMPTY_KEYS=""
 
 prompt() {
     local var="$1" msg="$2" default="${3:-}"
@@ -332,10 +325,6 @@ check_podman() {
 stage_0() {
     log INFO "Aşama 0/7 — kapılar ve girdi"
     require_root
-    # DD-119: girdi ilk iş okunur ve silinir; kapılardan biri düşse bile
-    # geçici girdi /run'da kalmaz.
-    read_input_file "$INPUT_FILE" "$INPUT_KEYS" "$INPUT_NONEMPTY_KEYS"
-    rm -rf -- "$INPUT_DIR"
     require_supported_os
     log INFO "İşletim sistemi: ${OS_ID} ${OS_VERSION_ID} (${OS_CODENAME}) ${OS_ARCH}, çekirdek $(uname -r)"
     case "$OS_ARCH" in
@@ -359,22 +348,34 @@ stage_0() {
     [[ ! -f "$SETTINGS_PENDING_FILE" ]] ||
         die "Konsol'da bekleyen ayar işlemi var; Ayarlar'da onaylayın veya geri alın (geri alma takıldıysa: Yeniden dene ya da Bırak)"
 
-    # defaults.env değerleri config.env source edilmeden önce alınır.
-    local def_domain="$DEFAULT_LOCAL_DOMAIN"
+    LOCAL_DOMAIN=""
     if [[ -r "$CONFIG_FILE" ]]; then
         # shellcheck source=/dev/null
         source "$CONFIG_FILE"
     fi
 
-    # DD-119: değerler girdi dosyasından; boş alan defaults.env varsayılanı.
-    LOCAL_DOMAIN="${INPUT_LOCAL_DOMAIN:-$def_domain}"
-    # DD-157: Konsol'da onaylanmış ad, eski kurulum girdisinin önüne geçer.
-    # İlk kurulumda dosya yoktur; henüz Python kurulmuş olması gerekmez.
+    # DD-228: alan adının varsayılanı yoktur. Sıra: Konsol'da onaylanmış ad (DD-157), önceki
+    # kurulumun adı (config.env); ikisi de yoksa (ilk kurulum) sorulur. Sonradan Konsol →
+    # Ayarlar'dan değişir. İlk kurulumda ayar dosyası yoktur; henüz Python gerekmez.
+    local saved_domain="" domain_re='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
     if [[ -f "$SETTINGS_FILE" ]]; then
-        local saved_domain
         saved_domain="$(python3 "$V2_ROOT/panel/master_settings.py" saved-domain "$SETTINGS_FILE")" ||
             die "Konsol'daki alan adı kaydı okunamadı"
-        [[ -z "$saved_domain" ]] || LOCAL_DOMAIN="$saved_domain"
+    fi
+    if [[ -n "$saved_domain" ]]; then
+        LOCAL_DOMAIN="$saved_domain"
+        log INFO "alan adı Konsol'daki kayıttan: $LOCAL_DOMAIN"
+    elif [[ -n "$LOCAL_DOMAIN" ]]; then
+        log INFO "alan adı önceki kurulumdan: $LOCAL_DOMAIN (değiştirmek için Konsol → Ayarlar)"
+    else
+        local reply
+        while :; do
+            read -r -p "Yerel alan adı (ör. ev; panel.<ad> olur): " reply </dev/tty ||
+                die "alan adı okunamadı"
+            [[ "$reply" =~ $domain_re ]] && break
+            echo "geçersiz alan adı; küçük harf, rakam ve '-' kullanın (en çok 63 karakter)" >&2
+        done
+        LOCAL_DOMAIN="$reply"
     fi
     [[ "$LOCAL_DOMAIN" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
         die "geçersiz alan adı: $LOCAL_DOMAIN"
@@ -398,35 +399,14 @@ stage_0() {
         [[ "$(tailscale_login_state)" == "complete" ]]; then
         ts_note="zaten online"
     fi
-    local input_key
-    for input_key in $INPUT_KEYS; do
-        unset "INPUT_$input_key"
-    done
+    # DD-228: sistem her kurulumda (yeniden kurulum dahil) önce güncellenir.
+    RUN_FULL_UPGRADE=1
 
-    RUN_FULL_UPGRADE=0
-    if [[ "${V2_FULL_UPGRADE:-}" == "1" ]]; then
-        RUN_FULL_UPGRADE=1
-        log INFO "full-upgrade: V2_FULL_UPGRADE=1"
-    elif [[ ! -r "$STATE_FILE" ]]; then
-        RUN_FULL_UPGRADE=1
-        log INFO "full-upgrade: ilk kurulum"
-    else
-        local upgrade_ans="h"
-        prompt upgrade_ans "Sistem full-upgrade yapılsın mı? (uzun sürebilir)" "h"
-        if [[ "$upgrade_ans" =~ ^[EeYy]$ ]]; then
-            RUN_FULL_UPGRADE=1
-        else
-            log INFO "full-upgrade atlandı (yeniden kurulum)"
-        fi
-    fi
-
-    # DD-119: dosyadan gelen her şey tek ekranda, parolasız; ilk yazımdan
-    # (config.env) önce tek onay.
-    local yes_no_upgrade="hayır" confirm_ans="h"
-    [[ "$RUN_FULL_UPGRADE" -eq 1 ]] && yes_no_upgrade="evet"
+    # Girdiler tek ekranda, parolasız; ilk yazımdan (config.env) önce tek onay.
+    local yes_no_upgrade="evet" confirm_ans="h"
     cat <<EOF
 
-Kurulum girdileri (kurulum/kurulum.env):
+Kurulum girdileri:
   Alan adı:      $LOCAL_DOMAIN
   Kullanıcı alanı: $SERVER_ROOT (sabit; indirmeler $DOWNLOADS_PATH)
   Yerleşik:     Dosyalar, klasör WebDAV paylaşımları, arşiv aracı ve Podman (konteyner ortamı)

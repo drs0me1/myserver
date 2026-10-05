@@ -44,7 +44,7 @@ the ones agreed on 2026-08-05:
 | R10 | Optional qBittorrent is a Podman container application on its own bridge (**DD-151**, **DD-209**, **DD-217**); Files, per-folder Python WebDAV and bounded archive tools are built in (**DD-158**, **DD-159**) |
 | R11 | Publish every web interface on loopback only (`127.0.0.1`; WebDAV's WAN scope on `SHARE_WAN_BACKEND`, **DD-179**) |
 | R12 | Publish publicly the WireGuard UDP port of each network, only while WireGuard is installed (host kernel, **DD-120**). qBittorrent's peer port `TORRENT_PEER_PORT` (63851 unless changed in the Podman page, **DD-221**) is published on `WAN_IPV4` over TCP and UDP only while it is installed, through its Quadlet and the container guard (**DD-217**, **DD-219**, superseding DD-151's outgoing-only rule; §3.1) |
-| R13 | Read the local domain from the installer input file (**DD-119**) |
+| R13 | Ask for the local domain on the server terminal on a first install, with no default (**DD-228**) |
 | R14 | Resolve the defined service names to the Tailscale IPv4 with dnsmasq |
 | R15 | Have Caddy serve selected private HTTP routes on the Tailscale IPv4, plus optional WAN WebDAV/qBittorrent/Konsol HTTPS publications; Konsol's tailnet address always stays (§3.1, **DD-179/190/191/195**) |
 | R16 | Reverse-proxy the service names to the loopback interfaces through Caddy |
@@ -86,7 +86,7 @@ the ones agreed on 2026-08-05:
   consumes it restarts: `dnsmasq --test -C` and `caddy validate` with the
   real `TAILSCALE_IPV4` (**DD-106**); a module's Caddy site and dnsmasq name
   are validated by `master-modul` before they take effect (§1.11).
-- `apt-get update` + `full-upgrade`, then the package set the stack needs
+- `apt-get update` + `full-upgrade` on every run (**DD-228**), then the package set the stack needs
   (**R1**, **R2**): only what the base itself uses (**DD-153**) — no `gnupg`
   (apt reads the armored Caddy key, `signed-by=…caddy-stable-archive-keyring.asc`),
   no `gawk` (the distribution's `mawk` is `awk`). Folder WebDAV uses the base
@@ -105,23 +105,22 @@ the ones agreed on 2026-08-05:
 - Timezone set to the configured value.
 - Root-only, single-host, `flock`-serialised, wrapped in `systemd-inhibit`
   so a shutdown cannot land mid-transaction.
-- **Inputs come from one file, not prompts (DD-119).**
-  - The operator fills `kurulum/kurulum.env` (git-ignored, mode `600`;
-    template `config/kurulum.env.example`) beside the portable `.command`.
-  - The launcher sends it only to `INPUT_FILE` in `/run` (`tmpfs`). Stage 0
-    reads it right after the root check and deletes it before any other gate,
-    whether or not it validates.
-  - It is never sourced: one `KEY=value` per line, values taken literally.
-    Unknown, duplicate, missing, quoted, padded or CRLF lines stop the
-    install. Messages name the line and key, never the value.
-  - Stage 0 validates every value, prints them without passwords and asks for
-    one confirmation before `config.env` is written. Re-runs still ask about
-    full-upgrade; an interactive TTY stays required.
-- **Nothing but `kurulum.env` reaches the server (DD-143).** The launcher sends
-  that one file; no WireGuard configuration, key or profile is read from
-  `kurulum/` or uploaded, and nothing is fetched back. `wireguard.command` may
-  download a profile and its QR picture on request (**DD-132**), for the
-  operator only.
+- **Started on the server with one line (DD-228).** The operator SSHes in and runs
+  `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`.
+  - `kur.sh` downloads the public repository archive (`main`, or `KUR_REF`), copies
+    only the runtime tree (`install.sh`, `common.sh`, `config`, `templates`,
+    `scripts`, `systemd`, `panel`, `files-panel`, `console`, `magaza`) to
+    `/root/debian-server-installer` with an atomic swap, then `exec`s `install.sh`
+    with the terminal as stdin.
+  - The local domain has no default. A name confirmed in Konsol (**DD-157**) or the
+    previous install's (`config.env`) is used without asking; only a first install
+    asks, repeating the question until the answer is a valid label. It prints the values without passwords and asks for
+    one confirmation before `config.env` is written. An interactive TTY stays required.
+  - Every run, re-runs included, performs `full-upgrade`; there is no question.
+- **Nothing from the operator's workstation reaches the server (DD-143, DD-228).**
+  No WireGuard configuration, key or profile is read from `kurulum/` or uploaded,
+  and nothing is fetched back. `wireguard.command` may download a profile and its
+  QR picture on request (**DD-132**), for the operator only.
 
 ### 1.2 Tailscale
 
@@ -284,7 +283,7 @@ Contract in §5–§7 and `folder-shares.md`.
   address bases (`WG_ADDR_BASE4`, `WG_ADDR_BASE6`), the suggested first port, the
   peer profile defaults and the paths live in the package's own
   `magaza/wireguard/wireguard.env`, read by `master-wg`, the hooks, the Konsol API
-  module and the Mac launcher from the rendered package folder.
+  module and `wireguard.command` from the rendered package folder.
 - **Internet-only (DD-177).** No access selector, no WG host-rule override and
   no per-network Caddy listener. API creation/settings reject a supplied
   `scope` field; CLI creation is `net-add PORT DNS LABEL`, and settings is
@@ -1288,10 +1287,10 @@ This transport permission does not grant tunnel clients access to the host.
 
 ## 4. DNS and Caddy service map
 
-`${LOCAL_DOMAIN}` initially comes from the installer input file (**R13**, **DD-119**);
-an empty value takes `DEFAULT_LOCAL_DOMAIN` from `defaults.env`. A domain
-subsequently confirmed in Konsol (`SETTINGS_FILE.domain`) takes precedence
-on re-runs (**DD-157**); the operator's Mac input file is never edited.
+`${LOCAL_DOMAIN}` has no default: a first install asks for it on the server terminal
+in stage 0 (**R13**, **DD-228**). Re-runs keep the previous install's name without
+asking; a domain confirmed in Konsol (`SETTINGS_FILE.domain`) takes precedence
+(**DD-157**), and Konsol → Ayarlar is where it changes.
 
 | Name | dnsmasq answer | Caddy site | Upstream |
 |---|---|---|---|
@@ -1657,7 +1656,8 @@ Invariants:
 - No step is unconditionally expensive: package installation and daemon
   restarts happen only when something actually
   changed.
-- The only re-run question is the optional full-upgrade (default **hayır**).
+- A re-run asks only the one confirmation (the domain is kept);
+  `full-upgrade` always runs (**DD-228**).
   Folder WebDAV code is part of the installer (§7).
 
 ---

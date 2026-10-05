@@ -17,9 +17,8 @@ The Bats fixture resolves its temporary directory with `pwd -P`: macOS `/var`
 is a symlink and production no-follow readers correctly reject it. No shell
 wrapper or relaxed production traversal is needed.
 Mode/inode checks capture only successful GNU/BSD stat output; hashes use the
-fixture's Python helper. Linux Bats needs the source guards' docs, exporter,
-root `.gitignore`, root launcher and `Data/app` copy too, not only the runtime
-tarball. Copy only these allowlisted test inputs; never include private
+fixture's Python helper. Linux Bats needs the source guards' docs, root
+`.gitignore`, `kur.sh` and `wireguard.command` too, not only the runtime tree. Copy only these allowlisted test inputs; never include private
 `kurulum/` or WG profiles.
 For a root-created test checkout under `mktemp -d`, set that checkout directory
 to mode `0755` (`chmod 0755 /absolute/path/to/test-checkout`): non-root fixture

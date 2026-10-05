@@ -637,7 +637,6 @@ EOF
     # DD-144: the operator is not asked for a path; the constant is still checked.
     grep -qx 'SERVER_ROOT="/srv"' "$V2_ROOT/config/defaults.env"
     grep -qx 'DOWNLOADS_SUBDIR="downloads"' "$V2_ROOT/config/defaults.env"
-    run ! grep -qE '^INPUT_KEYS=.*DOWNLOADS_PATH' "$V2_ROOT/install.sh"
     run ! grep -q 'DOWNLOADS_PATH' "$V2_ROOT/config/kurulum.env.example"
     grep -q 'DOWNLOADS_PATH="\$SERVER_ROOT/\$DOWNLOADS_SUBDIR"' "$V2_ROOT/install.sh"
     grep -q 'assert_downloads_path_allowed "\$SERVER_ROOT"' "$V2_ROOT/install.sh"
@@ -1277,10 +1276,11 @@ EOF
         grep -q 'systemctl unmask dnsmasq caddy'
 }
 
-@test "re-run gates full-upgrade and skips unchanged edge restart" {
+@test "every run upgrades the system and re-runs skip unchanged edge restart" {
+    # DD-228: full-upgrade is not a question any more, re-runs included.
     grep -q 'RUN_FULL_UPGRADE' "$V2_ROOT/install.sh"
-    grep -q 'V2_FULL_UPGRADE' "$V2_ROOT/install.sh"
-    grep -q 'full-upgrade yapılsın mı' "$V2_ROOT/install.sh"
+    run ! grep -q 'V2_FULL_UPGRADE' "$V2_ROOT/install.sh"
+    run ! grep -q 'full-upgrade yapılsın mı' "$V2_ROOT/install.sh"
     grep -q 'FIREWALL_NEEDS_RESTART' "$V2_ROOT/install.sh"
     run ! grep -q 'WEBDAV_NEEDS_RESTART' "$V2_ROOT/install.sh"
     grep -q 'yapılandırması aynı; yeniden başlatılmadı' "$V2_ROOT/install.sh"
@@ -1314,21 +1314,49 @@ EOF
     run ! grep -q 'share_tools' "$V2_ROOT/scripts/master-modul"
 }
 
-@test "exporter embeds archive sha256 and stages root-level runtime" {
-    local exporter="$V2_ROOT/dev/export-installer.sh"
-    grep -q 'PORTABLE_ARCHIVE_SHA256' "$exporter"
-    grep -q 'sha256sum' "$exporter"
-    run ! grep -qE '\.sha256"|Sidecar' "$exporter"
-    grep -q 'dsi-extract' "$exporter"
-    grep -q 'staging/installer/install.sh' "$exporter"
-    grep -q 'REMOTE_ROOT/install.sh' "$exporter"
-    grep -q 'gzip -n' "$exporter"
-    grep -q 'touch -t 200001010000' "$exporter"
-    grep -q 'TZ=UTC' "$exporter"
-    grep -q -- '--no-xattrs' "$exporter"
-    grep -q -- '--no-mac-metadata' "$exporter"
-    run ! grep -q 'touch -t 197001010000' "$exporter"
-    grep -q 'reproducible/${V2_VERSION}' "$exporter"
+@test "kur.sh fetches the public repo and starts the installer on the server terminal" {
+    # DD-228: one curl line on the server; no SSH launcher, no embedded archive.
+    local kur="$V2_ROOT/../kur.sh"
+    bash -n "$kur"
+    # The whole body runs from main(): a truncated download never runs half a script.
+    [ "$(grep -vE '^\s*(#|$)' "$kur" | tail -n 1)" = 'main "$@"' ]
+    grep -q '^main() {$' "$kur"
+    grep -q 'https://codeload.github.com/\$repo/tar.gz/\$ref' "$kur"
+    grep -q 'local repo="drs0me1/myserver"' "$kur"
+    grep -q 'local ref="${KUR_REF:-main}"' "$kur"
+    grep -q 'local root="${KUR_ROOT:-/root/debian-server-installer}"' "$kur"
+    grep -q 'exec bash "\$root/install.sh" </dev/tty' "$kur"
+    grep -q -- "--exclude='__pycache__'" "$kur"
+    grep -q -- '--no-same-owner' "$kur"
+    run ! grep -qE '^[^#"]*\b(ssh|scp) ' "$kur"
+}
+
+@test "kur.sh ships the runtime tree, swaps it atomically and hands the terminal to the installer" {
+    local kur="$V2_ROOT/../kur.sh" src="$TMP/src/myserver-main" dir
+    mkdir -p "$src/Data"
+    for dir in install.sh common.sh config templates scripts systemd panel files-panel console magaza; do
+        cp -R "$V2_ROOT/$dir" "$src/Data/"
+    done
+    mkdir -p "$src/Data/tests" "$src/Data/panel/__pycache__"
+    touch "$src/Data/tests/x.bats" "$src/Data/panel/__pycache__/x.pyc"
+    # The real installer must never start here: a stub stands in for it.
+    printf '#!/usr/bin/env bash\nV2_VERSION="stub"\necho "STUB_INSTALL tty=$([[ -t 0 ]] && echo yes || echo no)"\n' \
+        >"$src/Data/install.sh"
+    tar -C "$TMP/src" -czf "$TMP/kod.tgz" myserver-main
+    # A previous copy is replaced as a whole.
+    mkdir -p "$TMP/root"
+    touch "$TMP/root/stale"
+    [ "$(id -u)" -eq 0 ] || skip "needs root"
+    command -v script >/dev/null || skip "needs script(1) for a terminal"
+    run script -qec "KUR_URL='file://$TMP/kod.tgz' KUR_ROOT='$TMP/root' bash '$kur'" /dev/null
+    case "$output" in *"STUB_INSTALL tty=yes"*) ;; *) false ;; esac
+    [ -f "$TMP/root/install.sh" ]
+    [ -x "$TMP/root/install.sh" ]
+    [ -d "$TMP/root/magaza/wireguard" ]
+    [ ! -e "$TMP/root/stale" ]
+    [ ! -e "$TMP/root/tests" ]
+    [ ! -e "$TMP/root/panel/__pycache__" ]
+    case "$output" in *"Yerleştirildi"*) ;; *) false ;; esac
 }
 
 @test "stage 7 checks DNS on Tailscale IP and publish surface" {
@@ -1381,7 +1409,6 @@ EOF
         "$V2_ROOT/config/kurulum.env.example")"
     run ! grep -qi 'filebrowser' <<<"$code"
     run ! grep -q '61007' <<<"$code"
-    run ! grep -qE '^INPUT_KEYS=.*FILEBROWSER' "$V2_ROOT/install.sh"
     # DD-154: the old name is gone too (it only redirected to the console).
     run ! grep -q 'file\.__LOCAL_DOMAIN__' "$V2_ROOT/templates/Caddyfile" "$V2_ROOT/templates/dnsmasq.conf"
     # WireGuard "ui" networks reach the qBittorrent module's interface only (DD-151).
@@ -1455,25 +1482,21 @@ EOF
         "$V2_ROOT/install.sh" "$V2_ROOT/common.sh" "$V2_ROOT"/scripts/*
 }
 
-@test "repository root carries one exported installer, identical to its Data/app archive" {
-    # The root holds what is double-clicked; everything else lives under Data/.
+@test "repository root carries kur.sh and no exported installer" {
+    # DD-228 retires the DD-154 portable .command and its exporter; kur.sh is the entry point.
     local top copies
     top="$(cd "$V2_ROOT/.." && pwd)"
-    copies=( "$top"/20[0-9][0-9].[0-9][0-9].[0-9][0-9]-v2-*.command )
+    [ -f "$top/kur.sh" ]
+    copies=( "$top"/*.command )
     [ "${#copies[@]}" -eq 1 ]
-    [ -f "${copies[0]}" ]
-    cmp "${copies[0]}" "$V2_ROOT/app/$(basename "${copies[0]}")"
-    # DD-154: Data/app keeps only the current export too; older ones live in Git.
-    local apps
-    apps=( "$V2_ROOT"/app/20[0-9][0-9].[0-9][0-9].[0-9][0-9]-v2-*.command )
-    [ "${#apps[@]}" -eq 1 ]
-    grep -qF '"$APP_DIR"/20[0-9][0-9].[0-9][0-9].[0-9][0-9]-v2-*.command; do' "$V2_ROOT/dev/export-installer.sh"
+    [ "$(basename "${copies[0]}")" = wireguard.command ]
+    [ ! -e "$V2_ROOT/app" ]
+    [ ! -e "$V2_ROOT/dev/export-installer.sh" ]
     # DD-122: the backup tool is retired; nothing of it may come back.
     [ ! -e "$top/container-backup.command" ]
     [ ! -e "$V2_ROOT/dev/container-backup-remote.sh" ]
     [ ! -e "$V2_ROOT/docs/container-backup.md" ]
     [ ! -e "$V2_ROOT/tests/backup-roundtrip.sh" ]
-    [ ! -e "$V2_ROOT/app/latest.command" ]
 }
 
 @test "tailscale joins only through the login link: no auth key input, file or flag" {
@@ -1481,78 +1504,30 @@ EOF
     run ! grep -q 'TS_AUTH_KEY' "$V2_ROOT/install.sh" "$V2_ROOT/config/kurulum.env.example" "$V2_ROOT/config/defaults.env"
     run ! grep -qE -- '--auth-key|tailscale-authkey|TS_AUTHKEY_LOGIN_SECONDS|tailscale_login_with_key' \
         "$V2_ROOT/install.sh" "$V2_ROOT/config/defaults.env"
-    run ! grep -qE '^INPUT_KEYS=.*TS_' "$V2_ROOT/install.sh"
     stage2="$(awk '/^stage_2\(\)/,/^stage_3\(\)/' "$V2_ROOT/install.sh")"
     grep -q 'if \[\[ "\$(tailscale_login_state)" != "complete" \]\]; then' <<<"$stage2"
     grep -qx '        tailscale_login' <<<"$stage2"
     grep -q 'giriş bağlantısı gösterilir' "$V2_ROOT/install.sh"
 }
 
-@test "read_input_file takes values literally and deletes the file" {
-    # DD-119: the file is never sourced; '$', quotes inside, '=' and spaces
-    # inside a value are data.
-    cat >"$TMP/in.env" <<'EOF'
-# comment
-   # indented comment
-
-A=p@ss $HOME "x" =y
-B=
-C=it's
-EOF
-    chmod 600 "$TMP/in.env"
-    read_input_file "$TMP/in.env" "A B C" "A C"
-    [ "$INPUT_A" = 'p@ss $HOME "x" =y' ]
-    [ -z "$INPUT_B" ]
-    [ "$INPUT_C" = "it's" ]
-    [ ! -e "$TMP/in.env" ]
-    run ! grep -qE '\bsource\b|^\s*\. ' <<<"$(awk '/^read_input_file\(\)/,/^}$/' "$V2_ROOT/common.sh")"
-}
-
-@test "read_input_file rejects bad input, never echoes a value, always deletes" {
-    local body expect
-    while IFS='|' read -r body expect; do
-        printf '%b' "$body" >"$TMP/in.env"
-        chmod 600 "$TMP/in.env"
-        run read_input_file "$TMP/in.env" "A B" "A"
-        [ "$status" -ne 0 ]
-        case "$output" in *"$expect"*) ;; *) false ;; esac
-        case "$output" in *secretvalue*) false ;; esac
-        [ ! -e "$TMP/in.env" ]
-    done <<'EOF'
-A=secretvalue\nB=\nZ=1\n|bilinmeyen alan: Z
-A=secretvalue\nA=secretvalue\nB=\n|A iki kez yazılmış
-A=secretvalue\n|eksik alan: B
-A=\nB=secretvalue\n|boş bırakılamayan alan: A
-A=secretvalue\r\nB=\n|CRLF
-A=secretvalue \nB=\n|boşluk var
-A="secretvalue"\nB=\n|tırnak
-a=secretvalue\nB=\n|ALAN=değer biçiminde değil
-EOF
-    printf 'A=secretvalue\nB=\n' >"$TMP/in.env"
-    chmod 644 "$TMP/in.env"
-    run read_input_file "$TMP/in.env" "A B" "A"
-    [ "$status" -ne 0 ]
-    case "$output" in *"izinleri 644"*) ;; *) false ;; esac
-    [ ! -e "$TMP/in.env" ]
-    run read_input_file "$TMP/missing.env" "A B" "A"
-    [ "$status" -ne 0 ]
-    case "$output" in *"girdi dosyası yok"*) ;; *) false ;; esac
-}
-
-@test "stage 0 reads the input file first and confirms before the first write" {
+@test "stage 0 asks for the domain on the server and confirms before the first write" {
     stage0="$(awk '/^stage_0\(\)/,/^stage_1\(\)/' "$V2_ROOT/install.sh")"
-    grep -A6 '^    require_root$' <<<"$stage0" | awk '
-        /read_input_file "\$INPUT_FILE" "\$INPUT_KEYS" "\$INPUT_NONEMPTY_KEYS"/ { r = NR }
-        /rm -rf -- "\$INPUT_DIR"/ { d = NR }
-        END { exit !(r && d && r < d) }'
-    grep -q '^INPUT_DIR="/run/master-stack/kurulum"$' "$V2_ROOT/config/defaults.env"
-    grep -q '^INPUT_FILE="/run/master-stack/kurulum/kurulum.env"$' "$V2_ROOT/config/defaults.env"
-    # DD-124/DD-143: girdi yalnız kurulum.env; WireGuard için hiçbir girdi yok.
+    # DD-228: no input file reaches the server any more.
+    run ! grep -qE 'read_input_file|INPUT_FILE|INPUT_DIR|INPUT_KEYS' \
+        "$V2_ROOT/install.sh" "$V2_ROOT/common.sh" "$V2_ROOT/config/defaults.env"
+    # The domain has no default: a name confirmed in Konsol (DD-157) or the previous install's
+    # wins and is not asked; only a first install asks, before the confirmation.
+    grep -q 'read -r -p "Yerel alan adı (ör. ev; panel.<ad> olur): " reply </dev/tty' <<<"$stage0"
+    run ! grep -q 'prompt LOCAL_DOMAIN' <<<"$stage0"
+    awk '/saved-domain/ {s = NR} /Yerel alan adı/ {p = NR} /prompt confirm_ans/ {c = NR}
+         END { exit !(s && p && c && s < p && p < c) }' <<<"$stage0"
+    # Every run upgrades the system first; nothing asks or skips it.
+    grep -qx '    RUN_FULL_UPGRADE=1' <<<"$stage0"
+    run ! grep -qE 'upgrade_ans|V2_FULL_UPGRADE' "$V2_ROOT/install.sh"
+    # DD-124/DD-143: nothing of WireGuard is an input.
     run ! grep -qE 'take_snapshot_input|validate_snapshot' <<<"$stage0"
     run ! grep -qE 'INPUT_WG_DIR|OUTPUT_DIR|OUTPUT_WG_DIR|\bWG_PEERS\b' \
         "$V2_ROOT/config/defaults.env" "$V2_ROOT/install.sh" "$V2_ROOT/config/kurulum.env.example"
-    # Every INPUT_* is dropped once mapped; secrets stay only in the *_NEW_* vars.
-    grep -q 'unset "INPUT_\$input_key"' <<<"$stage0"
     # One confirmation, then config.env: nothing is written before the operator agrees.
     awk '/prompt confirm_ans/ {c = NR} /^    write_config$/ {w = NR}
          END { exit !(c && w && c < w) }' <<<"$stage0"
@@ -1561,66 +1536,17 @@ EOF
     # The old secret prompts are gone for good.
     run ! grep -qE 'prompt_secret_twice|prompt_optional_secret|read -r -s' "$V2_ROOT/install.sh"
     # The summary names accounts, never passwords.
-    summary="$(awk '/Kurulum girdileri \(kurulum\/kurulum.env\)/,/^EOF$/' <<<"$stage0")"
+    summary="$(awk '/^Kurulum girdileri:$/,/^EOF$/' <<<"$stage0")"
     [ -n "$summary" ]
     run ! grep -q '_PASS' <<<"$summary"
     run ! grep -q 'TS_AUTH_KEY' <<<"$summary"
 }
 
-@test "input template lists exactly the installer's keys with no values" {
-    local template="$V2_ROOT/config/kurulum.env.example" keys tkeys
-    keys="$(awk -F'"' '/^INPUT_KEYS=/{print $2}' "$V2_ROOT/install.sh" | tr ' ' '\n' | sort)"
-    tkeys="$(grep -E '^[A-Z][A-Z0-9_]*=' "$template" | cut -d= -f1 | sort)"
-    [ -n "$keys" ]
-    [ "$keys" = "$tkeys" ]
+@test "kurulum.env template carries only wireguard.command's SSH host" {
+    local template="$V2_ROOT/config/kurulum.env.example"
+    [ "$(grep -E '^[A-Z][A-Z0-9_]*=' "$template" | cut -d= -f1 | tr '\n' ' ')" = 'SSH_HOST ' ]
     run ! grep -qE '^[A-Z][A-Z0-9_]*=.+' "$template"
-    for k in $(awk -F'"' '/^INPUT_NONEMPTY_KEYS=/{print $2}' "$V2_ROOT/install.sh"); do
-        grep -q "^$k=$" "$template"
-    done
-    cp "$template" "$TMP/in.env"
-    chmod 600 "$TMP/in.env"
-    read_input_file "$TMP/in.env" "$(awk -F'"' '/^INPUT_KEYS=/{print $2}' "$V2_ROOT/install.sh")" ""
     grep -qx '/kurulum/' "$V2_ROOT/../.gitignore"
-}
-
-@test "portable launcher reads kurulum/ beside it and sends it only to tmpfs" {
-    local exporter="$V2_ROOT/dev/export-installer.sh" body
-    body="$(awk "/cat <<'BODY_END'/,/^BODY_END\$/" "$exporter")"
-    [ -n "$body" ]
-    grep -q 'INPUT_LOCAL_DIR="\$here/kurulum"' <<<"$body"
-    grep -q 'INPUT_FILE_LOCAL="\$INPUT_LOCAL_DIR/kurulum.env"' <<<"$body"
-    grep -q 'stat -f %Lp "\$INPUT_FILE_LOCAL"' <<<"$body"
-    # DD-143: sunucuya yalnız kurulum.env gider, geri hiçbir şey alınmaz.
-    grep -q 'send_files="kurulum.env"' <<<"$body"
-    grep -q -- '--no-mac-metadata -cf - \$send_files |' <<<"$body"
-    run ! grep -qE 'wireguard/sunucu|wireguard/\*' <<<"$body"
-    run ! grep -qiE 'qbittorrent' <<<"$body"
-    grep -q 'özel kurulum girdisi 600 olmalı' <<<"$body"
-    grep -q -- '--no-same-owner -xf -' <<<"$body"
-    run ! grep -qE 'input_files|fetch_wireguard_output|OUTPUT_' <<<"$body"
-    run ! grep -q 'REMOTE_RESTORE_DIR' <<<"$body"
-    run ! grep -q 'REMOTE_RESTORE_DIR' "$exporter"
-    # Only SSH_HOST is read on the Mac; the rest is validated by the installer.
-    grep -q 'index(\$0, "SSH_HOST=") == 1' <<<"$body"
-    run ! grep -qE '_PASS|TS_AUTH_KEY' <<<"$body"
-    run ! grep -q 'SSH sunucu adı' <<<"$body"
-    run ! grep -q 'DEPLOY_HOST' "$exporter"
-    grep -q 'stat -f -c %T' <<<"$body"
-    grep -q '= tmpfs \]' <<<"$body"
-    grep -q 'remote_input_sent=1' <<<"$body"
-    awk '/^cleanup_local\(\)/,/^}$/' <<<"$body" | grep -q "rm -rf '\$REMOTE_INPUT_DIR'"
-    # A literal temp name would survive an interrupted run and break every later one
-    # (BSD mktemp only replaces trailing X's): the archive lives in a fresh private dir.
-    grep -q 'tgz_dir="$(mktemp -d "${TMPDIR:-/tmp}/dsi-embed.XXXXXX")"' <<<"$body"
-    run ! grep -qE '^[^#]*mktemp [^#]*X{6}\.[a-z]' "$V2_ROOT/dev/export-installer.sh"
-    awk '/^cleanup_local\(\)/,/^}$/' <<<"$body" | grep -q 'rm -rf -- "\$tgz_dir"'
-    # The server-side path has one source: defaults.env.
-    grep -q "awk -F= '/^INPUT_DIR=/" "$exporter"
-    grep -q 'REMOTE_INPUT_DIR="\$INPUT_DIR"' "$exporter"
-    # The archive is built from Data/ only; kurulum/ lives in the repo root.
-    run ! grep -q 'TOP_DIR/kurulum' "$exporter"
-    # Finder runs .command files with macOS /bin/bash 3.2.
-    run ! grep -qE 'mapfile|readarray|declare -A|\$\{[A-Za-z_]+(,,|\^\^)' <<<"$body"
 }
 
 snapshot_keys() {
@@ -1680,9 +1606,7 @@ EOF
         run ! grep -q "$key" "$V2_ROOT/install.sh"
     done
     run ! grep -qE 'RESTORE_DIR|SNAPSHOT_MAX_BYTES' "$V2_ROOT/config/defaults.env"
-    run ! grep -q 'wireguard/sunucu' "$V2_ROOT/dev/export-installer.sh"
-    grep -q 'send_files="kurulum.env"' "$V2_ROOT/dev/export-installer.sh"
-    [ "$(grep -c 'send_files=' "$V2_ROOT/dev/export-installer.sh")" -eq 1 ]
+    run ! grep -q 'wireguard/sunucu' "$V2_ROOT/../kur.sh"
     # Girdi dosyasında WireGuard portu da yok: ağın portunu Konsol belirler.
     run ! grep -q 'WG_PUBLIC_PORT' "$V2_ROOT/config/kurulum.env.example"
     run ! grep -q 'INPUT_WG_PUBLIC_PORT' "$V2_ROOT/install.sh"
@@ -2622,7 +2546,7 @@ EOF
     [ -f "$V2_ROOT/magaza/wireguard/master-wg" ]
     [ -f "$V2_ROOT/magaza/wireguard/wg-quick-master-stack.conf" ]
     [ ! -e "$V2_ROOT/modules" ] && [ ! -e "$V2_ROOT/scripts/master-wg" ] && [ ! -e "$V2_ROOT/systemd/wg-quick-master-stack.conf" ]
-    grep -qF '"$REPO_ROOT/magaza"' "$V2_ROOT/dev/export-installer.sh"
+    grep -qE '^    local items="[^"]*(^| )magaza( |")' "$V2_ROOT/../kur.sh"
     # The installer renders the package files only; nothing WireGuard reaches sbin or systemd from the base.
     s4="$(awk '/^stage_4\(\)/,/^}$/' "$V2_ROOT/install.sh")"
     run ! grep -qF '"$SBIN_DIR/master-wg" 0755' <<<"$s4"
@@ -2737,7 +2661,7 @@ EOF
     grep -q 'master-panel" check' <<<"$s7"
     run ! grep -q 'WG_PANEL_PORT' <<<"$s7"
     # Exported with the runtime, Caddy on the tailnet only, nothing on the WireGuard edge.
-    grep -q '"\$REPO_ROOT/panel"' "$V2_ROOT/dev/export-installer.sh"
+    grep -qE '^    local items="[^"]*(^| )panel( |")' "$V2_ROOT/../kur.sh"
     [ ! -e "$V2_ROOT/templates/Caddyfile.wg" ]
     # The console page loads nothing from elsewhere and runs no inline code.
     run ! grep -qiE '<style|style=|onclick=|https?://' "$V2_ROOT/console/index.html"
@@ -3059,9 +2983,8 @@ PY
 
 @test "the base install has no Compose project, no Dozzle and no service account in the input file" {
     # DD-151, DD-152: the installer brings Konsol, Tailscale, names and the firewall; no Docker.
-    [ "$(grep '^INPUT_KEYS=' "$V2_ROOT/install.sh")" = 'INPUT_KEYS="SSH_HOST LOCAL_DOMAIN"' ]
-    [ "$(grep '^INPUT_NONEMPTY_KEYS=' "$V2_ROOT/install.sh")" = 'INPUT_NONEMPTY_KEYS=""' ]
-    [ "$(grep -E '^[A-Z_]+=' "$V2_ROOT/config/kurulum.env.example" | cut -d= -f1 | tr '\n' ' ')" = 'SSH_HOST LOCAL_DOMAIN ' ]
+    run ! grep -q '^INPUT_KEYS=' "$V2_ROOT/install.sh"
+    [ "$(grep -E '^[A-Z_]+=' "$V2_ROOT/config/kurulum.env.example" | cut -d= -f1 | tr '\n' ' ')" = 'SSH_HOST ' ]
     [ ! -e "$V2_ROOT/templates/compose.yaml" ]
     [ ! -e "$V2_ROOT/templates/qBittorrent.conf" ]
     [ "$(cat "$V2_ROOT/install.sh" "$V2_ROOT/common.sh" "$V2_ROOT/config/defaults.env" "$V2_ROOT/templates/Caddyfile" \
@@ -3421,7 +3344,7 @@ PY
     grep -qx 'MODULES_DIR="/usr/local/share/master-stack/moduller"' "$V2_ROOT/config/defaults.env"
     awk '/^write_state\(\)/,/^}$/' "$V2_ROOT/install.sh" | grep -qx 'MODULES_FILE=\$MODULES_FILE'
     awk '/^write_state\(\)/,/^}$/' "$V2_ROOT/install.sh" | grep -qx 'MODULES_DIR=\$MODULES_DIR'
-    grep -qF '"$REPO_ROOT/magaza"' "$V2_ROOT/dev/export-installer.sh"
+    grep -qE '^    local items="[^"]*(^| )magaza( |")' "$V2_ROOT/../kur.sh"
     stage4="$(awk '/^stage_4\(\)/,/^stage_5\(\)/' "$V2_ROOT/install.sh")"
     grep -qF 'atomic_write "$SBIN_DIR/master-modul" 0755' <<<"$stage4"
     grep -qx '    ensure_module_files' <<<"$stage4"
@@ -3854,7 +3777,6 @@ EOF
     grep -qx 'FILES_PANEL_TRASH=".cop"' "$V2_ROOT/config/defaults.env"
     # No account at all (DD-147).
     run ! grep -q 'FILES_PANEL\|DOSYA' "$V2_ROOT/config/kurulum.env.example"
-    run ! grep -qE '^INPUT_KEYS=.*(FILES|DOSYA)' "$V2_ROOT/install.sh"
     body="$(awk '/^ensure_files_panel\(\)/,/^}$/' "$V2_ROOT/install.sh")"
     # systemd needs a user entry for the downloads uid: an existing name, else a system account without login.
     grep -q 'getent passwd "\$DOWNLOADS_UID"' <<<"$body"
@@ -3869,7 +3791,7 @@ EOF
     run ! grep -q 'index.html' <<<"$body"
     grep -q 'CONSOLE_WEB_DIR="\$CONSOLE_WEB_DIR"' <<<"$(awk '/^stage_6\(\)/,/^}$/' "$V2_ROOT/install.sh")"
     grep -qx 'CONSOLE_WEB_DIR="/usr/local/share/master-stack/konsol"' "$V2_ROOT/config/defaults.env"
-    grep -q '"\$REPO_ROOT/console"' "$V2_ROOT/dev/export-installer.sh"
+    grep -qE '^    local items="[^"]*(^| )console( |")' "$V2_ROOT/../kur.sh"
     s6="$(awk '/^stage_6\(\)/,/^ensure_panel\(\)/' "$V2_ROOT/install.sh")"
     grep -q '^    ensure_files_panel "\$OS_CHANGED"$' <<<"$s6"
     # The port collides with nothing: master-wg net-add reserves every declared package port (DD-201).
@@ -3899,7 +3821,7 @@ EOF
     # DD-201: the "no file backend on a VPN address" check is the WireGuard package's own.
     run ! grep -q 'wg_first_addr' <<<"$s7"
     grep -q 'http://${s4}:${FILES_PANEL_PORT}/' "$V2_ROOT/magaza/wireguard/kanca"
-    grep -q '"\$REPO_ROOT/files-panel"' "$V2_ROOT/dev/export-installer.sh"
+    grep -qE '^    local items="[^"]*(^| )files-panel( |")' "$V2_ROOT/../kur.sh"
     # The console page inserts names only as text; the one innerHTML builds icons from a fixed table.
     [ "$(grep -c 'innerHTML' "$V2_ROOT/console/konsol.js")" -eq 1 ]
     grep -q "const svg = (name) => svgFrom('<svg" "$V2_ROOT/console/konsol.js"
@@ -5482,7 +5404,7 @@ PY
     [ "$(pc /api/konsol/ayarlar/uygula "${headers[@]}" --data '[]')" = 400 ]
 }
 
-@test "confirmed domain overrides stale installer input without retaining the health site" {
+@test "the domain has no default: confirmed or previous name is kept, a first install is asked until valid" {
     command -v python3 >/dev/null || skip "python3 unavailable"
     run python3 "$V2_ROOT/panel/master_settings.py" saved-domain "$TMP/settings.json"
     [ "$status" -eq 0 ]
@@ -5493,12 +5415,35 @@ PY
     [ "$output" = ev ]
     # Execute only the actual domain-selection stanza, never installer stages.
     local stanza
-    stanza="$(sed -n '/^    LOCAL_DOMAIN="${INPUT_LOCAL_DOMAIN:-\$def_domain}"/,/^    # DD-144:/p' "$V2_ROOT/install.sh")"
+    stanza="$(sed -n '/^    local saved_domain="" /,/^    # DD-144:/p' "$V2_ROOT/install.sh")"
     [ -n "$stanza" ]
-    run env INPUT_LOCAL_DOMAIN=ayc SETTINGS_FILE="$TMP/settings.json" V2_ROOT="$V2_ROOT" \
-        bash -c 'die() { exit 90; }; pick_domain() { local def_domain=ayc; eval "$1"; echo "$LOCAL_DOMAIN"; }; pick_domain "$1"' _ "$stanza"
+    # The terminal is replaced by a fed `read`; the stanza's own /dev/tty redirection is
+    # pointed at /dev/null so the test needs no terminal.
+    stanza="${stanza//<\/dev\/tty/</dev/null}"
+    local pick='die() { echo "DIE $*"; exit 90; }; log() { :; }
+        read() { local v="${!#}"; [[ $# -gt 0 && -n "${ANS+x}" && "$ANS" != END ]] || return 1
+            printf -v "$v" "%s" "${ANS%%,*}"; echo "ASKED" >&2
+            if [[ "$ANS" == *,* ]]; then ANS="${ANS#*,}"; else ANS=END; fi; }
+        pick_domain() { LOCAL_DOMAIN="$2"; eval "$1"; echo "$LOCAL_DOMAIN"; }
+        pick_domain "$1" "$2"'
+    run env SETTINGS_FILE="$TMP/settings.json" V2_ROOT="$V2_ROOT" ANS=x bash -c "$pick" _ "$stanza" eski
     [ "$status" -eq 0 ]
     [ "$output" = ev ]
+    # No confirmed name: the previous install's name is kept, nothing is asked.
+    run env SETTINGS_FILE="$TMP/none.json" V2_ROOT="$V2_ROOT" ANS=x bash -c "$pick" _ "$stanza" eski
+    [ "$status" -eq 0 ]
+    [ "$output" = eski ]
+    # First install: no default; empty and invalid answers are asked again.
+    run env SETTINGS_FILE="$TMP/none.json" V2_ROOT="$V2_ROOT" ANS=',Bad_Name,ev' bash -c "$pick" _ "$stanza" ""
+    [ "$status" -eq 0 ]
+    [ "$(grep -c '^ASKED$' <<<"$output")" -eq 3 ]
+    [ "$(grep -c '^geçersiz alan adı' <<<"$output")" -eq 2 ]
+    [ "${lines[${#lines[@]}-1]}" = ev ]
+    # A closed terminal stops the install instead of looping.
+    run env SETTINGS_FILE="$TMP/none.json" V2_ROOT="$V2_ROOT" ANS=END bash -c "$pick" _ "$stanza" ""
+    [ "$status" -eq 90 ]
+    # No default exists anywhere.
+    run ! grep -q 'DEFAULT_LOCAL_DOMAIN' "$V2_ROOT/install.sh" "$V2_ROOT/config/defaults.env"
     printf '%s\n' '{"domain":"bad;value"}' >"$TMP/settings.json"
     run python3 "$V2_ROOT/panel/master_settings.py" saved-domain "$TMP/settings.json"
     [ "$status" -ne 0 ]

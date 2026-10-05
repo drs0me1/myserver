@@ -13,6 +13,30 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-228: Install from the public repository with one curl line on the server (v2-206)
+
+- **Request (user, 2026-10-05):** "repoyu public yapalım. kurulumun ssh bağlantısı yapması
+  adımlarını çıkaralım. kurulum direkt server upgrade ve kurulum yapmaya başlasın. curl ile linki
+  çekeriz." The repository moved to the public `drs0me1/myserver` (current tree only; host
+  addresses and domains in the docs replaced with documentation examples).
+- **Decision:** the operator SSHes in and runs
+  `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`.
+  `kur.sh` downloads the GitHub archive of `main` (or `KUR_REF`), copies only the runtime tree
+  to `/root/debian-server-installer` with the launcher's atomic swap, and `exec`s `install.sh`
+  with `/dev/tty` as stdin. The body sits in `main()` so a truncated download runs nothing.
+- **Retired with it:** the portable `.command` and its exporter (DD-154's "one current
+  export"), the input file's transport to `/run` and `read_input_file` (DD-119). The only
+  input left, the local domain, has no default (user's choice: "default bir değer
+  oluşturmayalım"): a first install asks in stage 0 until the answer is a valid label;
+  re-runs keep the Konsol-confirmed (DD-157) or previous name without asking, and Konsol →
+  Ayarlar changes it. `DEFAULT_LOCAL_DOMAIN` is gone from `defaults.env`.
+  `kurulum/kurulum.env` remains only as `wireguard.command`'s `SSH_HOST`.
+- **Full-upgrade on every run** (user's choice): the re-run question and `V2_FULL_UPGRADE`
+  are gone; re-runs take longer.
+- **Trade-offs:** integrity rests on HTTPS to GitHub and on who can push to `main`; there is
+  no embedded SHA-256 to compare. `kur.sh` prints the archive's SHA-256, and `KUR_REF` pins a
+  commit. Every push to `main` reaches the next install, so `main` must stay installable.
+
 ### DD-227: Writable server folders only through the Files account (v2-205)
 
 - **Finding (measured on nrm, 2026-10-05):** a generic container ran as its image's user. For alpine

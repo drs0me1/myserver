@@ -311,22 +311,13 @@ Ana hedef:
 - küçük arıza alanı,
 - davranışı anlaşılır güvenlik olmalıdır.
 
-## Export (taşınabilir kurulum app)
+## Dağıtım (DD-228)
 
-Her `V2_VERSION` değişikliğinde ve kullanıcı ayrıca "export et" dediğinde:
-
-1. `Data/dev/export-installer.sh` çalıştır (`--desktop` kullanma).
-2. Çıktıyı `Data/app/<V2_VERSION>.command` olarak kaydet (`V2_VERSION`, `Data/install.sh` içinden).
-3. Aynı sürümü repo köküne `<V2_VERSION>.command` olarak kopyala; kökteki önceki sürüm kopyası kaldırılır (exporter bunu yapar). Repo kökünde yalnız çift tıklanan dosyalar durur; geri kalan her şey `Data/` altındadır.
-4. Çıktıları yalnız repo içerisinde tut; Masaüstü'ne veya repo dışına kopyalama. Repo dışına kopya yalnız kullanıcının açık isteğiyle alınır.
-5. Ayrı upload/sync betiği kullanma; tek dağıtım birimi bu app dosyasıdır.
-6. Gömülü tarball `app`, `dev`, `tests`, `.cursor` ve `docs` içermez.
-
-Sürüm değişikliğinin güncel kurulum dosyalarını son kaynakla doğrula ve kullanıcı
-commit istediğinde o sürümün commit'ine dahil et. Yalnız güncel sürüm repo kökünde
-ve `Data/app/` içinde durur; eski sürümler Git geçmişinde korunur. Commit sırasında
-Masaüstü kopyası veya ayrı sürüm arşivi oluşturma. Önceden alınmış Masaüstü
-kopyalarına ve `versiyon/` arşivlerine dokunma.
+Taşınabilir `.command` ve exporter yoktur. Sunucuda tek satır:
+`curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`.
+`kur.sh` `main` dalını (ya da `KUR_REF`) indirir; `main`'e giden her push bir sonraki kuruluma
+ulaşır, bu yüzden `main` her zaman kurulabilir kalmalıdır. Repo herkese açıktır: sunucu IP'si,
+gerçek alan adı, kimlik bilgisi ya da kişisel yol commit edilmez.
 
 ## Modüller (DD-148)
 

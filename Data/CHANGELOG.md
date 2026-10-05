@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-05 — Install on the server with one curl line (v2-206)
+
+- The repository is public (`drs0me1/myserver`). On the server:
+  `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`.
+  `kur.sh` downloads the code from GitHub, places it in `/root/debian-server-installer` and
+  starts the installer on the terminal. `KUR_REF` installs a specific commit or tag (DD-228).
+- The Mac installer (`<version>.command`), its exporter and `Data/app/` are gone. The
+  installer no longer reads an input file. A first install asks for the local domain instead,
+  with no default (asked again until valid). Re-runs keep the existing name without asking;
+  change it in Konsol → Ayarlar.
+- Every run upgrades the system first (`full-upgrade`), re-runs included. The re-run question
+  is gone.
+- `kurulum/kurulum.env` now holds only `SSH_HOST`, for `wireguard.command`.
+
 ### 2026-10-05 — Containers write to server folders only as the Files account (v2-205)
 
 - The Podman page has a new "Çalıştıran hesap" choice. The Files account runs the container as the

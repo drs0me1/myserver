@@ -45,20 +45,18 @@ archive limits, same-origin gates and CSP remain in force.
    not wipe the host, restore backups or recover old credentials/peer identities.
    Save any data that must survive before a reset. On an existing host, rerunning
    the installer preserves managed data and is **not** a clean installation.
-3. Keep the current `<V2_VERSION>.command` beside the operator-owned `kurulum/`
-   directory; read the release version from `Data/install.sh` or the root README.
-   Inputs are only `SSH_HOST` and optional `LOCAL_DOMAIN`, using the existing
-   example; do not overwrite an existing input file. Mode must be 0600 or 0400.
+3. The installer is started on the server (**DD-228**):
+   `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`.
+   The only input is the local domain, asked in stage 0 on a first install (no default).
 4. Confirm SSH works. If a reset changed the SSH host key, independently verify
    its new fingerprint before replacing only that server's known-host entry.
    Injecting the same client public key does not preserve the server host key.
-5. Run the portable installer, inspect the destination/summary and confirm.
+5. Run that line over SSH, inspect the summary and confirm.
    Complete the Tailscale login URL if requested; configure the restricted
    local domain and exit-node approval in Tailscale Admin. A fresh node can
    receive a different Tailscale address. Account/ACL changes are manual.
 
-For agent-driven tests on `nrm`, use scratch inputs rather than the operator's
-`kurulum/kurulum.env`. Historical acceptance: v131 and v132 were deployed as in-place updates on the user's
+For agent-driven tests on `nrm`, type a scratch domain on a first install. Historical acceptance: v131 and v132 were deployed as in-place updates on the user's
 v130 Debian installation. Portable validation, live read-only Store/firewall checks and
 local regression suites passed; no reset/reboot or fresh Ubuntu run was performed.
 Those results do not certify a fresh install of later releases. See `SESSION.md`

@@ -120,7 +120,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-116 | Dozzle replaces Portainer | historical; see DD-151 | archive/design-decisions-retired.md |
 | DD-117 | Transmission replaces qBittorrent | historical; see DD-127 | archive/design-decisions-retired.md |
 | DD-118 | The installer sets up FileBrowser and Transmission; the backup keeps only wg-easy | historical; see DD-127, DD-146, DD-122, DD-120 | archive/design-decisions-retired.md |
-| DD-119 | Installer inputs come from one git-ignored file, and that file is the truth | live | design-decisions.md |
+| DD-119 | Installer inputs come from one git-ignored file, and that file is the truth | superseded by DD-228 (input file and its transport retired) | design-decisions.md |
 | DD-120 | WireGuard runs in the host kernel from kurulum/wireguard; wg-easy is removed | live | design-decisions.md |
 | DD-121 | kurulum.env lists the WireGuard peers; the server generates what is missing and hands it back | superseded by DD-124 | archive/design-decisions-retired.md |
 | DD-122 | container-backup is retired; kurulum/ is the only thing to keep | live | design-decisions.md |
@@ -155,7 +155,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-151 | qBittorrent is a host module; Dozzle and the base Compose project go | live, host part superseded by DD-209, first-login password by DD-210, inbound peer port by DD-217/219 | design-decisions.md |
 | DD-152 | No Docker — Paylaşım runs rclone on the host, Arşiv açıcı is dropped | live; rclone and the trash tmpfs superseded by DD-158 | design-decisions.md |
 | DD-153 | The base installs only what the base uses | live | design-decisions.md |
-| DD-154 | One console name, one current export | live | design-decisions.md |
+| DD-154 | One console name, one current export | partly superseded by DD-228 (no exported installer) | design-decisions.md |
 | DD-155 | Konsol shows the server's settings, read-only | live; parts superseded by DD-156 | design-decisions.md |
 | DD-156 | Transactional settings management in Konsol | live | design-decisions.md |
 | DD-157 | Rename the local domain as a confirmed transaction | live | design-decisions.md |
@@ -229,3 +229,4 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-225 | Packages' private state is hidden from the uid-1000 data units | v2-203; live-verified on nrm 2026-10-05 | design-decisions.md |
 | DD-226 | A Konsol container's bind sources are pinned at every start | v2-204; live-verified on nrm 2026-10-05 | design-decisions.md |
 | DD-227 | Writable server folders only through the Files account | v2-205; live-verified on nrm 2026-10-05 | design-decisions.md |
+| DD-228 | Install from the public repository with one curl line on the server | v2-206 | design-decisions.md |

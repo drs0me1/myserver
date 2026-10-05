@@ -9,8 +9,7 @@ container runtime, with a main-sidebar Konteynerler manager for lifecycle, ports
 volumes, images and networks (**DD-211**); no Docker
 (**DD-152**), no reconcile engine.
 
-**Current version:** the name of the `<version>.command` at the repository root
-(`V2_VERSION` in `Data/install.sh`).
+**Current version:** `V2_VERSION` in `Data/install.sh`.
 
 Folder shares can opt into Tailscale, WAN IPv4 or both (DD-179). New shares
 default to Tailscale. WAN uses HTTP with explicit plaintext-risk consent,
@@ -23,10 +22,9 @@ holds navigation and live CPU/RAM/disk indicators. See the
 App Store uses cards with a name, status and Install/Open actions; descriptions,
 service controls and logs remain under Details.
 
-The repository root holds only what is double-clicked: the current portable
-installer (`<version>.command`), `wireguard.command` (WireGuard peer management)
-and the Git-ignored `kurulum/` (installer inputs and device profiles/QR codes
-downloaded on request). Everything else lives under `Data/`; paths in the
+The repository root holds the server bootstrap `kur.sh` (**DD-228**),
+`wireguard.command` (WireGuard peer management from a Mac) and the Git-ignored
+`kurulum/` (its SSH host and device profiles/QR codes downloaded on request). Everything else lives under `Data/`; paths in the
 documents there are relative to `Data/`. Turkish click order:
 [`Data/OKUBENI.txt`](Data/OKUBENI.txt).
 
@@ -39,47 +37,45 @@ and session history; not current behaviour): [`Data/docs/archive/`](Data/docs/ar
 
 ## Quick start
 
-```bash
-# Once, only if absent: installer inputs (SSH host and domain; no accounts)
-mkdir -p kurulum && cp Data/config/kurulum.env.example kurulum/kurulum.env
-chmod 600 kurulum/kurulum.env   # then fill it in
+SSH into the fresh server yourself, then run one line (**DD-228**):
 
-# Install: double-click the current <version>.command at the repository root
-# WireGuard peers (after the install): double-click wireguard.command
+```bash
+curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash
+# minimal image without curl/sudo, as root: apt install -y curl sudo
+# a specific commit or tag instead of main:
+curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo KUR_REF=<commit|tag> bash
+```
+
+`kur.sh` downloads the repository archive from GitHub, places the runtime files
+in `/root/debian-server-installer` (atomic swap) and starts `install.sh` on the
+terminal. The installer upgrades the system on every run. A first install asks for
+the local domain (no default, e.g. `ev` gives `panel.ev`); re-runs keep the existing
+name, which is changed in Konsol → Ayarlar (**DD-157**). It shows one summary and
+waits for `E`. Approve the Tailscale login link it prints in a browser.
+
+Root, interactive TTY (one confirmation), Debian 13 or Ubuntu 24.04/26.04 LTS
+only. Re-runs are supported: run the same line again.
+
+WireGuard peers from a Mac (after the install, optional):
+
+```bash
+mkdir -p kurulum && cp Data/config/kurulum.env.example kurulum/kurulum.env
+chmod 600 kurulum/kurulum.env   # then set SSH_HOST
+# double-click wireguard.command
 # Pick the network: 6) Ağ seç; change a peer's DNS: 7) DNS değiştir
 # New server key, all its peers removed: 8) Ağı yeniden üret
 # Nothing is kept on the Mac but a profile you download, with its QR code as <name>.png
-
-# Developer workstation — rebuild it (writes Data/app/<version>.command and
-# replaces the root copy)
-Data/dev/export-installer.sh
-# or double-click: Data/dev/export-installer.command
-
-# On the host (after upload; needs the input file in /run/master-stack)
-bash /root/debian-server-installer/install.sh
 ```
-
-Root, interactive TTY (one confirmation), Debian 13 or Ubuntu 24.04/26.04 LTS
-only. Re-runs are supported.
-
-The installer asks nothing it configures: every input comes from
-`kurulum/kurulum.env`. A domain subsequently confirmed in Konsol takes
-precedence on re-runs (**DD-157**); no account is read from this file.
-The portable `.command` embeds
-only the runtime files and their archive SHA-256. It uploads them to
-`/root/debian-server-installer`, sends the input file to `/run/master-stack`
-(`tmpfs`, deleted by the installer as it reads it), then starts `install.sh`.
 
 ## Repository layout
 
 ```
 .
-├── <version>.command      # current portable installer (double-click)
+├── kur.sh                 # server bootstrap: curl … | sudo bash (DD-228)
 ├── wireguard.command      # WireGuard peer menu (double-click)
-├── kurulum/               # installer inputs, mode 600 (Git-ignored)
-│   ├── kurulum.env        #   SSH host and domain
+├── kurulum/               # wireguard.command input, mode 600 (Git-ignored)
+│   ├── kurulum.env        #   SSH host
 │   └── wireguard/         #   only the profiles + QR pictures you downloaded (DD-143)
-├── versiyon/              # copies of verified working versions, each with OKUBENI.txt
 ├── README.md, CLAUDE.md   # entry points
 └── Data/
     ├── install.sh          # orchestrator
@@ -93,8 +89,6 @@ only the runtime files and their archive SHA-256. It uploads them to
     ├── console/            # Konsol pages
     ├── systemd/            # units and drop-ins
     ├── tests/              # Bats, settings worker, browser and isolated Linux tests
-    ├── dev/                # portable installer exporter
-    ├── app/                # the current exported <version>.command (older ones in Git)
     ├── docs/               # contract, architecture, design rationale and decision index
     ├── OKUBENI.txt         # Turkish click order
     └── CHANGELOG.md, SESSION.md
@@ -180,9 +174,8 @@ See [Files and archive boundaries](Data/docs/desktop-and-archives.md) and
 
 ## Rebuilding a host
 
-`kurulum/` supplies installation inputs, not server data:
-- `kurulum/kurulum.env` holds only the SSH host and the domain. The Konsol
-  account (the public name's credential; the tailnet asks for no sign-in) is
+Nothing but the domain answer reaches a fresh install; there is no server data to carry:
+- The Konsol account (the public name's credential; the tailnet asks for no sign-in) is
   created in Settings over Tailscale (**DD-205**; forgotten: set a new password
   there, or `sudo master-konsol sifirla`), and the modules make or show their own.
 - qBittorrent keeps its settings and torrent list on the server only; a
@@ -190,14 +183,13 @@ See [Files and archive boundaries](Data/docs/desktop-and-archives.md) and
 - WireGuard is not part of that: a fresh install has no WireGuard at all
   (**DD-143**, **DD-150**). Install it from Konsol → App Store → WireGuard, create
   the first network in WireGuard → Yapılandır and add the devices again.
-Keep that folder safe.
 
 ## Verify (workstation)
 
 ```bash
 bats Data/tests
-bash -n Data/install.sh Data/common.sh Data/scripts/* Data/dev/export-installer.sh
-shellcheck -x -s bash Data/install.sh Data/common.sh Data/scripts/* Data/dev/export-installer.sh
+bash -n kur.sh Data/install.sh Data/common.sh Data/scripts/*
+shellcheck -x -s bash kur.sh Data/install.sh Data/common.sh Data/scripts/*
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Data/tests -p 'test_*.py'
 # Browser: PLAYWRIGHT_MODULE=<module path> PLAYWRIGHT_CHROMIUM=<binary> node Data/tests/settings-ui.cjs
 # Linux root, disposable network namespace (existing services are not touched):
@@ -208,12 +200,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s Data/tests -p 'test_*.
 
 ## Working conventions
 
-Version history stays in Git. Every version change also rebuilds the current portable
-installer in the repository root and `Data/app/` using `Data/dev/export-installer.sh`
-without `--desktop`. Verify both copies against the final source and include them in
-the version's commit when requested. Only the current installer stays in those two
-locations; older versions remain in Git. No Desktop copies or separate version
-snapshots are created; copying elsewhere requires an explicit request.
+Version history stays in Git. `kur.sh` installs whatever `main` holds, so every
+pushed change to `main` reaches the next install; there is no exported installer
+to rebuild (**DD-228**).
 
 See [`CLAUDE.md`](CLAUDE.md). Change history: [`Data/CHANGELOG.md`](Data/CHANGELOG.md).
 Session continuity: [`Data/SESSION.md`](Data/SESSION.md).
