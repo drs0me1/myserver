@@ -34,6 +34,7 @@ const trashFixtures = [
 let trash = [], trashWrites = [];
 // DD-235: the system view's fixture (root over /); every write is recorded, nothing is sent anywhere.
 const sysWrites = [], sysReads = [];
+let holdSys = null;  // a pending promise holds the system view's next folder listing
 const sysEntries = { "": [["etc","dir"],["proc","dir"],["srv","dir"],["vmlinuz","file"]], etc: [["hosts","file"],["ssh","dir"]] };
 let submitted, failShare = false, holdShare = false, releaseShare;
 const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
@@ -127,6 +128,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           disk: { total: 200000, free: 50000, used: null, mount: true }, textLimit: 1048576 };
         else if (p === "/api/sistem/list") {
           const at = url.searchParams.get("path") || "";
+          if (at && holdSys) await holdSys;
           if (!sysEntries[at]) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "bulunamadı (taşınmış ya da silinmiş olabilir)" }) });
           result = { path: at, skipped: 0, entries: (sysEntries[at] || []).filter(([, type]) => !url.searchParams.get("dirs") || type === "dir")
             .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? null : 512, mtime: Date.now() / 1000 })) };
@@ -632,10 +634,22 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     const downloads = await page.evaluate(()=>window.requestedDownloads.length);
     await tile("vmlinuz").dblclick();
     assert.equal(await page.evaluate(()=>window.requestedDownloads.length), downloads + 1, "a double-click downloads once");
+    // While a folder loads the window keeps its height: it used to shrink, drop the page's scroll bar and
+    // shake sideways. A double-click on the selected folder opens it once.
+    await page.setViewportSize({width:1440,height:500});  // the content, not the CSS minimum, sizes the window
+    await select("etc");
+    const panelHeight = () => page.locator("#fs-panel").evaluate((p) => p.getBoundingClientRect().height);
+    const tall = await panelHeight();
+    let releaseSys; holdSys = new Promise((resolve) => { releaseSys = resolve; });
     await tile("etc").dblclick();
+    await page.locator("#fs-body .hint-s").getByText("Yükleniyor…", {exact:true}).waitFor();
+    assert.equal(await panelHeight(), tall, "the window shrank while the folder loaded");
+    holdSys = null; releaseSys();
     await page.waitForFunction(()=>document.querySelector('#fs-table [data-item="hosts"]') || /bulunamadı/.test(document.querySelector("#toast").textContent));
     assert(!sysReads.some(r=>/path=etc(%2F|\/)etc/.test(r)), "a double-click opened the folder twice");
     await tile("hosts").waitFor();
+    assert.equal(await page.locator("#fs-panel").evaluate((p) => p.style.minHeight), "", "the held height outlived the load");
+    await page.setViewportSize({width:1440,height:1000});
     await select("hosts");
     assert(!/null/.test(await page.locator("#fs-detail").innerText()), "detail column prints null");
     await page.screenshot({path:path.join(shots,"system-view.png"),fullPage:true});

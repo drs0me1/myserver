@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-06 — Files: no jump while a folder opens (v2-216)
+
+- Fixed: opening a folder made the whole page jump sideways and back. While the folder loaded,
+  the Files window shrank for a moment, the browser's scroll bar disappeared and everything moved
+  by half its width. The window now keeps its height until the folder's contents arrive.
+
 ### 2026-10-06 — Files: double-click opens a folder once (v2-215)
 
 - Fixed: double-clicking a folder in Files' icon view opened it twice (`etc/etc`), showed

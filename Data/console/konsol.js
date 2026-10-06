@@ -587,10 +587,14 @@
   }
 
   function renderFs() {
+    // While a folder loads the window keeps its height: it used to shrink for a moment, the page's scroll bar
+    // vanished and the whole page jumped sideways and back (v2-216).
+    const panel = $("fs-panel");
+    panel.style.minHeight = fsView === "files" && !fsList ? `${panel.offsetHeight}px` : "";
     renderRail();
     const body = $("fs-body");
     body.textContent = "";
-    $("fs-panel").dataset.fs = fsView;
+    panel.dataset.fs = fsView;
     if (fsView === "trash") { body.append(h("h2", { class: "fx-title" }, "Çöp")); renderTrashList(body); renderDetail(); return; }
     if (fsView === "shares") { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); renderDetail(); return; }
     if (!fsList) { body.append(h("p", { class: "hint-s" }, "Yükleniyor…")); renderDetail(); return; }
