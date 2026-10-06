@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-06 — Files: double-click opens a folder once (v2-215)
+
+- Fixed: double-clicking a folder in Files' icon view opened it twice (`etc/etc`), showed
+  "bulunamadı (taşınmış ya da silinmiş olabilir)" and jumped back to the top folder. It happened in
+  `/srv` and in "Sistem (/)" alike. A double-click now opens the folder once, and downloads or opens
+  a file once.
+
 ### 2026-10-06 — Files: "Sistem (/)", the whole server as root (v2-214)
 
 - Files' right column has a new "Sistem (/)" entry under Favoriler. It shows the whole server from

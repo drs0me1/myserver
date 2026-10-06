@@ -96,8 +96,10 @@ with its status and the file that holds it.
   the full width; the trash table follows the window's own width (container query).
 - **Icons:** folders and file types are inline SVG drawn by `konsol.js` (extension tag, colour per
   kind), no image assets. A shared folder carries a small share badge.
-- **Selection:** a click selects one item, a second click (or a double click) opens it; Ctrl/Cmd
-  adds, Shift selects a range, Escape or a click on empty space clears. The detail shows the open
+- **Selection:** a click selects one item, a second click (or a double click) opens it once
+  (v2-215: a double click is two clicks, so the click after the opening one is ignored and there
+  is no separate double-click handler, which opened a folder twice and failed as "bulunamadı");
+  Ctrl/Cmd adds, Shift selects a range, Escape or a click on empty space clears. The detail shows the open
   folder (nothing selected), one item with only the actions that apply, or "N öge seçili" with one
   two-document icon and a count badge and six fixed action slots (Arşivi aç and Paylaş disabled).
   Folders a package writes into stay unselectable in the list view, as before.

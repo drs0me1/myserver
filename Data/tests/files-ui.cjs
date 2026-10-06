@@ -127,6 +127,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           disk: { total: 200000, free: 50000, used: null, mount: true }, textLimit: 1048576 };
         else if (p === "/api/sistem/list") {
           const at = url.searchParams.get("path") || "";
+          if (!sysEntries[at]) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "bulunamadı (taşınmış ya da silinmiş olabilir)" }) });
           result = { path: at, skipped: 0, entries: (sysEntries[at] || []).filter(([, type]) => !url.searchParams.get("dirs") || type === "dir")
             .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? null : 512, mtime: Date.now() / 1000 })) };
         } else if (p === "/api/sistem/delete") {
@@ -549,9 +550,10 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await page.evaluate(()=>localStorage.getItem("konsol-files-view")),"list");
     await page.locator(".fx-views").getByRole("button",{name:"Simgeler",exact:true}).click();
     await page.locator("#fs-table.fx-grid").waitFor();
-    await select("media");
-    await act("ac").click();
+    // A real double-click opens the folder once: the second click already opens the selected tile.
+    await tile("media").dblclick();
     await tile("movies").waitFor();
+    assert.deepEqual(await page.locator("#fs-bar .crumb").allInnerTexts(), ["/srv","media"]);
     await page.getByRole("searchbox", { name: "Bu klasörde ara" }).fill("series");
     assert.equal(await tile("movies").count(), 0);
     assert.equal(await tile("series").count(), 1);
@@ -627,7 +629,12 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     for (const key of ["cop","paylas","arsiv","ac-arsiv"]) assert.equal(await act(key).count(), 0, "system view offers " + key);
     await act("indir").click();
     assert.match(await page.evaluate(()=>window.requestedDownloads.at(-1)), /\/api\/sistem\/download\?path=vmlinuz$/);
-    await select("etc"); await tile("etc").click();
+    const downloads = await page.evaluate(()=>window.requestedDownloads.length);
+    await tile("vmlinuz").dblclick();
+    assert.equal(await page.evaluate(()=>window.requestedDownloads.length), downloads + 1, "a double-click downloads once");
+    await tile("etc").dblclick();
+    await page.waitForFunction(()=>document.querySelector('#fs-table [data-item="hosts"]') || /bulunamadı/.test(document.querySelector("#toast").textContent));
+    assert(!sysReads.some(r=>/path=etc(%2F|\/)etc/.test(r)), "a double-click opened the folder twice");
     await tile("hosts").waitFor();
     await select("hosts");
     assert(!/null/.test(await page.locator("#fs-detail").innerText()), "detail column prints null");

@@ -435,7 +435,7 @@
   let fsLayout = "grid";
   try { fsLayout = localStorage.getItem("konsol-files-view") === "list" ? "list" : "grid"; } catch (e) { /* özel pencere */ }
   /* DD-145: kısayol sütunu, arama, çoklu seçim ve listenin içine bırakarak yükleme. */
-  let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
+  let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsOpened = false, fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
   /* DD-235: "Sistem (/)": the same page over the root backend's system view (/api/sistem/*). No trash,
      archives or shares there; delete is permanent and asks for the item's name. */
   let fsSys = false;
@@ -555,13 +555,17 @@
   }
   const selItems = () => fsShown().filter((e) => fsSel.has(e.name));
   function clearSel() { if (!fsSel.size) return; fsSel.clear(); renderRows(); renderDetail(); }
-  // Izgarada tık: tek seçim; seçili tek ögeye yeniden tık (ya da çift tık) onu açar. Ctrl/Cmd ekler, Shift aralık seçer.
+  // Izgarada tık: tek seçim; seçili tek ögeye yeniden tık onu açar. Çift tık da iki tıktır: ögeyi bir kez açar, açan tıktan
+  // sonraki tık (e.detail > 1) yok sayılır; yoksa klasör iki kez açılıyordu (klasör/klasör → "bulunamadı") ya da dosya iki kez
+  // iniyordu. Ctrl/Cmd ekler, Shift aralık seçer.
   function openItem(item) {
     if (item.type === "dir") fsGo(fsPath.concat(item.name)); else if (isText(item)) openText(item); else download(item);
   }
   function pickItem(item, e) {
     if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) { toggleSel(item.name, e.shiftKey); return; }
-    if (fsSel.size === 1 && fsSel.has(item.name)) { openItem(item); return; }
+    if (e && e.detail > 1 && fsOpened) return;
+    fsOpened = fsSel.size === 1 && fsSel.has(item.name);
+    if (fsOpened) { openItem(item); return; }
     fsSel = new Set([item.name]); fsLast = item.name;
     renderRows(); renderDetail();
     document.querySelector(`[data-item="${CSS.escape(item.name)}"]`)?.focus();
@@ -821,7 +825,7 @@
     }
     return h("button", { type: "button", class: "fx-item" + (on ? " on" : ""), "data-item": item.name, "aria-pressed": on ? "true" : "false",
       "aria-label": `${item.name}, ${dir ? "klasör" : "dosya"}, ${sub}`, title: item.name,
-      onclick: (e) => pickItem(item, e), ondblclick: () => openItem(item),
+      onclick: (e) => pickItem(item, e),
       onkeydown: (e) => { if (e.key === "Escape") clearSel(); } },
       itemArt(item), sh ? h("span", { class: "fx-badge", title: "Paylaşılıyor" }, svg("share")) : null,
       h("span", { class: "fx-name" }, item.name), h("span", { class: "fx-sub" }, sub));
