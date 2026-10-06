@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-06 — Konsol: the page no longer moves sideways (v2-217)
+
+- Fixed: in Files, double-clicking a folder could still shake the page. The first click selects
+  the folder and its details make the page taller than the window, so the browser's scroll bar
+  appears; when the folder opens, the scroll bar goes away again. Konsol now always keeps the scroll
+  bar's room (`scrollbar-gutter: stable`), so pages never move sideways when their height changes. With
+  always-visible scroll bars, short pages show an empty strip of that width on the right.
+- Fixed: since v2-216 a folder opened from far down a long list was shown from the middle. Opening a
+  folder now always starts at its top.
+
 ### 2026-10-06 — Files: no jump while a folder opens (v2-216)
 
 - Fixed: opening a folder made the whole page jump sideways and back. While the folder loaded,

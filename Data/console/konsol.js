@@ -498,6 +498,8 @@
     fsSel.clear();
     fsQuery = "";
     renderFs();
+    // A folder opens at its top; the held height (renderFs) no longer pulls the page up by itself (v2-217).
+    if (current === "dosyalar") window.scrollTo({ top: 0 });
     loadFs();
   }
   const fsHash = (v) => (v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : fsSys ? "#/dosyalar/sistem" : "#/dosyalar");
@@ -588,9 +590,9 @@
 
   function renderFs() {
     // While a folder loads the window keeps its height: it used to shrink for a moment, the page's scroll bar
-    // vanished and the whole page jumped sideways and back (v2-216).
-    const panel = $("fs-panel");
-    panel.style.minHeight = fsView === "files" && !fsList ? `${panel.offsetHeight}px` : "";
+    // vanished and the whole page jumped sideways and back (v2-216). A hidden page (height 0) holds nothing.
+    const panel = $("fs-panel"), tall = panel.getBoundingClientRect().height;
+    panel.style.minHeight = fsView === "files" && !fsList && tall ? `${tall}px` : "";
     renderRail();
     const body = $("fs-body");
     body.textContent = "";

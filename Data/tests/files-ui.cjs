@@ -35,7 +35,7 @@ let trash = [], trashWrites = [];
 // DD-235: the system view's fixture (root over /); every write is recorded, nothing is sent anywhere.
 const sysWrites = [], sysReads = [];
 let holdSys = null;  // a pending promise holds the system view's next folder listing
-const sysEntries = { "": [["etc","dir"],["proc","dir"],["srv","dir"],["vmlinuz","file"]], etc: [["hosts","file"],["ssh","dir"]] };
+const sysEntries = { "": [["etc","dir"],["proc","dir"],["srv","dir"],["vmlinuz","file"]], etc: [["hosts","file"],["ssh","dir"]], "etc/ssh": [] };
 let submitted, failShare = false, holdShare = false, releaseShare;
 const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
 (async () => {
@@ -640,6 +640,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await select("etc");
     const panelHeight = () => page.locator("#fs-panel").evaluate((p) => p.getBoundingClientRect().height);
     const tall = await panelHeight();
+    await select("vmlinuz");  // the double-click below selects etc and then opens it, as a person's does
     let releaseSys; holdSys = new Promise((resolve) => { releaseSys = resolve; });
     await tile("etc").dblclick();
     await page.locator("#fs-body .hint-s").getByText("Yükleniyor…", {exact:true}).waitFor();
@@ -650,6 +651,8 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await tile("hosts").waitFor();
     assert.equal(await page.locator("#fs-panel").evaluate((p) => p.style.minHeight), "", "the held height outlived the load");
     await page.setViewportSize({width:1440,height:1000});
+    // The scroll bar's room is always kept, so selecting or opening never moves the page sideways (v2-217).
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter), "stable");
     await select("hosts");
     assert(!/null/.test(await page.locator("#fs-detail").innerText()), "detail column prints null");
     await page.screenshot({path:path.join(shots,"system-view.png"),fullPage:true});
@@ -663,6 +666,18 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.waitForFunction(()=>!document.querySelector('#fs-table [data-item="hosts"]'));
     assert.deepEqual(sysWrites, [{path:"etc", names:["hosts"], confirm:"hosts"}]);
     assert(sysReads.every(r=>r.startsWith("/api/sistem/")) && sysReads.some(r=>r.startsWith("/api/sistem/list?path=etc")));
+    // An opened folder shows from its top although the window keeps its height while it loads (v2-217).
+    await page.setViewportSize({width:1440,height:500});
+    await select("ssh");
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    assert(await page.evaluate(() => scrollY) > 0, "the page does not scroll at 1440x500");
+    holdSys = new Promise((resolve) => { releaseSys = resolve; });
+    await page.evaluate(() => document.querySelector('#fs-table [data-item="ssh"]').click());
+    await page.locator("#fs-body .hint-s").getByText("Yükleniyor…", {exact:true}).waitFor();
+    assert.equal(await page.evaluate(() => scrollY), 0, "the folder did not open at its top");
+    holdSys = null; releaseSys();
+    await page.locator("#fs-bar .crumb.cur").getByText("ssh", {exact:true}).waitFor();
+    await page.setViewportSize({width:1440,height:1000});
     await rail("Sunucu").click();
     await page.locator(".offbar.sysbar").waitFor({state:"detached"});
     assert.equal(new URL(page.url()).hash, "#/dosyalar");

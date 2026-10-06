@@ -40,6 +40,10 @@
 
 * { box-sizing: border-box; }
 html { background: var(--ground); }
+/* The scroll bar's room is always kept: a page that grew or shrank past the window's height (selecting an
+   item, opening a folder) moved everything sideways with classic scroll bars (v2-217). Phones use overlay
+   scroll bars, and their layout keeps the whole width. */
+@media (min-width: 761px) { html { scrollbar-gutter: stable; } }
 body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 var(--f-body); -webkit-font-smoothing: antialiased; }
 [hidden] { display: none !important; }
 button, input { font: inherit; color: inherit; }
