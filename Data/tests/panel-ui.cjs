@@ -530,6 +530,15 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
         const over = await page.locator("#genel-widgets").evaluate(el => [...el.querySelectorAll(".widget")].map(w => [w.dataset.widget, w.scrollHeight, w.clientHeight]));
         assert(over.every(([, sh, ch]) => sh<=ch+1),
           `no widget overflows its cell at ${width}/${colorScheme}: ${JSON.stringify(over)}`);
+        // DD-231: the longest IPv4 addresses fit the Sunucu rows unclipped.
+        const clipped = await page.locator('#genel-widgets [data-widget="sunucu"]').evaluate(card => {
+          const cells = ["#foot-ts","#foot-wan"].map(sel => card.querySelector(sel)), old = cells.map(el => el.textContent);
+          for (const el of cells) el.textContent = "255.255.255.255";
+          const rows = [...card.querySelectorAll(".server-facts dd")].filter(dd => dd.scrollWidth>dd.clientWidth).map(dd => dd.id);
+          cells.forEach((el, i) => { el.textContent = old[i]; });
+          return rows;
+        });
+        assert.deepEqual(clipped,[],`Sunucu rows are not clipped at ${width}/${colorScheme}`);
         const heads = await page.locator("#ag-apps thead").evaluate(el => [...el.querySelectorAll("th")].map(th => [th.textContent, th.scrollWidth, th.clientWidth]));
         assert(heads.every(([, sw, cw]) => sw<=cw+1),
           `the table headings are not clipped at ${width}: ${JSON.stringify(heads)}`);
