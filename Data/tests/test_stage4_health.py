@@ -74,7 +74,7 @@ class HealthTests(unittest.TestCase):
 
     def test_core_units_are_required_even_with_no_failed_units(self):
         expected = {"tailscaled.service", "dnsmasq.service", "caddy.service", "master-firewall.service",
-                    "master-panel.service", "master-files-panel.service", "master-paylasim.service",
+                    "master-panel.service", "master-files-panel.service", "master-sistem-dosya.service", "master-paylasim.service",
                     "refresh-tailnet-config.timer", "master-share-network.timer"}
         self.assertEqual(self.units()[0], "ok")
         shown = set(self.calls[-1][0][4:])

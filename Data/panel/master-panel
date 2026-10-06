@@ -83,7 +83,7 @@ HEALTH_CACHE_SECONDS = 30
 # Always-on core; the settings guard timer deliberately sleeps while idle (DD-181).
 HEALTH_UNITS = ("tailscaled.service", "caddy.service", "dnsmasq.service",
                 "master-firewall.service", "master-panel.service",
-                "master-files-panel.service", "master-paylasim.service",
+                "master-files-panel.service", "master-sistem-dosya.service", "master-paylasim.service",
                 "refresh-tailnet-config.timer", "master-share-network.timer")
 # Tailscale düğüm anahtarının süresi bu kadar gün kala uyarılır.
 KEY_EXPIRY_WARN_DAYS = 14
@@ -400,7 +400,7 @@ def parse_caddy(text, ts_ip, source, snippets=None):
     (snippet) bu dosyadan ve verilen ana dosyadan açılır."""
     lines, own = split_snippets(text)
     lines = expand_imports(lines, {**(snippets or {}), **own})
-    sites, cur, depth, ctx, matchers = [], None, 0, [""], {}
+    sites, cur, depth, ctx, matchers, block = [], None, 0, [""], {}, None
     for raw in lines:
         line = raw.split("#", 1)[0].strip() if raw.lstrip().startswith("#") else raw.strip()
         if not line:
@@ -415,8 +415,11 @@ def parse_caddy(text, ts_ip, source, snippets=None):
             continue
         if line.endswith("{"):
             head = line[:-1].strip()
-            if cur is not None and head.startswith("reverse_proxy "):
+            if cur is not None and head.startswith("reverse_proxy ") and ctx[-1] is not None:
                 cur["routes"].append({"path": ctx[-1], "kind": "proxy", "to": head.split()[1]})
+            if cur is not None and re.fullmatch(r"@[\w-]+", head):
+                block = head[1:]  # DD-235: a matcher block (path + expression lines)
+                matchers[block] = ""
             if cur is not None and head.startswith("handle"):
                 arg = head[len("handle"):].strip()
                 ctx.append(matchers.get(arg[1:], arg) if arg.startswith("@") else arg)
@@ -426,6 +429,7 @@ def parse_caddy(text, ts_ip, source, snippets=None):
             continue
         if line == "}":
             depth = max(0, depth - 1)
+            block = None
             if len(ctx) > 1:
                 ctx.pop()
             if depth == 0:
@@ -434,6 +438,17 @@ def parse_caddy(text, ts_ip, source, snippets=None):
         if cur is None:
             continue
         tokens = line.split()
+        if block is not None:
+            # Our templates' only expression compares two literals (a snippet argument and a channel
+            # name); when they differ the matcher never matches and its routes are not this site's.
+            literal = re.fullmatch(r'expression `"([^"]*)" == "([^"]*)"`', line)
+            if tokens[0] == "path" and matchers.get(block) is not None:
+                matchers[block] = " ".join(tokens[1:])
+            elif literal and literal[1] != literal[2]:
+                matchers[block] = None
+            continue
+        if ctx[-1] is None:
+            continue
         if tokens[0].startswith("@") and len(tokens) >= 3 and tokens[1] == "path":
             matchers[tokens[0][1:]] = " ".join(tokens[2:])
         elif tokens[0] == "reverse_proxy" and len(tokens) >= 2:
@@ -1688,12 +1703,13 @@ class Panel:
         return self.run_worker(["/usr/bin/python3", helper, "--state", self.args.state, action], data, failure)
 
     def actions(self):
-        """Son işlemler: iki arka ucun audit satırları (journald), yeniden eskiye."""
+        """Son işlemler: arka uçların audit satırları (journald), yeniden eskiye."""
         now = time.time()
         stamp, rows = self.actions_cache
         if now - stamp < ACTIONS_CACHE_SECONDS:
             return rows
         cmd = ["journalctl", "-u", "master-panel.service", "-u", "master-files-panel.service",
+               "-u", "master-sistem-dosya.service",
                "--since", "-7 days", "-n", "400", "-o", "short-unix", "--no-pager"]
         try:
             proc = subprocess.run(cmd, capture_output=True, timeout=15, stdin=subprocess.DEVNULL,

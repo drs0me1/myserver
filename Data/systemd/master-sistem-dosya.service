@@ -1,0 +1,35 @@
+[Unit]
+Description=Konsol system file view as root (master-stack, DD-235)
+# Dosyalar'ın "Sistem (/)" görünümü: master-files-panel'in --sistem kipi, root olarak, kök /.
+# TCP yok; yalnız Unix soketi (0660 root ve Caddy grubu). Caddy bu soketi yalnız Tailscale
+# sitesinde /api/sistem/* için açar; servis de başka bir Tailscale cihazından gelmeyen isteği reddeder.
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 __SBIN_DIR__/master-files-panel serve --sistem --listen unix:__SYSTEM_FILES_SOCKET__ --socket-group __CADDY_GROUP__ --root / --domain=__LOCAL_DOMAIN__ --version=__V2_VERSION__
+# Soketin klasörü; Caddy geçebilsin diye 0755, soketin kendisi 0660.
+RuntimeDirectory=__SYSTEM_FILES_RUNTIME__
+RuntimeDirectoryMode=0755
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0022
+# Amacı sunucunun tamamını görmek ve yazmak: ProtectSystem, ProtectHome, PrivateTmp ve
+# PrivateDevices bilerek yok (DD-235). Ağ yok (yalnız Caddy'nin soketi); setuid dosya oluşturulamaz.
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+# AF_INET/AF_INET6: istemcinin sunucunun kendi adresi olup olmadığını bind denemesiyle anlar
+# (DD-180); trafik yine IPAddressDeny ile kapalı.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+SystemCallArchitectures=native
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target

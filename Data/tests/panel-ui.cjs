@@ -112,6 +112,9 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
         } else result = {items:jobs,limits:{bytes:2147483648,entries:10000,layers:5,seconds:900}};
       } else if (p === "/api/archives/cancel") {
         jobs.find(j => j.id === req.postDataJSON().id).status = "cancelled"; result = {ok:true};
+      } else if (p === "/api/sistem/state") {
+        // DD-235: this fixture is the internet site, where Caddy has no system-view route.
+        return route.fulfill({status:404,contentType:"application/json",body:JSON.stringify({error:"bulunamadı"})});
       } else {
         errors.push("Unexpected endpoint: " + p);
         return route.fulfill({status:404,body:"unexpected fixture request"});

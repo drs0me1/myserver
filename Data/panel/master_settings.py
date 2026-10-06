@@ -613,7 +613,8 @@ class Manager:
         modules = Path(self.e["MODULES_DIR"])
         paths = [*modules.glob("*/dnsmasq.conf"), *modules.glob("*/*.caddy"),
                  modules / "dosya/master-files-panel.service",
-                 Path(self.e["UNIT_DIR"]) / "master-files-panel.service"]
+                 Path(self.e["UNIT_DIR"]) / "master-files-panel.service",
+                 Path(self.e["UNIT_DIR"]) / "master-sistem-dosya.service"]
         if self.e.get("CADDYFILE"):
             paths.append(Path(self.e["CADDYFILE"]))
         if self.e.get("CADDY_MODULES_DIR"):
@@ -639,6 +640,9 @@ class Manager:
         if files_active:
             run(["systemctl", "restart", "master-files-panel.service"], timeout=20)
             run(["systemctl", "is-active", "--quiet", "master-files-panel.service"])
+        # DD-235: the system view checks the Host name it was started with.
+        if Path(self.e["UNIT_DIR"], "master-sistem-dosya.service").exists():
+            run(["systemctl", "restart", "master-sistem-dosya.service"], timeout=20)
         run(["systemctl", "restart", "dnsmasq"], timeout=20)
         # Caddy's graceful reload keeps the in-flight apply response alive.
         run(["systemctl", "reload", "caddy.service"], timeout=20)

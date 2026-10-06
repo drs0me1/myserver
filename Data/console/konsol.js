@@ -152,7 +152,7 @@
   }
 
   /* ---------- durum ---------- */
-  const S = { sys: null, health: null, fs: null, actions: [], share: null, offset: 0 };
+  const S = { sys: null, health: null, fs: null, sysfs: null, actions: [], share: null, offset: 0 };
   const now = () => Date.now() / 1000 + S.offset;
   /* ---------- yükleme ---------- */
   let resourceBusy = false, resourceReceived = 0, resourceFailed = false;
@@ -182,6 +182,10 @@
   }
   function loadFsState() {
     return api("/api/state").then((s) => { S.fs = s; paintFsState(); }).catch(fail);
+  }
+  // DD-235: the system view answers only on the tailnet site; elsewhere it is absent (404/403). Files only.
+  function loadSysState() {
+    return api("/api/sistem/state").then((s) => { S.sysfs = s; paintFsState(); }).catch(() => { S.sysfs = null; paintFsState(); });
   }
   // Folder sharing is a built-in Files capability.
   function loadShares() {
@@ -398,6 +402,9 @@
     $("cf-extra").replaceChildren(...(o.extra ? [o.extra] : []));
     $("cf-extra").hidden = !o.extra;
     $("cf-word-row").hidden = !o.word;
+    // DD-235: the word may be the item's own name (system view delete); otherwise "onayla".
+    askWord = typeof o.word === "string" ? o.word : "onayla";
+    $("cf-word-label").textContent = askWord;
     $("cf-word").value = "";
     const go = $("cf-go");
     go.textContent = o.go;
@@ -407,7 +414,10 @@
     (o.word ? $("cf-word") : $("cf-cancel")).focus();
   }
   xIcon($("cf-x"));
-  $("cf-word").addEventListener("input", (e) => { $("cf-go").disabled = e.target.value.trim().toLocaleLowerCase("tr") !== "onayla"; });
+  let askWord = "onayla";
+  $("cf-word").addEventListener("input", (e) => {
+    $("cf-go").disabled = askWord === "onayla" ? e.target.value.trim().toLocaleLowerCase("tr") !== "onayla" : e.target.value !== askWord;
+  });
   const closeAsk = () => { $("cf").close(); askOk = null; };
   $("cf-x").addEventListener("click", closeAsk);
   $("cf-cancel").addEventListener("click", closeAsk);
@@ -426,13 +436,18 @@
   try { fsLayout = localStorage.getItem("konsol-files-view") === "list" ? "list" : "grid"; } catch (e) { /* özel pencere */ }
   /* DD-145: kısayol sütunu, arama, çoklu seçim ve listenin içine bırakarak yükleme. */
   let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
+  /* DD-235: "Sistem (/)": the same page over the root backend's system view (/api/sistem/*). No trash,
+     archives or shares there; delete is permanent and asks for the item's name. */
+  let fsSys = false;
+  const fsApi = (p) => (fsSys ? "/api/sistem" + p.slice(4) : p);
+  const fsState = () => (fsSys ? S.sysfs : S.fs);
   /* DD-144: kök kullanıcı alanı (/srv); adı arka uçtan gelir, hiçbir yerde sabit yazılmaz. */
-  const fsRoot = () => (S.fs && S.fs.root) || "/srv";
-  const fsHere = () => [fsRoot(), ...fsPath].join("/") || "/";
+  const fsRoot = () => (fsSys ? "/" : (S.fs && S.fs.root) || "/srv");
+  const fsHere = () => (fsSys ? "/" + fsPath.join("/") : [fsRoot(), ...fsPath].join("/") || "/");
   const pathText = (parts) => parts.join("/");
   /* DD-203: paketlerin yazdığı klasörler köke göre, sahibinin adıyla gelir ({path, owner}); Konsol
      onları seçtirmez, paylaştırmaz ve kimin yazdığını söyler. Hiçbir ad burada sabit değildir. */
-  const protectedList = () => (S.fs && Array.isArray(S.fs.protected) ? S.fs.protected : []);
+  const protectedList = () => (!fsSys && S.fs && Array.isArray(S.fs.protected) ? S.fs.protected : []);
   const protectedOwner = (rel) => { const hit = protectedList().find((p) => rel === p.path || rel.startsWith(p.path + "/")); return hit ? hit.owner : ""; };
   const inTemp = (rel) => !!protectedOwner(rel);
   const kindOf = (item) => (item.type === "dir" ? "dir" : /\.(txt|log|nfo|srt|sub|md|json|conf|ini|csv|yml|yaml)$/i.test(item.name) ? "text"
@@ -453,17 +468,21 @@
   const itemArt = (item) => (item.type === "dir" ? folderArt() : docArt(item.name));
 
   function loadFs() {
-    return api(`/api/list?path=${enc(pathText(fsPath))}`).then((r) => {
+    const sys = fsSys, at = pathText(fsPath);
+    return api(fsApi(`/api/list?path=${enc(at)}`)).then((r) => {
+      if (sys !== fsSys || at !== pathText(fsPath)) return; // DD-235: the view changed meanwhile
       fsList = r;
       fsSel.forEach((n) => { if (!r.entries.some((e) => e.name === n)) fsSel.delete(n); });
       if (!fsPath.length) fsRootDirs = r.entries.filter((e) => e.type === "dir").map((e) => ({ name: e.name, count: e.count }));
       renderFs();
       if (fsRootDirs == null) loadRootDirs();
-    }).catch((e) => { fail(e); if (fsPath.length) { fsPath = []; loadFs(); } });
+    }).catch((e) => { fail(e); if (fsPath.length) { fsPath = []; loadFs(); } else if (fsSys) fsOpen([], false); });
   }
   /* Alt klasörden açılan sayfada da kısayol sütunu dolsun. */
   function loadRootDirs() {
-    return api("/api/list?path=&dirs=1").then((r) => {
+    const sys = fsSys;
+    return api(fsApi("/api/list?path=&dirs=1")).then((r) => {
+      if (sys !== fsSys) return;
       fsRootDirs = r.entries.map((e) => ({ name: e.name, count: e.count }));
       renderRail();
     }).catch(() => { fsRootDirs = []; });
@@ -481,9 +500,10 @@
     renderFs();
     loadFs();
   }
+  const fsHash = (v) => (v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : fsSys ? "#/dosyalar/sistem" : "#/dosyalar");
   function fsSetView(v) {
     fsView = v;
-    location.hash = v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : "#/dosyalar";
+    location.hash = fsHash(v);
     renderFs();
     if (v === "trash") loadTrash();
     else if (v === "shares") loadShares();
@@ -504,13 +524,16 @@
     const shares = S.share && Array.isArray(S.share.items) ? S.share.items.length : null;
     rail.replaceChildren(
       h("p", { class: "fx-group" }, "Favoriler"),
-      railBtn({ cur: files && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: fsRoot(), onclick: () => fsOpen([]) }),
-      ...(fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
+      railBtn({ cur: files && !fsSys && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: (S.fs && S.fs.root) || "/srv", onclick: () => fsOpen([], false) }),
+      ...(!fsSys && fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
+        title: d.name, onclick: () => fsOpen([d.name]) })),
+      S.sysfs ? railBtn({ cur: files && fsSys && !fsPath.length, icon: "lock", tone: "t-sys", title: "Sistem (/)", count: "root", onclick: () => fsOpen([], true) }) : null,
+      ...(fsSys && fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
         title: d.name, onclick: () => fsOpen([d.name]) })),
       h("p", { class: "fx-group" }, "Konumlar"),
       railBtn({ cur: fsView === "shares", icon: "share", tone: "t-dir", title: "Paylaşımlar", count: shares || null, onclick: () => fsSetView("shares") }),
       railBtn({ cur: fsView === "trash", icon: "trash", tone: "t-dir", title: "Çöp", count: trash || null, onclick: () => fsSetView("trash") }));
-    const disk = $("fs-disk"), d = S.fs && S.fs.disk;
+    const disk = $("fs-disk"), d = fsState() && fsState().disk;
     if (disk) {
       const known = d && d.total > 0, pct = known ? Math.round(100 * (d.total - d.free) / d.total) : 0;
       disk.replaceChildren(h("small", null, `Disk · ${fsRoot()}`),
@@ -518,8 +541,9 @@
         h("small", null, known ? `${bytes(d.total - d.free)} / ${bytes(d.total)} · ${bytes(d.free)} boş` : "Disk bilgisi yok"));
     }
   }
-  function fsOpen(parts) {
-    if (fsView !== "files") { fsView = "files"; location.hash = "#/dosyalar"; }
+  function fsOpen(parts, sys = fsSys) {
+    if (sys !== fsSys) { fsSys = sys; fsRootDirs = null; }
+    if (fsView !== "files" || location.hash !== fsHash("files")) { fsView = "files"; location.hash = fsHash("files"); }
     fsGo(parts);
   }
 
@@ -569,7 +593,7 @@
     // DD-183: a running archive job shows here (progress, cancel); results go to Günlük.
     const archiveBar = h("div", { id: "archive-bar", class: "archive-bars", hidden: true });
     body.append(h("div", { id: "fs-bar" }), archiveBar, h("div", { id: "fs-rows", class: "fx-rows " + fsLayout }));
-    archiveTools.mount(archiveBar);
+    if (!fsSys) archiveTools.mount(archiveBar);
     initDrop();
     renderBar();
     renderRows();
@@ -622,6 +646,10 @@
     if (!box) return;
     const shown = fsShown();
     const kids = [];
+    if (fsSys) {
+      kids.push(h("div", { class: "offbar sysbar" }, h("div", null, h("strong", null, "Root olarak çalışıyorsunuz. "),
+        h("span", null, "Buradaki değişiklikler sunucunun kendisini değiştirir; silme kalıcıdır. /proc, /sys, /dev ve /run salt okunur."))));
+    }
     if (inTemp(pathText(fsPath))) {
       kids.push(h("div", { class: "offbar" }, h("div", null, h("strong", null, `${protectedOwner(pathText(fsPath))} bu klasöre yazıyor. `),
         h("span", null, "Buradaki dosyaları taşımak ya da silmek süren indirmeyi bozar."))));
@@ -630,7 +658,7 @@
       const grid = h("div", { class: "fx-grid" + (dragDepth ? " dragging" : ""), id: "fs-table", role: "group", "aria-label": `${fsHere()} içeriği`,
         onclick: (e) => { if (e.target === e.currentTarget) clearSel(); } },
         dragDepth ? h("div", { class: "droptip" }, svg("upload"), h("span", null, "Bırakın — "), h("b", null, fsHere()), h("span", null, " içine yüklenir")) : null,
-        ...fsUps.filter((u) => u.path === pathText(fsPath)).map(upTile),
+        ...fsUps.filter((u) => u.path === pathText(fsPath) && u.sys === fsSys).map(upTile),
         ...shown.map(fsTile));
       if (fsAdding) grid.append(newFolderTile());
       if (!shown.length && !fsAdding && !fsUps.length) grid.append(h("div", { class: "empty-row" },
@@ -645,7 +673,7 @@
       dragDepth ? h("div", { class: "droptip" }, svg("upload"), h("span", null, "Bırakın — "), h("b", null, fsHere()), h("span", null, " içine yüklenir")) : null,
       h("div", { class: "tr head" }, h("span", null, ""), h("span", null, "Ad"), h("span", { class: "c-size" }, "Boyut"),
         h("span", { class: "c-date" }, "Değiştirilme"), h("span", null, "")),
-      ...fsUps.filter((u) => u.path === pathText(fsPath)).map(upRow),
+      ...fsUps.filter((u) => u.path === pathText(fsPath) && u.sys === fsSys).map(upRow),
       ...shown.map(fsRow));
     if (fsAdding) table.append(newFolderRow());
     if (!shown.length && !fsAdding && !fsUps.length) {
@@ -692,11 +720,11 @@
     if (!files.length) return;
     // Aynı adlı öge zaten varsa dosya hiç gönderilmez: sunucu üzerine yazmaz, boşuna aktarım olmaz.
     const taken = new Set((fsList && fsList.path === here ? fsList.entries : []).map((e) => e.name));
-    fsUps.filter((u) => u.path === here && u.state !== "err").forEach((u) => taken.add(u.name));
+    fsUps.filter((u) => u.path === here && u.sys === fsSys && u.state !== "err").forEach((u) => taken.add(u.name));
     for (const f of files) {
       const clash = taken.has(f.name);
       taken.add(f.name);
-      fsUps.push({ id: ++upSeq, name: f.name, size: f.size, sent: 0, file: f, path: here,
+      fsUps.push({ id: ++upSeq, name: f.name, size: f.size, sent: 0, file: f, path: here, sys: fsSys, api: fsSys ? (q) => "/api/sistem" + q.slice(4) : (q) => q,
         state: clash ? "err" : "wait", error: clash ? "zaten var; üzerine yazılmaz" : "" });
     }
     renderRows();
@@ -711,14 +739,14 @@
     upTick(u);
     const xhr = new XMLHttpRequest();
     u.xhr = xhr;
-    xhr.open("POST", `/api/upload?path=${enc(u.path)}&name=${enc(u.name)}`);
+    xhr.open("POST", u.api(`/api/upload?path=${enc(u.path)}&name=${enc(u.name)}`));
     xhr.setRequestHeader("X-Konsol", "1");
     xhr.upload.addEventListener("progress", (e) => { u.sent = e.loaded; upTick(u); });
     xhr.addEventListener("load", () => {
       upBusy = false;
       if (xhr.status >= 200 && xhr.status < 300) {
         fsUps = fsUps.filter((x) => x !== u);
-        if (u.path === pathText(fsPath)) loadFs().then(() => toast(`“${u.name}” yüklendi.`));
+        if (u.path === pathText(fsPath) && u.sys === fsSys) loadFs().then(() => toast(`“${u.name}” yüklendi.`));
         else toast(`“${u.name}” yüklendi.`);
       } else {
         let message = `sunucu ${xhr.status}`;
@@ -765,7 +793,7 @@
     }
   }
 
-  const shareOf = (path) => (S.share && S.share.items || []).find((x) => x.path === path);
+  const shareOf = (path) => (fsSys ? undefined : (S.share && S.share.items || []).find((x) => x.path === path));
   function shareBtn(item, path) {
     const sh = shareOf(path);
     return h("button", { type: "button", class: "ib" + (sh ? " shared" : ""),
@@ -836,11 +864,12 @@
       h("span", { class: "acts" },
         h("button", { type: "button", class: "btn btn-sm btn-quiet fx-info", "aria-label": `${item.name} ayrıntıları`,
           onclick: () => { fsSel = new Set([item.name]); fsLast = item.name; renderRows(); renderDetail(); } }, "Ayrıntılar"),
-        inTemp(here) || inTemp(pathText(fsPath)) ? null : shareBtn(item, here),
+        fsSys || inTemp(here) || inTemp(pathText(fsPath)) ? null : shareBtn(item, here),
         dir ? null : h("button", { type: "button", class: "ib", "aria-label": "İndir", title: "İndir", onclick: () => download(item) }, svg("download")),
         h("button", { type: "button", class: "ib", "aria-label": "Yeniden adlandır", title: "Yeniden adlandır", onclick: () => { fsRename = item.name; renderFs(); const i = $("rn-name"); if (i) { i.focus(); i.select(); } } }, svg("pencil")),
         h("button", { type: "button", class: "ib", "aria-label": "Taşı", title: "Taşı", onclick: () => openMove(item) }, svg("move")),
-        h("button", { type: "button", class: "ib del", "aria-label": "Çöpe taşı", title: "Çöpe taşı", onclick: () => askTrash(item) }, svg("trash"))));
+        h("button", { type: "button", class: "ib del", "aria-label": fsSys ? "Kalıcı sil" : "Çöpe taşı", title: fsSys ? "Kalıcı sil" : "Çöpe taşı",
+          onclick: () => askRemove(item) }, svg("trash"))));
   }
 
   function newFolderRow() {
@@ -858,7 +887,7 @@
   }
   function createFolder(name) {
     if (!name) { fsAdding = false; renderFs(); return; }
-    post("/api/mkdir", { path: pathText(fsPath), name })
+    post(fsApi("/api/mkdir"), { path: pathText(fsPath), name })
       .then(() => { fsAdding = false; return loadFs(); })
       .then(() => toast(`“${name}” klasörü oluşturuldu.`))
       .catch(fail);
@@ -867,11 +896,11 @@
     if (fsRename !== item.name) return;
     fsRename = null;
     if (!to || to === item.name) { renderFs(); return; }
-    post("/api/rename", { path: pathText(fsPath), name: item.name, to })
+    post(fsApi("/api/rename"), { path: pathText(fsPath), name: item.name, to })
       .then(() => loadFs()).then(() => toast(`“${item.name}” → “${to}”`)).catch((e) => { fail(e); renderFs(); });
   }
   function download(item) {
-    const a = h("a", { href: `/api/download?path=${enc(pathText(fsPath.concat(item.name)))}`, download: item.name });
+    const a = h("a", { href: fsApi(`/api/download?path=${enc(pathText(fsPath.concat(item.name)))}`), download: item.name });
     document.body.append(a);
     a.click();
     a.remove();
@@ -879,6 +908,20 @@
   /* Tek satırdan da seçim çubuğundan da çağrılır (DD-145). */
   const asList = (x) => (Array.isArray(x) ? x : [x]);
   const listLabel = (items) => (items.length === 1 ? `“${items[0].name}”` : `${items.length} öge`);
+  const askRemove = (what) => (fsSys ? askDelete(what) : askTrash(what));
+  // DD-235: the system view has no trash. One item is confirmed by typing its name, several by "onayla".
+  function askDelete(what) {
+    const items = asList(what), word = items.length === 1 ? items[0].name : "onayla";
+    ask({
+      title: items.length === 1 ? "Kalıcı silinsin mi?" : `${items.length} öge kalıcı silinsin mi?`,
+      sub: `${fsHere()}${items.length === 1 ? (fsPath.length ? "/" : "") + items[0].name : ""}`, word, danger: true,
+      items: [["lock", "Geri alınamaz; Sistem görünümünde çöp yoktur."], ["server", "Root olarak silinir; sistem dosyaları da silinebilir."]],
+      go: "Kalıcı sil",
+      onOk: () => post("/api/sistem/delete", { path: pathText(fsPath), names: items.map((i) => i.name), confirm: word })
+        .then(() => { fsSel.clear(); return Promise.all([loadFs(), loadSysState()]); })
+        .then(() => toast(`${listLabel(items)} kalıcı silindi.`)).catch((e) => { fail(e); loadFs(); }),
+    });
+  }
   function askTrash(what) {
     const items = asList(what);
     ask({
@@ -900,7 +943,7 @@
     loadMoveDirs([]);
   }
   function loadMoveDirs(parts) {
-    return api(`/api/list?path=${enc(pathText(parts))}&dirs=1`).then((r) => {
+    return api(fsApi(`/api/list?path=${enc(pathText(parts))}&dirs=1`)).then((r) => {
       MV.dirs = r.entries.map((e) => e.name).sort((a, b) => a.localeCompare(b, "tr"));
       renderMove();
     }).catch(fail);
@@ -928,19 +971,19 @@
       h("div", { class: "dlg-foot" },
         h("button", { type: "button", class: "btn btn-quiet", onclick: shClose }, "Vazgeç"),
         h("button", { type: "button", class: "btn btn-primary", disabled: same, onclick: doMove },
-          `Buraya taşı: ${[fsRoot(), ...MV.dest].join("/")}`)));
+          `Buraya taşı: ${fsSys ? "/" + MV.dest.join("/") : [fsRoot(), ...MV.dest].join("/")}`)));
   }
   function doMove() {
     const items = MV.items, dest = MV.dest;
-    post("/api/move", { path: pathText(fsPath), names: items.map((i) => i.name), to: pathText(dest) })
+    post(fsApi("/api/move"), { path: pathText(fsPath), names: items.map((i) => i.name), to: pathText(dest) })
       .then(() => { shClose(); fsSel.clear(); return loadFs(); })
-      .then(() => toast(`${listLabel(items)} taşındı → ${[fsRoot(), ...dest].join("/")}`))
+      .then(() => toast(`${listLabel(items)} taşındı → ${fsSys ? "/" + dest.join("/") : [fsRoot(), ...dest].join("/")}`))
       .catch(fail);
   }
 
   /* metin görüntüleyici */
   function openText(item, encName) {
-    api(`/api/text?path=${enc(pathText(fsPath.concat(item.name)))}&enc=${enc(encName || "auto")}`).then((r) => {
+    api(fsApi(`/api/text?path=${enc(pathText(fsPath.concat(item.name)))}&enc=${enc(encName || "auto")}`)).then((r) => {
       const pre = h("pre", { class: "textview", tabindex: "0" }, r.text);
       $("sh-body").replaceChildren(
         shHead(item.name, `${fsHere()} · ${bytes(item.size)} · ${r.encoding}`, "text"),
@@ -1015,7 +1058,7 @@
     const head = (art, title, sub) => h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art),
       h("h2", { id: "fs-detail-title" }, title), h("small", null, sub));
     if (!sel.length) {
-      const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : "Sunucu";
+      const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : fsSys ? "Sistem" : "Sunucu";
       box.replaceChildren(head(folderArt(), name, `${fsHere()} · ${shown.length} öge · ${bytes(shown.reduce((t, e) => t + (e.size || 0), 0))}`),
         h("p", { class: "hint-s fx-hint" }, "Bir öge seçin; işlemleri burada görünür."),
         h("div", { class: "fx-acts" },
@@ -1030,15 +1073,16 @@
         h("div", { class: "fx-acts" },
           action("İndir", "download", () => sel.forEach((i) => i.type !== "dir" && download(i)), { disabled: !files, act: "indir" }),
           action("Taşı", "move", () => openMove(sel), { act: "tasi" }),
-          action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), sel), { act: "arsiv" }),
-          action("Arşivi aç", "boxOpen", () => {}, { disabled: true, title: "Tek bir arşiv seçin", act: "ac-arsiv" }),
-          action("Paylaş", "share", () => {}, { disabled: true, title: "Paylaşım tek tek verilir", act: "paylas" }),
-          action("Çöpe at", "trash", () => askTrash(sel), { danger: true, act: "cop" })),
+          fsSys ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), sel), { act: "arsiv" }),
+          fsSys ? null : action("Arşivi aç", "boxOpen", () => {}, { disabled: true, title: "Tek bir arşiv seçin", act: "ac-arsiv" }),
+          fsSys ? null : action("Paylaş", "share", () => {}, { disabled: true, title: "Paylaşım tek tek verilir", act: "paylas" }),
+          fsSys ? action("Kalıcı sil", "trash", () => askDelete(sel), { danger: true, act: "sil" })
+            : action("Çöpe at", "trash", () => askTrash(sel), { danger: true, act: "cop" })),
         h("button", { type: "button", class: "linkbtn fx-clear", onclick: clearSel }, "Seçimi bırak"));
       return;
     }
     const item = sel[0], path = pathText(fsPath.concat(item.name)), sh = shareOf(path), directory = item.type === "dir";
-    const eligible = directory && !inTemp(path) && !protectedList().some((p) => p.path.startsWith(path + "/")) && !path.split("/").some((p) => p.startsWith("."));
+    const eligible = !fsSys && directory && !inTemp(path) && !protectedList().some((p) => p.path.startsWith(path + "/")) && !path.split("/").some((p) => p.startsWith("."));
     const canExtract = !directory && archiveTools.canExtract(item.name), locked = inTemp(path);
     const type = directory ? "Klasör" : isText(item) ? "Metin dosyası" : extOf(item.name) ? `${extOf(item.name)} dosyası` : "Dosya";
     box.replaceChildren(
@@ -1053,12 +1097,14 @@
           : action("İndir", "download", () => download(item), { act: "indir" }),
         action("Adlandır", "pencil", () => { fsRename = item.name; renderRows(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }, { act: "adlandir" }),
         action("Taşı", "move", () => openMove(item), { act: "tasi" }),
-        locked ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item]), { act: "arsiv" }),
-        canExtract && !locked ? action("Arşivi aç", "boxOpen", () => archiveTools.open("unzip", pathText(fsPath), [item]), { act: "ac-arsiv" }) : null,
+        locked || fsSys ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item]), { act: "arsiv" }),
+        canExtract && !locked && !fsSys ? action("Arşivi aç", "boxOpen", () => archiveTools.open("unzip", pathText(fsPath), [item]), { act: "ac-arsiv" }) : null,
         eligible && !sh ? action("Paylaş", "share", () => openShareCreate(item, path), { act: "paylas" }) : null,
-        action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })),
-      sh ? sharesPage.info(sh) : directory && !eligible ? h("p", { class: "hint-s" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : null,
-      directory ? sharesPage.warning() : null);
+        fsSys ? action("Kalıcı sil", "trash", () => askDelete(item), { danger: true, act: "sil" })
+          : action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })),
+      // replaceChildren() writes a null argument as the text "null": absent parts are empty strings.
+      sh ? sharesPage.info(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : "",
+      directory && !fsSys ? sharesPage.warning() : "");
   }
 
   /* çöp */
@@ -2083,7 +2129,7 @@
     genel: { title: "Ana Menü", eyebrow: "", actions: () => [],
       render: () => { renderOverview(); loadLayout(); loadNetwork(); if (!(MODS || []).some((m) => m.busy)) loadModules(); } },
     dosyalar: { title: "Dosyalar", eyebrow: "Sunucu alanı", actions: () => [],
-      render: () => { renderFs(); if (fsView === "trash") loadTrash(); else if (fsView === "shares") loadShares(); else if (fsView === "files") { loadShares(); if (!fsList) loadFs(); } } },
+      render: () => { renderFs(); loadSysState(); if (fsView === "trash") loadTrash(); else if (fsView === "shares") loadShares(); else if (fsView === "files") { loadShares(); if (!fsList) loadFs(); } } },
     moduller: { title: "App Store", eyebrow: "", actions: () => [h("span", {class:"hm", id:"mod-sum"}, "Okunuyor…")], render: () => { renderModules(); loadModules(); } },
     // #/konteynerler[/AD]: liste ya da bir konteynerin ayrıntısı (ad URL'de kodlu).
     konteynerler: { title: (sub) => containers.title(sub), eyebrow: (sub) => containers.eyebrow(sub), actions: (sub) => containers.actions(sub),
@@ -2205,7 +2251,13 @@
       history.replaceState(null, "", "#/moduller");
       key = "moduller";
     }
-    if (key === "dosyalar") fsView = raw[1] === "cop" ? "trash" : raw[1] === "paylasim" ? "shares" : "files";
+    if (key === "dosyalar") {
+      fsView = raw[1] === "cop" ? "trash" : raw[1] === "paylasim" ? "shares" : "files";
+      // DD-235: #/dosyalar/sistem is the system view; switching views starts at its root.
+      if (fsView === "files" && (raw[1] === "sistem") !== fsSys) {
+        fsSys = raw[1] === "sistem"; fsPath = []; fsList = null; fsRootDirs = null; fsSel.clear(); fsQuery = "";
+      }
+    }
     if (key === "ayarlar") settingsTab = ["fw","web","dns","log"].includes(raw[1]) ? raw[1] : "system";
     // DD-206: leaving the overview drops an unsaved layout draft.
     if (key !== "genel" && editing) { editing = null; drag = null; }
@@ -2241,7 +2293,7 @@
     if (current === "ayarlar" && settingsTab === "log") loadActions();
     if (current === "ayarlar" && settingsTab === "system") loadHealth();
     if (current === "konteynerler") containers.poll();
-    if (current === "dosyalar") { loadFsState(); if (fsView === "shares") loadShares(); }
+    if (current === "dosyalar") { loadFsState(); loadSysState(); if (fsView === "shares") loadShares(); }
     if (current === "moduller" && !(MODS || []).some((m) => m.busy)) loadModules();
   }, 10000);
   setInterval(() => { if (!document.hidden) { paintResources(); if (current === "genel" && NET && !netReplyFresh()) paintNetwork(); } }, 1000);

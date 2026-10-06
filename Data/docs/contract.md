@@ -904,6 +904,22 @@ Contract in §5–§7 and `folder-shares.md`.
   `/api/state.protected`, **DD-203**) and says which application writes there.
   Since DD-178 new qBittorrent profiles do not enable separate temporary
   storage; the declared folder is a reserved default, not an enabled setting.
+- **"Sistem (/)" (DD-235).** A separate unit, `master-sistem-dosya.service`, runs the same
+  backend with `--sistem --root /` **as root**, for the whole server. The `/srv` view above is
+  unchanged and still never runs as root.
+  - It listens only on `SYSTEM_FILES_SOCKET` (0660 `root:CADDY_GROUP`, peer credentials checked),
+    no TCP port, `IPAddressDeny=any`. Caddy routes `/api/sistem/*` to it in the Tailscale site only;
+    on the public HTTPS name that path reaches the file backend and gets 404.
+  - The backend refuses (403) any request whose Caddy-written `X-Konsol-Kanal` is not `tailscale`
+    or whose client (`X-Forwarded-For`) is not another Tailscale device; a wrong `Host` is refused too.
+  - Same traversal and no-overwrite rules as above. No trash, archives, shares or package-folder
+    marks. `/proc`, `/sys`, `/dev` and `/run` are read-only; folder sizes are not walked; new
+    folders are `0755`, uploads `0644`.
+  - Delete (`/api/sistem/delete`) is permanent: `confirm` must be the item's name, or `onayla` for
+    several. An item that is a mount point or has a mount below it is refused (409), and the
+    recursive delete stops at a device change.
+  - Every write and download is in the audit log as `dosya: sistem <address> ...` and in Günlük.
+  - Trade-off: every tailnet device gets root file access (Konsol has no tailnet sign-in, **DD-205**).
 
 ### 1.11 App Store and built-ins (DD-148, DD-149, DD-159, DD-197, DD-200)
 
@@ -1611,6 +1627,7 @@ declared in `config/defaults.env` and nowhere else.
 | `dnsmasq.service` (drop-in) | `tailscaled.service` | `Wants=tailscaled.service` | `on-failure`, `RestartSec=5s` (drop-in) |
 | `master-panel.service` (Konsol root backend) | `network-online.target` | none; Unix socket only (**DD-180**) | `on-failure`, `RestartSec=3s` |
 | `master-files-panel.service` (built in) | `network-online.target` | none; `127.0.0.1` listener, `RequiresMountsFor=SERVER_ROOT`, always enabled by `master-modul yerlesik` | `on-failure`, `RestartSec=3s` |
+| `master-sistem-dosya.service` (Files' "Sistem (/)", root, **DD-235**) | `network-online.target` | none; Unix socket only, enabled by the installer | `on-failure`, `RestartSec=3s` |
 | `master-paylasim.service` (built-in WebDAV) | `network-online.target` | none; `127.0.0.1` and `SHARE_WAN_BACKEND` listeners, `RequiresMountsFor=SERVER_ROOT` (**DD-225**), always enabled by `master-modul yerlesik` | `on-failure`, `RestartSec=3s` |
 | `master-share-network.timer` | — | closes expired legacy HTTP WAN projections, retains configured HTTPS for renewal and recovers interrupted share operations (**DD-179/190**) | starts oneshot 30 s after boot and 30 s after each run |
 | `master-settings-guard.timer` | — | rollback deadline of an unconfirmed Settings change; active only while one is pending (**DD-181**) | starts oneshot every 2 s while active; once 15 s after boot |

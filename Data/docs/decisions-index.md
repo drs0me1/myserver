@@ -140,7 +140,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-136 | More WireGuard networks from the panel; the panel stops pointing to the Mac backup | live | design-decisions.md |
 | DD-137 | The panel's "Bağlı" follows traffic, not the handshake | live | design-decisions.md |
 | DD-138 | The server's IPv4 and IPv6 are detected and stored, never written by hand | live | design-decisions.md |
-| DD-139 | A file panel for the downloads folder, run as the downloads uid | live | design-decisions.md |
+| DD-139 | A file panel for the downloads folder, run as the downloads uid | live; a separate root view added by DD-235 | design-decisions.md |
 | DD-140 | One console (Konsol) instead of two panels, and switchable peers | live | design-decisions.md |
 | DD-141 | Share links over one read-only WebDAV, built from symlinks | superseded by DD-158 | archive/design-decisions-retired.md |
 | DD-142 | One rclone; the downloads folder is never published | superseded by DD-158, DD-152 | archive/design-decisions-retired.md |
@@ -235,3 +235,4 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-235 | Files' "Sistem (/)" view: the whole server as root in a separate unit, tailnet only, permanent delete by name | v2-214 | design-decisions.md |

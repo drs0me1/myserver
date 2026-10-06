@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-213"
+V2_VERSION="2026.08.06-v2-214"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -682,6 +682,8 @@ assert_downloads_path_allowed() {
 # Dosyalar/WebDAV'ı doğrular; kurulu isteğe bağlı uygulamaların değişen dosyalarını uygular.
 MODULES_CHANGED=""
 PANEL_HELPERS_CHANGED=0
+# DD-235: master-files-panel değişince Sistem görünümünün servisi de yeniden başlar.
+FILES_PANEL_SCRIPT_CHANGED=0
 module_state() { # ID → calisiyor | durduruldu | (boş: kurulu değil)
     awk -F'\t' -v i="$1" '$1 == i {print $2; exit}' "$MODULES_FILE" 2>/dev/null || true
 }
@@ -1171,6 +1173,7 @@ EOF
         LOCAL_DOMAIN="$LOCAL_DOMAIN" \
         CADDY_ADMIN_SOCKET="$CADDY_ADMIN_SOCKET" \
         PANEL_SOCKET="$PANEL_SOCKET" \
+        SYSTEM_FILES_SOCKET="$SYSTEM_FILES_SOCKET" \
         FILES_PANEL_PORT="$FILES_PANEL_PORT" \
         CONSOLE_WEB_DIR="$CONSOLE_WEB_DIR" \
         CADDY_MODULES_DIR="$CADDY_MODULES_DIR"
@@ -1267,6 +1270,7 @@ EOF
     fi
     ensure_panel "$OS_CHANGED"
     ensure_files_panel "$OS_CHANGED"
+    ensure_system_files "$OS_CHANGED"
 }
 
 # DD-133, DD-140, DD-200: Konsol'un root arka ucu. DD-180: TCP yok, PANEL_SOCKET
@@ -1348,7 +1352,7 @@ ensure_files_panel() {
         log INFO "uid $DOWNLOADS_UID için girişsiz sistem hesabı açıldı: $user (dosya paneli)"
     fi
     atomic_write "$SBIN_DIR/master-files-panel" 0755 <"$V2_ROOT/files-panel/master-files-panel"
-    [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 1 ]] && changed=1
+    [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 1 ]] && { changed=1; FILES_PANEL_SCRIPT_CHANGED=1; }
     atomic_write "$SBIN_DIR/master_archives.py" 0644 <"$V2_ROOT/files-panel/master_archives.py"
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 1 ]] && changed=1
     atomic_write "$SBIN_DIR/master_rar.py" 0644 <"$V2_ROOT/files-panel/master_rar.py"
@@ -1375,6 +1379,29 @@ ensure_files_panel() {
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 1 ]] && changed=1
     # DD-222: aşama 4'ün döngüsünden sonra: işaret bir sonraki kurulum için, liste bu kurulum için.
     [[ "$changed" -eq 0 ]] || { mark_module_pending dosya; MODULES_CHANGED="$MODULES_CHANGED dosya"; }
+}
+
+# DD-235: Dosyalar'ın "Sistem (/)" görünümü. master-files-panel'in --sistem kipi root olarak, kök /;
+# yalnız SYSTEM_FILES_SOCKET Unix soketinde (0660 root:CADDY_GROUP). Caddy onu yalnız Tailscale
+# sitesinde /api/sistem/* için açar. Betik ya da unit değişince servis yeniden başlar.
+ensure_system_files() {
+    local changed="${1:-0}"
+    [[ "$FILES_PANEL_SCRIPT_CHANGED" -eq 0 ]] || changed=1
+    render_template "$V2_ROOT/systemd/master-sistem-dosya.service" "$UNIT_DIR/master-sistem-dosya.service" 0644 \
+        SBIN_DIR="$SBIN_DIR" \
+        SYSTEM_FILES_SOCKET="$SYSTEM_FILES_SOCKET" \
+        SYSTEM_FILES_RUNTIME="$(basename -- "${SYSTEM_FILES_SOCKET%/*}")" \
+        CADDY_GROUP="$CADDY_GROUP" \
+        LOCAL_DOMAIN="$LOCAL_DOMAIN" \
+        V2_VERSION="$V2_VERSION"
+    [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 1 ]] && changed=1
+    systemctl daemon-reload
+    systemctl enable --quiet master-sistem-dosya.service
+    if [[ "$changed" -eq 1 ]] || ! systemctl is-active --quiet master-sistem-dosya.service; then
+        systemctl restart master-sistem-dosya.service
+    else
+        log INFO "Sistem görünümü arka ucu aynı; yeniden başlatılmadı"
+    fi
 }
 
 stage_7() {
@@ -1522,8 +1549,21 @@ stage_7() {
     [[ "$(stat -c '%U:%a' "${CADDY_ADMIN_SOCKET%/*}" 2>/dev/null)" == "caddy:700" ]] ||
         die "Caddy yönetim soketinin klasörü yalnız Caddy'ye açık değil: ${CADDY_ADMIN_SOCKET%/*}"
     [[ -S "$CADDY_ADMIN_SOCKET" ]] || die "Caddy yönetim soketi yok: $CADDY_ADMIN_SOCKET"
+    # DD-235: Sistem görünümü (root) da yalnız root ve Caddy'nin grubuna açık bir sokette; yalnız
+    # Tailscale kanalından ve başka bir Tailscale cihazından gelen isteği kabul eder.
+    [[ "$(stat -c '%U:%G:%a' "$SYSTEM_FILES_SOCKET" 2>/dev/null)" == "root:${CADDY_GROUP}:660" ]] ||
+        die "Sistem görünümü soketi root:${CADDY_GROUP} 0660 değil: $SYSTEM_FILES_SOCKET"
+    local kanal adres beklenen
+    for probe in "tailscale|${tail_probe}|200" "internet|${tail_probe}|403" "tailscale|${TAILSCALE_IPV4}|403"; do
+        IFS='|' read -r kanal adres beklenen <<<"$probe"
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 --unix-socket "$SYSTEM_FILES_SOCKET" \
+            -H "Host: panel.${LOCAL_DOMAIN}" -H 'X-Konsol: 1' -H "X-Konsol-Kanal: $kanal" \
+            -H "X-Forwarded-For: $adres" "http://localhost/api/sistem/state" || true)"
+        [[ "$code" == "$beklenen" ]] ||
+            die "Sistem görünümü $kanal kanalı ve $adres için HTTP $code döndü (beklenen $beklenen)"
+    done
     local sock
-    for sock in "$PANEL_SOCKET" "$CADDY_ADMIN_SOCKET"; do
+    for sock in "$PANEL_SOCKET" "$SYSTEM_FILES_SOCKET" "$CADDY_ADMIN_SOCKET"; do
         code="$(setpriv --reuid="$DOWNLOADS_UID" --regid="$DOWNLOADS_GID" --clear-groups \
             curl -s -o /dev/null -w '%{http_code}' --max-time 3 --unix-socket "$sock" \
             -H "Host: panel.${LOCAL_DOMAIN}" -H 'X-Konsol: 1' "http://localhost/" 2>/dev/null || true)"
@@ -1542,6 +1582,11 @@ stage_7() {
         "http://${TAILSCALE_IPV4}/api/konsol/kaynaklar" 2>/dev/null || true)"
     [[ "${self_body##*$'\n'}" == "403" && "$self_body" == *"başka bir Tailscale cihazından"* ]] ||
         die "Sunucunun içinden Caddy üzerinden root arka uca ulaşıldı (HTTP ${self_body##*$'\n'})"
+    self_body="$(setpriv --reuid="$DOWNLOADS_UID" --regid="$DOWNLOADS_GID" --clear-groups \
+        curl -s --max-time 5 -w '\n%{http_code}' -H "Host: panel.${LOCAL_DOMAIN}" -H 'X-Konsol: 1' \
+        "http://${TAILSCALE_IPV4}/api/sistem/state" 2>/dev/null || true)"
+    [[ "${self_body##*$'\n'}" == "403" && "$self_body" == *"başka bir Tailscale cihazından"* ]] ||
+        die "Sunucunun içinden Caddy üzerinden Sistem görünümüne ulaşıldı (HTTP ${self_body##*$'\n'})"
     local panel_out
     panel_out="$(python3 "$SBIN_DIR/master-panel" check --socket "$PANEL_SOCKET" \
         --url "http://panel.${LOCAL_DOMAIN}/api/konsol/kaynaklar" --host "panel.${LOCAL_DOMAIN}" 2>&1)" ||
