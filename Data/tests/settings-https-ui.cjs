@@ -108,6 +108,7 @@ function setHttps(domain, status = "ready", enabled = !!domain) {
         cores: 2, cpu: [1], mem: { total: 1000, used: 200, graph: [20] }, net: { wan: data.wan.ipv4, tailscale: data.tailscale }, root: "/srv", disk: { total: 1000, free: 800 }, ports: [] };
       else if (endpoint === "/api/state") result = { root: "/srv", downloads: "downloads", disk: { total: 1000, free: 800 }, trash: { count: 0, size: 0 } };
       else if (endpoint === "/api/list") result = { path: "", entries: [] };
+      else if (endpoint === "/api/sistem/state") return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"bulunamadı"}' });  // DD-235
       else throw new Error("Unexpected endpoint " + endpoint);
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(result) });
     });

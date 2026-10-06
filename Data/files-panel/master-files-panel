@@ -10,7 +10,14 @@
 #
 #   master-files-panel serve --listen 127.0.0.1:PORT --root DİZİN [--trash AD]
 #                            [--domain ALAN] [--version SÜRÜM] [--protected YOL=SAHİP;...] [--allow-host HOST]
+#   master-files-panel serve --sistem --listen unix:SOKET --socket-group GRUP --root / [--domain ALAN]
 #   master-files-panel check --url URL --host HOST
+#
+# DD-235: --sistem kipi aynı kodu root olarak sunucunun tamamı (/) için çalıştırır (ayrı servis,
+# master-sistem-dosya). Yalnız Unix soketinde dinler, yalnız başka bir Tailscale cihazından gelen
+# isteği kabul eder (Caddy'nin yazdığı X-Konsol-Kanal ve X-Forwarded-For), yolları /api/sistem/*
+# altındadır. Çöp ve arşiv yoktur: silme kalıcıdır, onay ister ve bağlama noktasını aşmaz;
+# /proc, /sys, /dev ve /run salt okunurdur.
 #
 # Güvenlik: kökten çıkılamaz (her yol adımı bir dizin tanıtıcısından O_NOFOLLOW ile
 # açılır, sembolik bağlantı izlenmez); hiçbir işlem üzerine yazmaz (renameat2
@@ -20,13 +27,17 @@
 import argparse
 import ctypes
 import errno
+import grp
 import http.server
+import ipaddress
 import json
 import os
 import re
 import secrets
 import socket
+import socketserver
 import stat
+import struct
 import sys
 import threading
 import time
@@ -72,6 +83,13 @@ CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' 
 O_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 O_FILE = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
 RENAME_NOREPLACE = 1
+# DD-235: sistem kipi (root, /). Bu kök klasörler listelenir ama değiştirilemez; klasör boyutları
+# hesaplanmaz (/ yürüyüşü pahalı). İstekler yalnız başka bir Tailscale cihazından gelir.
+SYSTEM_PREFIX = "/api/sistem"
+SYSTEM_ACTOR = "sistem"
+SYSTEM_READONLY = ("proc", "sys", "dev", "run")
+CHANNEL_HEADER = "X-Konsol-Kanal"
+TAILNET_RANGES = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 
 
 def fail(msg, code=1):
@@ -106,6 +124,9 @@ def cmd_check(args):
     if not isinstance(data, dict):
         fail("panel yanıtı beklenen biçimde değil")
     trash = data.get("trash")
+    if data.get("sistem") is True and isinstance(data.get("root"), str) and data.get("writable"):
+        print("sistem görünümü, kök %s" % data["root"])  # DD-235: çöpü yok
+        return
     if not isinstance(data.get("root"), str) or not isinstance(trash, dict) or not data.get("writable"):
         fail("panel yanıtı beklenen biçimde değil ya da kök yazılamıyor")
     print("kök %s, çöpte %d öge" % (data["root"], trash.get("count", 0)))
@@ -213,6 +234,65 @@ def rmtree_at(parent_fd, name):
     os.rmdir(name, dir_fd=parent_fd)
 
 
+def rmtree_onedev(parent_fd, name, dev):
+    """DD-235: rmtree_at gibi, ama başka bir dosya sistemine (bağlama noktasına) inmez.
+    Bağlama noktaları önceden denetlenir; bu, aradan geçen bir bağlamaya karşı son kilittir."""
+    st = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if st.st_dev != dev:
+        raise OSError(errno.EXDEV, os.strerror(errno.EXDEV))
+    if not stat.S_ISDIR(st.st_mode):
+        os.unlink(name, dir_fd=parent_fd)
+        return
+    fd = os.open(name, O_DIR, dir_fd=parent_fd)
+    try:
+        with os.scandir(fd) as it:
+            names = [e.name for e in it]
+        for child in names:
+            rmtree_onedev(fd, child, dev)
+    finally:
+        os.close(fd)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def mount_points(mountinfo="/proc/self/mountinfo"):
+    """Bağlı yolların listesi (mountinfo'nun 5. alanı; boşluk gibi karakterler \\ooo kaçışlı)."""
+    points = []
+    try:
+        with open(mountinfo, encoding="utf-8", errors="surrogateescape") as fh:
+            for line in fh:
+                fields = line.split()
+                if len(fields) > 4:
+                    points.append(re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), fields[4]))
+    except OSError:
+        pass
+    return points
+
+
+def own_address(ip):
+    """Sunucunun kendi adresi mi? (master-panel'deki denetimin aynısı, DD-180.)"""
+    if ip.is_loopback or ip.is_link_local or ip.is_unspecified:
+        return True
+    try:
+        with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET, socket.SOCK_STREAM) as probe:
+            try:
+                probe.setsockopt(socket.IPPROTO_IP, getattr(socket, "IP_BIND_ADDRESS_NO_PORT", 24), 1)
+            except OSError:
+                pass
+            probe.bind((str(ip), 0))
+    except OSError as err:
+        return err.errno != errno.EADDRNOTAVAIL
+    return True
+
+
+def remote_tailnet(value):
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    ip = getattr(ip, "ipv4_mapped", None) or ip
+    return any(ip in net for net in TAILNET_RANGES) and not own_address(ip)
+
+
 def read_json_at(dir_fd, name):
     try:
         fd = os.open(name, O_FILE, dir_fd=dir_fd)
@@ -261,11 +341,14 @@ def guess_encoding(data, name, truncated):
 class Files:
     """Kök altındaki bütün işlemler. Yollar parça listesidir; kök []."""
 
-    def __init__(self, root, trash, share="", archive=""):
+    def __init__(self, root, trash, share="", archive="", system=False):
         self.root = root
         self.trash = trash
         self.share = share
         self.archive = archive
+        # DD-235: root olarak / (çöp, arşiv ve ayrılmış ad yok; silme kalıcı).
+        self.system = system
+        self.dir_mode, self.file_mode = (0o755, 0o644) if system else (0o775, 0o664)
         self.lock = threading.Lock()
 
     # -- yollar
@@ -278,7 +361,7 @@ class Files:
         parts = raw.split("/")
         if len(parts) > MAX_DEPTH or not all(valid_name(p) for p in parts):
             raise PanelError(400, "geçersiz yol")
-        if parts[0] == self.trash:
+        if self.trash and parts[0] == self.trash:
             raise PanelError(403, "çöpe yalnız Çöp sekmesinden erişilir")
         if self.share and parts[0] == self.share:
             raise PanelError(403, "eski paylaşım çalışma alanına erişilemez")
@@ -286,7 +369,13 @@ class Files:
             raise PanelError(403, "arşiv çalışma alanına erişilemez")
         return parts
 
+    def check_writable(self, parts):
+        """DD-235: sistem kipinde /proc, /sys, /dev ve /run altına yazılmaz."""
+        if self.system and parts and parts[0] in SYSTEM_READONLY:
+            raise PanelError(403, "/%s salt okunur" % parts[0])
+
     def check_new_name(self, parts, name):
+        self.check_writable(parts)
         if not valid_name(name) or CONTROL_RE.search(name) or name != name.strip():
             raise PanelError(400, "geçersiz ad (boş olamaz, / içeremez, en çok 255 bayt)")
         if not parts and name in (self.trash, self.share, self.archive):
@@ -294,9 +383,12 @@ class Files:
 
     def check_source_names(self, parts, names, destination=False):
         # Toplu işlem başlamadan hepsini denetle; reddedilen öge kısmi taşıma yaratmasın.
+        self.check_writable(parts)
         for name in names:
             if not valid_name(name):
                 raise PanelError(400, "geçersiz ad")
+            if self.system and not parts and name in SYSTEM_READONLY:
+                raise PanelError(403, "/%s salt okunur" % name)
             if not parts and name in (self.trash, self.share, self.archive):
                 raise PanelError(403, "kök klasöre sistem çalışma alanı adıyla taşınamaz" if destination
                                  else "sistem çalışma alanı taşınamaz veya yeniden adlandırılamaz")
@@ -358,7 +450,7 @@ class Files:
                     skipped += 1
                     continue
                 try:
-                    item = self.info(fd, name, budget, sizes=not dirs_only)
+                    item = self.info(fd, name, budget, sizes=not dirs_only and not self.system)
                 except OSError:
                     continue
                 if not dirs_only or item["type"] == "dir":
@@ -450,7 +542,7 @@ class Files:
     def mkdir(self, parts, name):
         self.check_new_name(parts, name)
         with DirFd(self.open_dir(parts)) as fd:
-            os.mkdir(name, 0o775, dir_fd=fd)
+            os.mkdir(name, self.dir_mode, dir_fd=fd)
 
     def rename(self, parts, name, new):
         self.check_source_names(parts, [name])
@@ -505,11 +597,12 @@ class Files:
         tmp = ".yukleniyor-%s" % secrets.token_hex(6)
         written = since = 0
         with DirFd(self.open_dir(parts)) as fd:
-            handle = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o664, dir_fd=fd)
+            handle = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, self.file_mode, dir_fd=fd)
             try:
                 # umask ne olursa olsun ağacın kuralı: dosya 0664 (indirme hesabının servisleri aynı grupla
-                # yazar; Paylaşım aynı hesapla okur; ensure_downloads_tree de bunu bekler).
-                os.fchmod(handle, 0o664)
+                # yazar; Paylaşım aynı hesapla okur; ensure_downloads_tree de bunu bekler). DD-235: sistem
+                # kipinde root'un dosyası 0644.
+                os.fchmod(handle, self.file_mode)
                 while written < length:
                     chunk = stream.read(min(UPLOAD_CHUNK, length - written))
                     if not chunk:
@@ -541,6 +634,30 @@ class Files:
                     pass
                 raise
         return written
+
+    def delete(self, parts, names, mounts=None):
+        """DD-235: sistem kipinde kalıcı silme (çöp yok: / altındaki diskler farklı olabilir).
+        Bağlama noktası ya da altında bağlı bir şey olan öge silinmez; önce hepsi denetlenir."""
+        self.check_source_names(parts, names)
+        mounts = mount_points() if mounts is None else mounts
+        base = os.path.join(self.root, *parts) if parts else self.root
+        for name in names:
+            target = os.path.normpath(os.path.join(base, name))
+            if any(m == target or m.startswith(target.rstrip("/") + "/") for m in mounts):
+                raise PanelError(409, "“%s” bir bağlama noktası ya da içinde bağlı bir disk var; silinmez" % name)
+        done = []
+        with DirFd(self.open_dir(parts)) as fd:
+            dev = os.fstat(fd).st_dev
+            for name in names:
+                try:
+                    rmtree_onedev(fd, name, dev)
+                except OSError as err:
+                    if not done:
+                        raise
+                    raise PanelError(status_for(err), "%d öge silindi; “%s” silinemedi: %s"
+                                     % (len(done), name, os_message(err)))
+                done.append(name)
+        return done
 
     def to_trash(self, parts, names):
         self.check_source_names(parts, names)
@@ -672,8 +789,9 @@ class Panel:
         self.args = args
         self.lock = threading.Lock()
         self.usage_cache = (0.0, None)
-        self.files = Files(args.root, args.trash, args.share, getattr(args, "archive_dir", ""))
-        self.archives = (Archives(self.files, self.files.archive, rename_noreplace, rmtree_at, report=report_archive)
+        self.system = bool(getattr(args, "sistem", False))
+        self.files = Files(args.root, args.trash, args.share, getattr(args, "archive_dir", ""), system=self.system)
+        self.archives = None if self.system else (Archives(self.files, self.files.archive, rename_noreplace, rmtree_at, report=report_archive)
                          if self.files.archive else None)
 
     def used(self):
@@ -691,6 +809,19 @@ class Panel:
 
     def state(self):
         vfs = os.statvfs(self.args.root)
+        if self.system:
+            # DD-235: çöp, kullanım toplamı ve paket klasörleri yok; salt okunur kökler bildirilir.
+            return {
+                "host": socket.gethostname(),
+                "version": self.args.version,
+                "root": self.args.root,
+                "sistem": True,
+                "readonly": list(SYSTEM_READONLY),
+                "writable": os.access(self.args.root, os.W_OK),
+                "disk": {"total": vfs.f_blocks * vfs.f_frsize, "free": vfs.f_bavail * vfs.f_frsize,
+                         "used": None, "mount": True},
+                "textLimit": TEXT_LIMIT,
+            }
         items = self.files.trash_items()
         return {
             "host": socket.gethostname(),
@@ -729,7 +860,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def client(self):
         peer = self.client_address[0] if self.client_address else "?"
         forwarded = self.headers.get("X-Forwarded-For", "") if self.headers else ""
-        if peer in ("127.0.0.1", "::1") and forwarded:
+        if (peer in ("127.0.0.1", "::1") or self.panel.system) and forwarded:
             return forwarded.split(",")[-1].strip()[:64]
         return peer
 
@@ -762,8 +893,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.json(code, {"error": message})
 
     def allowed_hosts(self):
-        port = self.server.server_address[1]
-        hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
+        if self.panel.system:
+            hosts = set()  # DD-235: yalnız Caddy'den (Unix soketi), panel.<alan> adıyla
+        else:
+            port = self.server.server_address[1]
+            hosts = {"127.0.0.1:%d" % port, "localhost:%d" % port}
         if self.panel.args.domain:
             hosts.add("panel.%s" % self.panel.args.domain.lower())
         hosts.update(h.lower() for h in self.panel.args.allow_host)
@@ -776,6 +910,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if host not in self.allowed_hosts():
             self.error(403, "bu adresten erişilemez")
             return None
+        if self.panel.system:
+            # DD-235: root dosya yetkisi yalnız Tailscale sitesinden ve başka bir Tailscale cihazından.
+            # İki başlığı da Caddy yazar (istemcininkini ezer); internet sitesi bu yolu hiç yönlendirmez.
+            forwarded = self.headers.get("X-Forwarded-For", "")
+            if (self.headers.get(CHANNEL_HEADER) != "tailscale"
+                    or not remote_tailnet(forwarded.split(",")[-1].strip())):
+                self.error(403, "Sistem görünümü yalnız başka bir Tailscale cihazından kullanılır")
+                return None
         if route.startswith("/api/"):
             site = self.headers.get("Sec-Fetch-Site")
             # İndirme bir bağlantıyla açılır (özel başlık gönderilemez); yalnız okur, yine de
@@ -784,7 +926,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not header_ok or (site and site not in ("same-origin", "none")):
                 self.error(403, "istek reddedildi (yalnız panel sayfasından)")
                 return None
-        return ACTOR
+        return SYSTEM_ACTOR if self.panel.system else ACTOR
+
+    def route_of(self):
+        """İsteğin yolu. DD-235: sistem kipinde yollar /api/sistem/* altındadır; içeride /api/* olur."""
+        route = urllib.parse.urlsplit(self.path).path
+        if not self.panel.system:
+            return route
+        if not route.startswith(SYSTEM_PREFIX + "/"):
+            return "/"
+        return "/api" + route[len(SYSTEM_PREFIX):]
 
     def body_json(self):
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
@@ -840,7 +991,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # -- yöntemler
     def do_GET(self):
         split = urllib.parse.urlsplit(self.path)
-        route = split.path
+        route = self.route_of()
         user = self.gate(route)
         if user is None:
             return
@@ -854,7 +1005,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif route == "/api/list":
             self.run(user, None, lambda: (200, files.listing(files.split(arg("path")), arg("dirs") == "1"), None),
                      lock=False)
-        elif route == "/api/trash":
+        elif route == "/api/trash" and not self.panel.system:
             self.run(user, None, lambda: (200, {"items": files.trash_items()}, None), lock=False)
         elif route == "/api/text":
             self.run(user, None, lambda: (200, files.text(files.split(arg("path")), arg("enc") or "auto"), None),
@@ -952,7 +1103,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.close_connection = True
 
     def do_POST(self):
-        route = urllib.parse.urlsplit(self.path).path
+        route = self.route_of()
         user = self.gate(route)
         if user is None:
             self.close_connection = True
@@ -1016,15 +1167,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
             count = files.empty()
             return 200, {"purged": count}, count
 
-        routes = {
-            "/api/mkdir": ("klasor", mkdir),
-            "/api/rename": ("ad", rename),
-            "/api/move": ("tasi", move),
-            "/api/trash": ("cope", trash),
-            "/api/trash/restore": ("geri-yukle", restore),
-            "/api/trash/purge": ("kalici-sil", purge),
-            "/api/trash/empty": ("cop-bosalt", empty),
-        }
+        def delete():
+            # DD-235: tek öge adını, birden çok öge "onayla"yı yazarak onaylanır.
+            parts, names = files.split(data.get("path")), self.names(data)
+            want = names[0] if len(names) == 1 else CONFIRM_WORD
+            got = str(data.get("confirm", ""))
+            if (got if len(names) == 1 else got.strip().lower()) != want:
+                raise PanelError(400, "onay için %s yazın" % ("ögenin adını" if len(names) == 1 else CONFIRM_WORD))
+            deleted = files.delete(parts, names)
+            return 200, {"deleted": deleted}, "%s %s" % ("/".join(parts), names[:5])
+
+        if self.panel.system:
+            routes = {
+                "/api/mkdir": ("klasor", mkdir),
+                "/api/rename": ("ad", rename),
+                "/api/move": ("tasi", move),
+                "/api/delete": ("sil", delete),
+            }
+        else:
+            routes = {
+                "/api/mkdir": ("klasor", mkdir),
+                "/api/rename": ("ad", rename),
+                "/api/move": ("tasi", move),
+                "/api/trash": ("cope", trash),
+                "/api/trash/restore": ("geri-yukle", restore),
+                "/api/trash/purge": ("kalici-sil", purge),
+                "/api/trash/empty": ("cop-bosalt", empty),
+            }
         if route not in routes:
             self.error(404, "bulunamadı")
             return
@@ -1039,7 +1208,76 @@ class Server(http.server.ThreadingHTTPServer):
     request_queue_size = 128
 
 
+class SystemHandler(Handler):
+    disable_nagle_algorithm = False  # Unix soketinde TCP_NODELAY yok
+
+
+class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    """DD-235: sistem kipi yalnız Unix soketinde (0660 root:Caddy grubu); bağlananı çekirdeğin
+    bildirdiği kimlik de sınırlar (master-panel'in sunucusuyla aynı kural, DD-180)."""
+    daemon_threads = True
+    request_queue_size = 128
+
+    def __init__(self, path, handler, group_gid=None):
+        self.group_gid = group_gid
+        self.uids = {0, os.geteuid()}
+        old = os.umask(0o177)
+        try:
+            super().__init__(path, handler)
+        finally:
+            os.umask(old)
+        if group_gid is not None:
+            os.chown(path, -1, group_gid)
+            os.chmod(path, 0o660)
+
+    def verify_request(self, request, client_address):
+        if not hasattr(socket, "SO_PEERCRED"):
+            return True
+        size = struct.calcsize("3i")
+        _pid, uid, gid = struct.unpack("3i", request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size))
+        if uid in self.uids or (self.group_gid is not None and gid == self.group_gid):
+            return True
+        print("dosya: soket reddedildi (uid %d gid %d)" % (uid, gid), file=sys.stderr, flush=True)
+        return False
+
+
+def serve_system(args):
+    """DD-235: master-sistem-dosya (root, /)."""
+    kind, _, path = args.listen.partition(":")
+    if kind != "unix" or not path.startswith("/") or len(path.encode()) > 100:
+        fail("sistem görünümü yalnız bir Unix soketinde dinler (unix:/run/.../api.sock)")
+    if not os.path.isabs(args.root):
+        fail("kök mutlak yol olmalı")
+    group_gid = None
+    if args.socket_group:
+        try:
+            group_gid = grp.getgrnam(args.socket_group).gr_gid
+        except KeyError:
+            fail("soket grubu yok: %s" % args.socket_group)
+    args.trash = args.share = args.archive_dir = args.downloads_dir = ""
+    args.protected = []
+    try:
+        os.close(Files(args.root, "", system=True).open_dir([]))
+    except OSError as err:
+        fail("kök açılamadı: %s (%s)" % (args.root, os_message(err)))
+    try:
+        if stat.S_ISSOCK(os.lstat(path).st_mode):
+            os.unlink(path)  # önceki çalışmadan kalan soket
+    except FileNotFoundError:
+        pass
+    Handler.panel = Panel(args)
+    httpd = UnixServer(path, SystemHandler, group_gid)
+    print("sistem görünümü: %s dinleniyor (kök %s)" % (path, args.root), flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
 def cmd_serve(args):
+    if args.sistem:
+        serve_system(args)
+        return
     host, _, port = args.listen.rpartition(":")
     if host != "127.0.0.1" or not port.isdigit():
         fail("panel yalnız yerel adresi dinler (127.0.0.1:PORT)")
@@ -1091,6 +1329,8 @@ def main():
     s.add_argument("--protected", default="")
     s.add_argument("--downloads-dir", default="")
     s.add_argument("--allow-host", dest="allow_host", action="append", default=[])
+    s.add_argument("--sistem", action="store_true")
+    s.add_argument("--socket-group", dest="socket_group", default="")
     c = sub.add_parser("check")
     c.add_argument("--url", required=True)
     c.add_argument("--host", required=True)

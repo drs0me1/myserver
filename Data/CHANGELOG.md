@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-06 — Files: "Sistem (/)", the whole server as root (v2-214)
+
+- Files' right column has a new "Sistem (/)" entry under Favoriler. It shows the whole server from
+  `/`, as root, with a red strip saying so. Browse, upload, download, new folder, rename, move and
+  read text files work as in `/srv`; `/proc`, `/sys`, `/dev` and `/run` are read-only.
+- There is no trash there: "Kalıcı sil" deletes at once and asks you to type the item's name (or
+  `onayla` for several). A disk mounted at or below the item is never deleted.
+- Only from a Tailscale device. The public HTTPS Konsol name never reaches it, and the `/srv` view
+  keeps running as the downloads account. It runs as its own service, `master-sistem-dosya` (DD-235).
+- Fixed: selecting a file in Files printed "nullnull" under its actions.
+
 ### 2026-10-06 — Sunucu widget fits the full addresses (v2-213)
 
 - The Tailscale and WAN addresses in Ana Menü's "Sunucu" card were cut off with "…" when

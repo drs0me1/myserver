@@ -69,6 +69,21 @@
 			}
 		}
 	}
+	# DD-235: Dosyalar'ın "Sistem (/)" görünümü (root). Yalnız Tailscale sitesinde eşleşir; internet
+	# sitesinde bu yol dosya arka ucuna düşer ve 404 alır. Servis de kanalı ve istemciyi denetler.
+	@sistem {
+		path /api/sistem/*
+		expression `"{args[0]}" == "tailscale"`
+	}
+	handle @sistem {
+		reverse_proxy unix/__SYSTEM_FILES_SOCKET__ {
+			header_up Host panel.__LOCAL_DOMAIN__
+			header_up X-Konsol-Kanal {args[0]}
+			transport http {
+				max_conns_per_host 16
+			}
+		}
+	}
 	handle /api/* {
 		reverse_proxy 127.0.0.1:__FILES_PANEL_PORT__ {
 			header_up Host panel.__LOCAL_DOMAIN__

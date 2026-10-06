@@ -40,6 +40,18 @@ that named route, not the shared Caddy listener.
 Portable validation should compare the complete embedded file set with runtime
 sources, excluding Python caches, metadata, tests, docs and private input.
 
+## Files "Sistem (/)" root view (v2-214, DD-235)
+
+`test_system_files.py` runs the backend's `--sistem` mode in temporary directories and on a temporary
+Unix socket: read-only `/proc` `/sys` `/dev` `/run`, root modes for new items, no reserved names,
+permanent delete refused at a mount point (or a mount below) and at a device change, `mountinfo`
+unescaping, the channel/client/Host gate (200 only for another Tailscale device on the tailnet site),
+system-only routes, name/`onayla` confirmation, and the Settings → Web parser leaving the route out of
+the public site. `common.bats` checks the unit, the tailnet-only Caddy matcher, the installer wiring and
+the stage-7 probes. `files-ui.cjs` checks the sidebar entry, the warning strip, the missing
+trash/archive/share actions, `/api/sistem/` calls and the typed-name delete. The Caddy matcher was also
+adapted with Caddy 2.10 (the `{args[0]}` placeholder needs Caddy ≥ 2.7; Debian's 2.6 cannot check it).
+
 ## Files account for writable folders (v2-205, DD-227)
 
 `test_container_worker.py` checks:

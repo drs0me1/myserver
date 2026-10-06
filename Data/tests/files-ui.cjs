@@ -32,6 +32,9 @@ const trashFixtures = [
   {id:"trash-folder",name:"Belgeler ve Türkçe klasör adı",type:"dir",from:"media/Belgeler",size:4096,deleted:Date.now()/1000-172800},
 ];
 let trash = [], trashWrites = [];
+// DD-235: the system view's fixture (root over /); every write is recorded, nothing is sent anywhere.
+const sysWrites = [], sysReads = [];
+const sysEntries = { "": [["etc","dir"],["proc","dir"],["srv","dir"],["vmlinuz","file"]], etc: [["hosts","file"],["ssh","dir"]] };
 let submitted, failShare = false, holdShare = false, releaseShare;
 const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
 (async () => {
@@ -118,6 +121,20 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       else if (p === "/api/list") result = { path: url.searchParams.get("path") || "", entries: [
         ...(url.searchParams.get("path") ? ["movies", "series"] : ["media", "downloads", "Belgeler ve uzun klasör adı"]).map((name) => ({ name, type: "dir", count: 2, size: 1024, mtime: Date.now() / 1000 })),
         ...(!url.searchParams.get("path") && !url.searchParams.get("dirs") ? [longFile,"sample.part02.rar"].map(name=>({name,type:"file",size:840*1024**2,mtime:Date.now()/1000})) : [])] };
+      else if (p.startsWith("/api/sistem/")) {
+        sysReads.push(p + url.search);
+        if (p === "/api/sistem/state") result = { root: "/", sistem: true, readonly: ["proc","sys","dev","run"], writable: true,
+          disk: { total: 200000, free: 50000, used: null, mount: true }, textLimit: 1048576 };
+        else if (p === "/api/sistem/list") {
+          const at = url.searchParams.get("path") || "";
+          result = { path: at, skipped: 0, entries: (sysEntries[at] || []).filter(([, type]) => !url.searchParams.get("dirs") || type === "dir")
+            .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? null : 512, mtime: Date.now() / 1000 })) };
+        } else if (p === "/api/sistem/delete") {
+          const data = req.postDataJSON(); sysWrites.push(data);
+          sysEntries[data.path] = sysEntries[data.path].filter(([name]) => !data.names.includes(name));
+          result = { deleted: data.names };
+        } else throw new Error("Unexpected system endpoint: " + p);
+      }
       else if (p === "/api/konsol/paylasim") result = projectShares();
       else if (p === "/api/konsol/paylasim/kaydet") {
         submitted = req.postDataJSON();
@@ -596,7 +613,40 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.locator("#cf-go").click();
     await page.getByText("Çöp boş",{exact:true}).waitFor();
     assert.deepEqual(trashWrites.at(-1),{path:"/api/trash/empty",data:{confirm:"onayla"}});
+    // DD-235: "Sistem (/)" in the sidebar: root view with a warning strip, no trash/archive/share actions,
+    // permanent delete confirmed by typing the item's name, every call under /api/sistem/.
+    await page.emulateMedia({colorScheme:"light"});
+    await page.setViewportSize({width:1440,height:1000});
+    await rail("Sistem (/)").click();
+    await page.locator(".offbar.sysbar").waitFor();
+    assert.equal(new URL(page.url()).hash, "#/dosyalar/sistem");
+    assert.match(await page.locator(".offbar.sysbar").innerText(), /Root olarak çalışıyorsunuz/);
+    assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/");
+    await select("vmlinuz");
+    assert.equal(await act("sil").count(), 1);
+    for (const key of ["cop","paylas","arsiv","ac-arsiv"]) assert.equal(await act(key).count(), 0, "system view offers " + key);
+    await act("indir").click();
+    assert.match(await page.evaluate(()=>window.requestedDownloads.at(-1)), /\/api\/sistem\/download\?path=vmlinuz$/);
+    await select("etc"); await tile("etc").click();
+    await tile("hosts").waitFor();
+    await select("hosts");
+    assert(!/null/.test(await page.locator("#fs-detail").innerText()), "detail column prints null");
+    await page.screenshot({path:path.join(shots,"system-view.png"),fullPage:true});
+    await act("sil").click();
+    assert(await page.locator("#cf-go").isDisabled());
+    assert.equal(await page.locator("#cf-word-label").innerText(), "hosts");
+    await page.locator("#cf-word").fill("onayla");
+    assert(await page.locator("#cf-go").isDisabled(), "a single item needs its own name, not onayla");
+    await page.locator("#cf-word").fill("hosts");
+    await page.locator("#cf-go").click();
+    await page.waitForFunction(()=>!document.querySelector('#fs-table [data-item="hosts"]'));
+    assert.deepEqual(sysWrites, [{path:"etc", names:["hosts"], confirm:"hosts"}]);
+    assert(sysReads.every(r=>r.startsWith("/api/sistem/")) && sysReads.some(r=>r.startsWith("/api/sistem/list?path=etc")));
+    await rail("Sunucu").click();
+    await page.locator(".offbar.sysbar").waitFor({state:"detached"});
+    assert.equal(new URL(page.url()).hash, "#/dosyalar");
+    assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/srv");
     assert.deepEqual(errors, []);
-    console.log("PASS: schema4 twin cards, independent partial writes/RO/RW/expiry, paused creation, HTTP consent, HTTPS, global gates, expired candidates, shared account edits, failed saves/retry/busy/poll guards, Infuse/copy, responsive light/dark/CSP; Finder grid/detail column/multi-selection, trash and Files regressions. Screenshots: " + shots);
+    console.log("PASS: schema4 twin cards, independent partial writes/RO/RW/expiry, paused creation, HTTP consent, HTTPS, global gates, expired candidates, shared account edits, failed saves/retry/busy/poll guards, Infuse/copy, responsive light/dark/CSP; Finder grid/detail column/multi-selection, trash, the root system view (DD-235) and Files regressions. Screenshots: " + shots);
   } finally { await browser.close(); }
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -2677,11 +2677,11 @@ EOF
     local snippet
     # DD-195: both Konsol sites share the signed-in routes; only Caddy names the channel.
     snippet="$(awk '/^\(konsol\) \{$/,/^\}$/' "$V2_ROOT/templates/Caddyfile")"
-    [ "$(grep -c "$(printf '\theader_up X-Konsol-Kanal {args\\[0\\]}')" <<<"$snippet")" -eq 2 ]
-    [ "$(grep -c 'header_up Host panel.__LOCAL_DOMAIN__$' <<<"$snippet")" -eq 3 ]
+    [ "$(grep -c "$(printf '\theader_up X-Konsol-Kanal {args\\[0\\]}')" <<<"$snippet")" -eq 3 ]
+    [ "$(grep -c 'header_up Host panel.__LOCAL_DOMAIN__$' <<<"$snippet")" -eq 4 ]
     awk '/forward_auth @korumali/,/^\t}$/' <<<"$snippet" | grep -qF 'header_up X-Konsol-Kanal {args[0]}'
     # Each site opens at most 16 backend connections (session check and root API alike).
-    [ "$(grep -c "$(printf '\t\t\tmax_conns_per_host 16')" <<<"$snippet")" -eq 2 ]
+    [ "$(grep -c "$(printf '\t\t\tmax_conns_per_host 16')" <<<"$snippet")" -eq 3 ]
     [ "$(grep -c '^\s*header_up X-Forwarded-Host {host}$' <<<"$snippet")" -eq 1 ]
     grep -qx 'LimitNOFILE=8192' "$V2_ROOT/systemd/master-panel.service"
     [ "$(grep -c '^import konsol ' "$V2_ROOT/templates/Caddyfile")" -eq 0 ]
@@ -2759,6 +2759,35 @@ EOF
     grep -qF '"parola-degis": () => "Konsol parolası değiştirildi"' "$V2_ROOT/console/konsol.js"
 }
 
+@test "system view: root unit on its own socket, tailnet-only Caddy route, stage 7 channel proof" {
+    # DD-235: Files' "Sistem (/)" view is the same backend in --sistem mode, as root, over /.
+    local unit="$V2_ROOT/systemd/master-sistem-dosya.service" s7 snippet
+    grep -qx 'SYSTEM_FILES_SOCKET="/run/master-sistem-dosya/api.sock"' "$V2_ROOT/config/defaults.env"
+    grep -qF 'master-files-panel serve --sistem --listen unix:__SYSTEM_FILES_SOCKET__ --socket-group __CADDY_GROUP__ --root / ' "$unit"
+    run ! grep -qE '^(User|ProtectSystem|ProtectHome|PrivateTmp)=' "$unit"
+    grep -qx 'IPAddressDeny=any' "$unit"
+    grep -qx 'NoNewPrivileges=true' "$unit"
+    grep -qx 'RestrictSUIDSGID=true' "$unit"
+    # Caddy: only the tailnet site routes it; the internet site's request falls to the files backend (404).
+    snippet="$(awk '/^\(konsol\) \{$/,/^\}$/' "$V2_ROOT/templates/Caddyfile")"
+    grep -qxF "$(printf '\t\tpath /api/sistem/*')" <<<"$snippet"
+    grep -qxF "$(printf '\t\texpression `"{args[0]}" == "tailscale"`')" <<<"$snippet"
+    grep -qxF "$(printf '\t\treverse_proxy unix/__SYSTEM_FILES_SOCKET__ {')" <<<"$snippet"
+    grep -qF 'SYSTEM_FILES_SOCKET="$SYSTEM_FILES_SOCKET"' "$V2_ROOT/install.sh"
+    grep -qF '    ensure_system_files "$OS_CHANGED"' "$V2_ROOT/install.sh"
+    # The backend refuses any other channel or a client that is this host.
+    grep -qF 'self.headers.get(CHANNEL_HEADER) != "tailscale"' "$V2_ROOT/files-panel/master-files-panel"
+    grep -qF 'not remote_tailnet(forwarded.split(",")[-1].strip())' "$V2_ROOT/files-panel/master-files-panel"
+    s7="$(awk '/^stage_7\(\)/,/^print_summary\(\)/' "$V2_ROOT/install.sh")"
+    grep -qF '"$(stat -c '"'"'%U:%G:%a'"'"' "$SYSTEM_FILES_SOCKET" 2>/dev/null)" == "root:${CADDY_GROUP}:660"' <<<"$s7"
+    grep -qF 'for probe in "tailscale|${tail_probe}|200" "internet|${tail_probe}|403" "tailscale|${TAILSCALE_IPV4}|403"; do' <<<"$s7"
+    grep -qF '"http://${TAILSCALE_IPV4}/api/sistem/state"' <<<"$s7"
+    # Health, Günlük and a domain change know the unit.
+    grep -qF '"master-sistem-dosya.service"' "$V2_ROOT/panel/master-panel"
+    grep -qF '"-u", "master-sistem-dosya.service"' "$V2_ROOT/panel/master-panel"
+    grep -qF 'master-sistem-dosya.service' "$V2_ROOT/panel/master_settings.py"
+}
+
 @test "installer wires the wg panel: loopback unit, tailnet name, Konsol sign-in, stage 7 gate proof" {
     local unit="$V2_ROOT/systemd/master-panel.service" body s6 s7
     # DD-180: no TCP port; a Unix socket only Caddy's group and root can open.
@@ -2809,7 +2838,7 @@ EOF
     grep -qF '"root:${CADDY_GROUP}:660"' <<<"$s7"
     grep -qF '"caddy:700"' <<<"$s7"
     grep -qF 'setpriv --reuid="$DOWNLOADS_UID" --regid="$DOWNLOADS_GID" --clear-groups' <<<"$s7"
-    grep -qF 'for sock in "$PANEL_SOCKET" "$CADDY_ADMIN_SOCKET"; do' <<<"$s7"
+    grep -qF 'for sock in "$PANEL_SOCKET" "$SYSTEM_FILES_SOCKET" "$CADDY_ADMIN_SOCKET"; do' <<<"$s7"
     grep -qF '"http://127.0.0.1:2019/config/"' <<<"$s7"
     grep -qF 'systemctl reload caddy || die' <<<"$s7"
     # The Caddy tailnet listener is reachable from the host too: that path must end in the backend's 403.
@@ -3116,7 +3145,7 @@ PY
 @test "console uploads into the list itself, selects many rows and searches the folder" {
     # DD-145: ayrı yükleme alanı yok; hedef liste, ilerleme satırın içinde.
     local js="$V2_ROOT/console/konsol.js" css="$V2_ROOT/console/konsol.css"
-    grep -q 'xhr.open("POST", `/api/upload?path=${enc(u.path)}&name=${enc(u.name)}`)' "$js"
+    grep -q 'xhr.open("POST", u.api(`/api/upload?path=${enc(u.path)}&name=${enc(u.name)}`))' "$js"
     grep -q 'xhr.setRequestHeader("X-Konsol", "1")' "$js"
     grep -q 'xhr.upload.addEventListener("progress"' "$js"
     # Bırakma hedefi liste; perde ya da ayrı kuyruk kartı yok.
@@ -5331,6 +5360,7 @@ DOWNLOADS_PATH=$TMP/srv/downloads
 EOF
     rend() {
         sed -e 's/__LOCAL_DOMAIN__/ayc/g' -e 's#__PANEL_SOCKET__#/run/master-panel/api.sock#g' \
+            -e 's#__SYSTEM_FILES_SOCKET__#/run/master-sistem-dosya/api.sock#g' \
             -e 's#__CADDY_ADMIN_SOCKET__#/run/caddy/admin.sock#g' -e 's/__FILES_PANEL_PORT__/61009/g' \
             -e 's/__CADDY_HTTP_PORT__/80/g' -e "s#__CONSOLE_WEB_DIR__#$TMP/web#g" -e "s#__CADDY_MODULES_DIR__#$TMP/caddy/moduller#g" \
             -e 's/__WAN_IPV4__/203.0.113.7/g' -e 's/__SHARE_HTTPS_PORT__/443/g' \
@@ -5413,7 +5443,8 @@ assert [e["group"] for e in v6 if e["kind"] == "nat"] == ["wg:wg0"] and not [e f
 # Web: every address with where it goes, its source and who reaches it.
 web = {e["address"]: e for e in d["web"]["entries"]}
 assert [(r["path"], r["kind"], r["to"]) for r in web["panel.ayc"]["routes"]] == [
-    ("/api/uygulama/* /api/konsol/*", "proxy", "unix//run/master-panel/api.sock"), ("/api/*", "proxy", "127.0.0.1:61009"), ("", "files", "")], web["panel.ayc"]
+    ("/api/uygulama/* /api/konsol/*", "proxy", "unix//run/master-panel/api.sock"),
+    ("/api/sistem/*", "proxy", "unix//run/master-sistem-dosya/api.sock"), ("/api/*", "proxy", "127.0.0.1:61009"), ("", "files", "")], web["panel.ayc"]
 assert "health.ayc" not in web
 assert web["paylas.ayc"]["source"] == "paylasim" and web["100.64.0.7:61010"]["source"] == "paylasim"
 assert web["torrent.ayc"]["routes"][0]["to"] == "127.0.0.1:61006"

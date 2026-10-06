@@ -219,3 +219,7 @@
   .fx-disk { display:none; }
   .fx-grid { grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); padding:12px; }
 }
+/* DD-235: "Sistem (/)": the root view's sidebar entry and its warning strip. */
+.fx-nav .rl-ico.t-sys { color:var(--danger); }
+.offbar.sysbar { border-color:var(--danger); background:var(--danger-soft); }
+.offbar.sysbar strong { color:var(--danger); }

@@ -13,6 +13,44 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-235: Files' "Sistem (/)" view: the whole server as root, tailnet only (v2-214)
+
+- **Request (user, 2026-10-06):** see the whole server in Files as root, read and write, over
+  Tailscale. Decisions: delete is permanent and confirmed by typing the item's name; the key folders
+  (`/etc/master-stack`, `/etc/wireguard`) stay open like everything else; then a clean install on `nrm`.
+- **Reverses part of DD-139 on purpose.** DD-139 rejected "running as root with a path check: one
+  missed case would expose the host". The `/srv` view keeps that rule unchanged (`master-files-panel`
+  as the downloads account, `ProtectSystem=strict`). The root view is a **separate** unit,
+  `master-sistem-dosya`, running the same code in `--sistem` mode with `--root /`, so a bug in the
+  `/srv` view still cannot reach the host and the root view's exposure is one switchable unit.
+- **Same core, fewer features.** Every path step is still an `O_NOFOLLOW` open from a directory
+  descriptor (a symlink is listed, never followed: `/bin` shows as a link, `/usr/bin` is browsed) and
+  nothing overwrites (`RENAME_NOREPLACE`). Differences:
+  - No trash: `/` spans several file systems, a trash would turn deletes into copies. Delete is
+    permanent: one item needs its own name typed, several need `onayla` (the existing bulk word).
+  - Delete refuses a mount point or an item with anything mounted below it (`/proc/self/mountinfo`),
+    and the recursive delete stops at a device change; a bind mount of the same disk would otherwise
+    lose its source's files.
+  - `/proc`, `/sys`, `/dev` and `/run` are listed but read-only; folder sizes are not walked.
+  - New folders are `0755`, uploads `0644` (root's), not the downloads tree's `0775/0664`.
+  - No archives, shares or package-folder warnings (those belong to `/srv`).
+- **Tailnet only, twice.** The unit listens on `SYSTEM_FILES_SOCKET` (0660 root:caddy, peer
+  credentials checked) and no TCP port. Caddy routes `/api/sistem/*` only in the Tailscale site (a
+  matcher whose expression compares the snippet's channel argument with `tailscale`; on the public
+  HTTPS site the path falls to the files backend and gets 404). The backend itself refuses a request
+  whose Caddy-written `X-Konsol-Kanal` is not `tailscale` or whose `X-Forwarded-For` is not another
+  Tailscale device (DD-180's own-address check, duplicated in a few lines as DD-139 duplicated the
+  login check). Stage 7 proves the socket mode, 200 for a tailnet peer, 403 for the internet channel
+  and for the server's own address, and 403 through Caddy from the downloads account.
+- **Audit:** writes and downloads are logged as `dosya: sistem <address> ...`; Günlük also reads
+  this unit's journal. The health card lists the unit.
+- **Trade-off (security over convenience, flagged):** Konsol asks no sign-in on the tailnet (DD-205),
+  so every device on the tailnet now has root file access, including `/etc/shadow` and private keys.
+  Tailscale's ACLs are the boundary, as they already are for the rest of Konsol. The unit has no
+  `ProtectSystem`/`ProtectHome`/`PrivateTmp`/`PrivateDevices` by design; it keeps
+  `NoNewPrivileges`, `RestrictSUIDSGID`, `IPAddressDeny=any` and no listening port.
+- **Not done:** no text editor, no copy, no chmod/chown, no archive jobs in the root view.
+
 ### DD-233: Konsol update button, pinned to a GitHub commit (v2-212)
 
 - **Request (user, 2026-10-05):** "ana menüde saat ve tarih satırının hemen yanına bir Güncelle
@@ -5184,7 +5222,8 @@ failure with an early, named one.
     link and cannot send a header; it only reads, and it is still refused when
     `Sec-Fetch-Site` says `cross-site` or `same-site`.
 - **Rejected:**
-  - Running as root with a path check: one missed case would expose the host.
+  - Running as root with a path check: one missed case would expose the host. (Still true for this
+    unit; the separate root view of DD-235 accepts that risk on purpose, tailnet only.)
   - A copy of the hash owned by uid 1000: a second secret file to keep in sync.
   - Dropping privileges inside Python, or `setpriv`: more code or a lost
     credential, for what `User=` already does.
