@@ -146,11 +146,13 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .widget[data-boy="1x1"] .card-head { flex-wrap:nowrap; align-items:flex-start; }
 .widget[data-boy="1x1"] .card-head h2 { margin:0; line-height:1.2; }
 .widget[data-boy="1x1"] .card-head small { display:block; margin:2px 0 0; line-height:1.3; }
-.server-facts { margin:auto 0 0; padding-top:6px; display:grid; gap:3px; font-size:11.5px; line-height:1.35; }
+/* DD-231: the type follows the card's width so the longest row ("WAN" + a 15-character IPv4, ~11.2em
+   with the 6px gap) fits even the narrowest 1×1 cell; wide cells keep 11.5px. */
+.server-facts { margin:auto 0 0; padding-top:6px; display:grid; gap:3px; font-size:clamp(9px, calc((100cqi - 6px) / 11.5), 11.5px); line-height:1.35; }
 .server-facts > div { display:flex; justify-content:space-between; gap:6px; min-width:0; }
 .server-facts dt { color:var(--muted); flex:none; }
 .server-facts dd { margin:0; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
-.server-facts .mono { font-size:11px; }
+.server-facts .mono { font-size:inherit; }
 
 /* ---- Hız (1×1): the server's live rates; Ağ (2×2): application totals, one line per application ---- */
 :root { --net-down:var(--accent); --net-up:#C2783A; }

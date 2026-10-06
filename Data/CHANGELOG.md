@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-06 — Sunucu widget fits the full addresses (v2-213)
+
+- The Tailscale and WAN addresses in Ana Menü's "Sunucu" card were cut off with "…" when
+  the card was narrow. The card's rows now size their text to the card's width: down to 9px in the
+  narrowest cell, 11.5px as before in wide ones, so a 15-character IPv4 address always fits (DD-231).
+
 ### 2026-10-05 — "Güncelle" beside the clock (v2-212)
 
 - Ana Menü shows the installed version's state next to the time: "Güncel", or "Güncelle v2-…" when
