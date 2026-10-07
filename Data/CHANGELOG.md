@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Nightly address refresh (v2-222)
+
+- The Tailscale address and Caddy check now also runs once every night between 03:00 and 04:00,
+  besides once after each boot. A changed address is picked up by the next night at the latest
+  (DD-240).
+
 ### 2026-10-07 — "Denetle ve onar" instead of a 5-minute background check (v2-221)
 
 - The Tailscale/Caddy/firewall check no longer runs every five minutes. It runs once after boot and

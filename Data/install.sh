@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-221"
+V2_VERSION="2026.08.06-v2-222"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -1035,7 +1035,7 @@ stage_5() {
 
     systemctl enable master-firewall.service
     systemctl enable refresh-tailnet-config.service
-    # DD-239: once after boot (no 5-minute loop); the firewall keeps an hourly check of its own.
+    # DD-239/DD-240: after boot and nightly 03-04 (no 5-minute loop); the firewall keeps an hourly check.
     systemctl enable --now refresh-tailnet-config.timer
     systemctl enable --now master-duvar-denetim.timer
 

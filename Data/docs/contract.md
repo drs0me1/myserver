@@ -1642,7 +1642,7 @@ declared in `config/defaults.env` and nowhere else.
 |---|---|---|---|
 | `tailscale-udp-gro.service` | `network-online.target` | none | `no`, oneshot, `RemainAfterExit` |
 | `master-firewall.service` | `network-online.target tailscaled.service` | `PartOf=tailscaled.service` only (**DD-152**) | `on-failure` (oneshot, `RemainAfterExit`, `RestartSec=10s`, `StartLimitBurst=12` / 300s) |
-| `refresh-tailnet-config.timer` | — | address refresh + firewall watchdog (checked again once Tailscale answers); resets a failed Caddy's start limit before restarting it; reopens failed WireGuard networks (**DD-180**, **DD-182**); hands a recorded Tailscale address change to the bounded container worker (**DD-211**) | once after boot (`OnBootSec=2min`); otherwise Caddy's `OnFailure` and `master-onar` (**DD-239**) |
+| `refresh-tailnet-config.timer` | — | address refresh + firewall watchdog (checked again once Tailscale answers); resets a failed Caddy's start limit before restarting it; reopens failed WireGuard networks (**DD-180**, **DD-182**); hands a recorded Tailscale address change to the bounded container worker (**DD-211**) | once after boot (`OnBootSec=2min`) and nightly between 03:00 and 04:00 (`OnCalendar` + `RandomizedDelaySec=55min`); otherwise Caddy's `OnFailure` and `master-onar` (**DD-239**, **DD-240**) |
 | `master-duvar-denetim.timer` | — | `master-onar --duvar`: re-applies the owned firewall rules when `master-firewall --check` fails (**DD-239**) | hourly (`OnBootSec=10min`, `OnUnitActiveSec=1h`) |
 | `caddy.service` (drop-in) | `tailscaled.service master-firewall.service` | `Wants=` both (no `PartOf`); `ExecStartPre=+master-firewall --check` (**DD-179**); `OnFailure=refresh-tailnet-config.service` (**DD-87**) | `on-failure` + StartLimit (drop-in) |
 | `dnsmasq.service` (drop-in) | `tailscaled.service` | `Wants=tailscaled.service` | `on-failure`, `RestartSec=5s` (drop-in) |
@@ -1678,7 +1678,7 @@ Invariants:
   `tailscaled.service`.** Host `INPUT` must land as early as possible
   (**DD-94**).
 - **One bounded watchdog, at the network edge only.**
-  `refresh-tailnet-config` (after boot and on demand) and the hourly `master-duvar-denetim` restart
+  `refresh-tailnet-config` (after boot, nightly and on demand) and the hourly `master-duvar-denetim` restart
   `master-firewall` when the unit is `failed` or `--check` fails, after a
   `reset-failed` so an exhausted start limit cannot block the recovery. It
   skips the round while the oneshot is mid-apply. Beyond the firewall it only

@@ -881,10 +881,12 @@ assert not missing, missing
         "$V2_ROOT/scripts/refresh-tailnet-config")" ]
 }
 
-@test "refresh-tailnet runs once after boot; the firewall keeps an hourly check (DD-239)" {
-    # No 5-minute loop: after boot once, then Caddy's OnFailure, master-onar and SSH run it on demand.
+@test "refresh-tailnet runs after boot and nightly 03-04; the firewall keeps an hourly check (DD-239, DD-240)" {
+    # No 5-minute loop: after boot once, once a night (03:00 + up to 55 min), and on demand.
     grep -qx 'OnBootSec=2min' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
-    run ! grep -q 'OnUnitActiveSec\|OnUnitInactiveSec\|OnCalendar' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    grep -qx 'OnCalendar=\*-\*-\* 03:00:00' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    grep -qx 'RandomizedDelaySec=55min' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    run ! grep -q 'OnUnitActiveSec\|OnUnitInactiveSec' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
     grep -qx 'OnUnitActiveSec=1h' "$V2_ROOT/systemd/master-duvar-denetim.timer"
     grep -qx 'ExecStart=__SBIN_DIR__/master-onar --duvar' "$V2_ROOT/systemd/master-duvar-denetim.service"
     grep -qx '    systemctl enable --now master-duvar-denetim.timer' "$V2_ROOT/install.sh"
@@ -1534,7 +1536,7 @@ EOF
 }
 
 @test "refresh timer has no no-op Persistent key" {
-    # Persistent= only applies to OnCalendar= timers; this one is monotonic.
+    # DD-240: the nightly OnCalendar run needs no catch-up; the boot run covers a missed night.
     run ! grep -q 'Persistent=' "$V2_ROOT/systemd/refresh-tailnet-config.timer" "$V2_ROOT/systemd/master-duvar-denetim.timer"
 }
 

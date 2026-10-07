@@ -235,6 +235,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-240 | Address refresh after boot and nightly 03:00–04:00 (amends DD-239) | v2-222 | design-decisions.md |
 | DD-239 | Repair on request (Konsol "Denetle ve onar", `master-onar`, `onar.command`) instead of the 5-minute refresh loop; hourly firewall check | v2-221 | design-decisions.md |
 | DD-238 | "Sistem (/)": no read-only roots, no root warning strip (amends DD-235) | v2-220 | design-decisions.md |
 | DD-237 | Files details in a fixed bottom panel, one-line share, short Favoriler, folder path in the address | v2-219 | design-decisions.md |

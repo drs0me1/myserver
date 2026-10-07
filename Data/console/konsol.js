@@ -1836,7 +1836,7 @@
         return h("li", { class: "rs-" + st.durum, "data-step": st.id }, h("span", { class: "rs-mark " + tone, "aria-hidden": "true" }, mark),
           h("strong", null, st.ad), h("span", null, st.detay || (st.durum === "calisiyor" ? "denetleniyor…" : "")));
       })) : null,
-      h("p", { class: "hint-s" }, "Arka planda sürekli çalışan bir denetim yok: yalnız açılışta, bir servis çökünce ve burada istenince çalışır; güvenlik duvarı saatte bir ayrıca denetlenir. Konsol'a ulaşılamazsa SSH ile: sudo master-onar"));
+      h("p", { class: "hint-s" }, "Arka planda sürekli çalışan bir denetim yok: adres denetimi açılışta ve her gece 03–04 arası, onarım bir servis çökünce ve burada istenince çalışır; güvenlik duvarı saatte bir ayrıca denetlenir. Konsol'a ulaşılamazsa SSH ile: sudo master-onar"));
   }
   // DD-194/DD-205: the Konsol account, read once per page. Settings → Sistem shows it; the sidebar's
   // sign-out exists only on the internet address — the tailnet address has no sign-in, the device is

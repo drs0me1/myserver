@@ -13,6 +13,16 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-240: The address refresh also runs nightly between 03:00 and 04:00 (v2-222)
+
+- **Request (user, 2026-10-07):** limit the former 5-minute service to once a day and after boots;
+  "gece 3-4 arası uygun".
+- `refresh-tailnet-config.timer`: `OnBootSec=2min` plus `OnCalendar=*-*-* 03:00:00` with
+  `RandomizedDelaySec=55min` (always inside 03:00–03:55). No `Persistent=`: a night missed while the
+  server was off is covered by the boot run. A changed Tailscale address is now picked up by the next
+  night at the latest instead of only by a repair (DD-239's trade-off narrows to under a day).
+- The hourly firewall check (`master-duvar-denetim.timer`) is unchanged.
+
 ### DD-239: Repair on request ("Denetle ve onar", `master-onar`) instead of a 5-minute loop (v2-221)
 
 - **Request (user, 2026-10-07):** stop the round-the-clock service; run it from Ayarlar → Sağlık with one
