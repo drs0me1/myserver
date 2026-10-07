@@ -34,6 +34,10 @@ const health = { status: "bad", read_at: 1790750000, checks: [
   { id: "units", name: "Servisler", status: "ok", detail: "Başarısız servis yok" },
   { id: "reboot", name: "Yeniden başlatma", status: "warn", detail: "Güncellemeler yeniden başlatma bekliyor (linux-image-test)" },
   { id: "settings", name: "Ayar işlemi", status: "bad", detail: "Geri alma takıldı; Ayarlar'da yeniden deneyin ya da bırakın" }] };
+// DD-239: "Denetle ve onar" fixture: the unit runs while repair.calisiyor, its report is repair.rapor.
+let repair = { calisiyor: false, kurulu: true, baslatilabilir: true, rapor: null };
+const repairStarts = [];
+const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {}) });
   try {
@@ -80,6 +84,14 @@ const health = { status: "bad", read_at: 1790750000, checks: [
           result = {pending:null, committed:true};
         }
       } else if (endpoint === "/api/konsol/saglik") result = health;
+      else if (endpoint === "/api/konsol/onarim" && route.request().method() === "POST") {
+        const body = route.request().postDataJSON();
+        repairStarts.push(body);
+        repair = { ...repair, calisiyor: true, rapor: { durum: "calisiyor", kip: body.kip, baslangic: 1790750100, bitis: null,
+          adimlar: [step("duvar", "Güvenlik duvarı", "ok", "Kurallar beklenen biçimde"), step("tailscale", "Tailscale", "calisiyor", "")] } };
+        result = { kip: body.kip };
+      }
+      else if (endpoint === "/api/konsol/onarim") result = repair;
       else if (endpoint === "/api/konsol/oturum") result = accountOverride || (sessionState === "acik" ? {durum:"acik",kullanici:"fixture",oturum_gun:7,kanal:"internet"} : {durum:"giris",kanal:"internet"});
       else if (endpoint === "/api/konsol/oturum/kur") { createWrites.push(route.request().postDataJSON()); result = {durum:"kuruldu"}; }
       else if (endpoint === "/api/konsol/hesap/parola") {
@@ -109,6 +121,39 @@ const health = { status: "bad", read_at: 1790750000, checks: [
     assert.equal(await healthCard.locator(".health-facts .hm.warn").count(), 1);
     assert.equal(await healthCard.locator(".health-facts > div").count(), 3);
     await page.screenshot({ path: path.join(screenshots, "health-card.png"), fullPage: true });
+    // DD-239: no background loop; the card starts master-onar. "Denetle" needs no confirmation, "Onar" does.
+    const box = healthCard.locator(".repair");
+    await box.getByText("Henüz denetim yapılmadı", { exact: true }).waitFor();
+    assert.match(await box.innerText(), /sudo master-onar/);
+    await box.getByRole("button", { name: "Denetle", exact: true }).click();
+    await box.locator('[data-step="tailscale"].rs-calisiyor').waitFor();
+    assert.deepEqual(repairStarts, [{ kip: "denetle" }]);
+    assert.equal(await box.locator(".repair-head small").innerText(), "Denetim sürüyor…");
+    assert(await box.getByRole("button", { name: "Onar", exact: true }).isDisabled(), "a running check locks both buttons");
+    await page.screenshot({ path: path.join(screenshots, "repair-running.png"), fullPage: true });
+    repair = { ...repair, calisiyor: false, rapor: { durum: "hata", kip: "onar", baslangic: 1790750100, bitis: 1790750160, adimlar: [
+      step("duvar", "Güvenlik duvarı", "onarildi", "Kurallar beklenenden farklı; kurallar yeniden kuruldu"),
+      step("tailscale", "Tailscale", "ok", "Çalışıyor, çevrimiçi"),
+      step("servisler", "Servisler", "hata", "Başlatılamadı: master-paylasim.service"),
+      step("dns", "DNS", "atlandi", "dig kurulu değil")] } };
+    await box.locator('[data-step="servisler"].rs-hata').waitFor({ timeout: 8000 });
+    assert.match(await box.locator(".repair-head small").innerText(), /^Son onarım · \d\d:\d\d · sorun var$/);
+    assert.deepEqual(await box.locator(".rs-mark").allInnerTexts(), ["↻", "✓", "✗", "–"]);
+    await page.screenshot({ path: path.join(screenshots, "repair-report.png"), fullPage: true });
+    await box.getByRole("button", { name: "Onar", exact: true }).click();
+    assert.equal(await page.locator("#cf-title").innerText(), "Denetim ve onarım başlasın mı?");
+    await page.locator("#cf-cancel").click();
+    assert.equal(repairStarts.length, 1, "cancel starts nothing");
+    await box.getByRole("button", { name: "Onar", exact: true }).click();
+    await page.locator("#cf-go").click();
+    await box.locator('[data-step="tailscale"].rs-calisiyor').waitFor();
+    assert.deepEqual(repairStarts.at(-1), { kip: "onar" });
+    repair = { ...repair, calisiyor: false, baslatilabilir: false, rapor: { ...repair.rapor, durum: "tamam", bitis: 1790750200,
+      adimlar: repair.rapor.adimlar.map((s) => ({ ...s, durum: "ok" })) } };
+    await box.locator(".repair-head small").getByText(/· tamam$/).waitFor({ timeout: 8000 });
+    assert(await box.getByRole("button", { name: "Onar", exact: true }).isDisabled(), "the internet address cannot start a repair");
+    assert.equal(await box.getByRole("button", { name: "Onar", exact: true }).getAttribute("title"), "Onarım yalnız Tailscale adresinden başlatılır");
+    repair.baslatilabilir = true;
     // DD-194: the Konsol account card; the password change runs in the shared dialog, which
     // the 10-second Settings refresh cannot redraw while typing.
     const account = page.locator("#konsol-account");

@@ -23,7 +23,8 @@ App Store uses cards with a name, status and Install/Open actions; descriptions,
 service controls and logs remain under Details.
 
 The repository root holds the server bootstrap `kur.sh` (**DD-228**),
-`wireguard.command` (WireGuard peer management from a Mac) and the Git-ignored
+`wireguard.command` (WireGuard peer management from a Mac), `onar.command` (check and repair over SSH
+when Konsol cannot be reached, **DD-239**) and the Git-ignored
 `kurulum/` (its SSH host and device profiles/QR codes downloaded on request). Everything else lives under `Data/`; paths in the
 documents there are relative to `Data/`. Turkish click order:
 [`Data/OKUBENI.txt`](Data/OKUBENI.txt).
@@ -72,12 +73,17 @@ chmod 600 kurulum/kurulum.env   # then set SSH_HOST
 # Nothing is kept on the Mac but a profile you download, with its QR code as <name>.png
 ```
 
+Repairs run on request, not in the background (**DD-239**): Konsol → Ayarlar → Sistem → Sağlık →
+"Denetle" / "Onar". When Konsol cannot be reached, double-click `onar.command` (same SSH host) or run
+`sudo master-onar` on the server (`--denetle` only reports).
+
 ## Repository layout
 
 ```
 .
 ├── kur.sh                 # server bootstrap: curl … | sudo bash (DD-228)
 ├── wireguard.command      # WireGuard peer menu (double-click)
+├── onar.command           # check and repair over SSH (double-click; DD-239)
 ├── kurulum/               # wireguard.command input, mode 600 (Git-ignored)
 │   ├── kurulum.env        #   SSH host
 │   └── wireguard/         #   only the profiles + QR pictures you downloaded (DD-143)

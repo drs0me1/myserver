@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# DD-239: denetle ve onar (root). Konsol → Ayarlar → Sistem → Sağlık bunu kendi biriminde çalıştırır;
+# panele ulaşılamıyorsa SSH ile: sudo master-onar  (yalnız denetim: --denetle; yalnız duvar: --duvar)
+set -euo pipefail
+exec /usr/bin/python3 "$(dirname -- "$(readlink -f -- "$0")")/master_onar.py" "$@"

@@ -152,7 +152,7 @@
   }
 
   /* ---------- durum ---------- */
-  const S = { sys: null, health: null, fs: null, sysfs: null, actions: [], share: null, offset: 0 };
+  const S = { sys: null, health: null, repair: null, fs: null, sysfs: null, actions: [], share: null, offset: 0 };
   const now = () => Date.now() / 1000 + S.offset;
   /* ---------- yükleme ---------- */
   let resourceBusy = false, resourceReceived = 0, resourceFailed = false;
@@ -172,10 +172,32 @@
   }
   // DD-182: read-only health checks for Settings → Sistem; the server caches them for 30 s.
   let healthFailed = false;
+  // DD-239: the health card also carries the last "Denetle ve onar" report; while a run is going it is
+  // re-read every two seconds (the run may restart Caddy or Konsol: a failed read just waits).
+  let repairTimer = 0;
   function loadHealth() {
-    return api("/api/konsol/saglik").then((s) => { S.health = s; healthFailed = false; })
-      .catch(() => { healthFailed = true; })
-      .finally(() => { if (current === "ayarlar" && settingsTab === "system") renderSettings(); });
+    const repair = api("/api/konsol/onarim").then((r) => { S.repair = r; }).catch(() => {});
+    return Promise.all([api("/api/konsol/saglik").then((s) => { S.health = s; healthFailed = false; })
+      .catch(() => { healthFailed = true; }), repair])
+      .finally(() => {
+        if (current === "ayarlar" && settingsTab === "system") renderSettings();
+        clearTimeout(repairTimer);
+        if (S.repair && S.repair.calisiyor && current === "ayarlar" && settingsTab === "system") repairTimer = setTimeout(loadHealth, 2000);
+      });
+  }
+  function startRepair(kip) {
+    const go = () => post("/api/konsol/onarim", { kip }).then(() => {
+      S.repair = Object.assign({}, S.repair, { calisiyor: true, rapor: null });
+      toast(kip === "onar" ? "Denetim ve onarım başladı." : "Denetim başladı.");
+      renderSettings();
+      repairTimer = setTimeout(loadHealth, 1500);
+    }).catch(fail);
+    if (kip === "denetle") { go(); return; }
+    ask({ title: "Denetim ve onarım başlasın mı?", calm: true, go: "Onar",
+      items: [["shield", "Güvenlik duvarı, Tailscale ve adresi, servisler, DNS ve Konsol denetlenir."],
+        ["refresh", "Bozuk olanlar yeniden başlatılır ya da yeniden kurulur; yapılandırma dosyaları değişmez."],
+        ["info", "Caddy ya da Konsol yeniden başlarsa sayfa birkaç saniye yanıt vermeyebilir."]],
+      onOk: go });
   }
   function loadActions() {
     return api("/api/konsol/islemler").then((s) => { S.actions = s.items || []; paintActions(); }).catch(fail);
@@ -1793,7 +1815,28 @@
       hs ? h("dl", {class:"system-facts health-facts"}, ...hs.checks.map((c) =>
         h("div", {class:"hc-" + c.status}, h("dt", null, pill(c.status), c.name), h("dd", null, c.detail))))
         : h("p", {class:"hint-s"}, healthFailed ? "Sağlık bilgisi okunamadı; bağlantıyı kontrol edin." : "Sağlık denetleniyor…"),
-      h("p", {class:"hint-s"}, hs ? `Salt okunur · son denetim ${hhmm(hs.read_at)} · en çok 30 sn'de bir yenilenir.` : "Salt okunur."));
+      h("p", {class:"hint-s"}, hs ? `Son denetim ${hhmm(hs.read_at)} · en çok 30 sn'de bir yenilenir.` : ""),
+      repairBox());
+  }
+  /* DD-239: "Denetle ve onar" runs master-onar as its own unit; there is no 5-minute background loop.
+     Over SSH the same run is: sudo master-onar (only checking: --denetle). */
+  const REPAIR_MARK = { ok: ["ok", "✓"], onarildi: ["warn", "↻"], sorun: ["warn", "!"], hata: ["bad", "✗"], atlandi: ["", "–"], calisiyor: ["", "…"] };
+  function repairBox() {
+    const rp = S.repair, rep = rp && rp.rapor, running = !!(rp && rp.calisiyor);
+    const locked = rp && rp.baslatilabilir === false, off = !rp || !rp.kurulu || running || locked;
+    const title = locked ? "Onarım yalnız Tailscale adresinden başlatılır" : rp && !rp.kurulu ? "Kurulumu bir kez yeniden çalıştırın" : null;
+    const head = running ? "Denetim sürüyor…" : rep ? `Son ${rep.kip === "denetle" ? "denetim" : "onarım"} · ${hhmm(rep.bitis || rep.baslangic)} · ${rep.durum === "tamam" ? "tamam" : rep.yarida ? "yarıda kaldı" : "sorun var"}` : "Henüz denetim yapılmadı";
+    return h("section", { class: "repair", "aria-live": "polite", "aria-busy": running ? "true" : "false" },
+      h("div", { class: "repair-head" }, h("div", null, h("h3", null, "Denetle ve onar"), h("small", null, head)),
+        h("div", { class: "repair-acts" },
+          h("button", { type: "button", class: "btn btn-sm btn-quiet", disabled: off, title, onclick: () => startRepair("denetle") }, svg("search"), "Denetle"),
+          h("button", { type: "button", class: "btn btn-sm btn-primary", disabled: off, title, onclick: () => startRepair("onar") }, svg("refresh"), "Onar"))),
+      rep && rep.adimlar.length ? h("ol", { class: "repair-steps" }, ...rep.adimlar.map((st) => {
+        const [tone, mark] = REPAIR_MARK[st.durum] || ["", "?"];
+        return h("li", { class: "rs-" + st.durum, "data-step": st.id }, h("span", { class: "rs-mark " + tone, "aria-hidden": "true" }, mark),
+          h("strong", null, st.ad), h("span", null, st.detay || (st.durum === "calisiyor" ? "denetleniyor…" : "")));
+      })) : null,
+      h("p", { class: "hint-s" }, "Arka planda sürekli çalışan bir denetim yok: yalnız açılışta, bir servis çökünce ve burada istenince çalışır; güvenlik duvarı saatte bir ayrıca denetlenir. Konsol'a ulaşılamazsa SSH ile: sudo master-onar"));
   }
   // DD-194/DD-205: the Konsol account, read once per page. Settings → Sistem shows it; the sidebar's
   // sign-out exists only on the internet address — the tailnet address has no sign-in, the device is

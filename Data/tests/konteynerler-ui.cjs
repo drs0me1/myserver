@@ -233,6 +233,7 @@ function settle(op) {
       else if (p === "/api/uygulama/torrent/durum") result = { installed: true, running: true, unit: "qbittorrent.service", container: "qbittorrent", profile: "/var/lib/qbittorrent", downloads: "/srv/downloads", save: "/srv/downloads/", save_inside: true, temp: "", temp_on: false, temp_inside: false, ui: "127.0.0.1:61006", peer_port: 0, username: "admin" };
       else if (p === "/api/konsol/moduller/torrent/hesap") result = { user: "admin", temp: false };
       else if (p === "/api/konsol/kaynaklar") result = { host: "test", version: "test", domain: "ayc", os: "Debian 13", kernel: "test", uptime: 120, cores: 2, cpu: [1], mem: { total: 1000, used: 200 }, disk: { total: 1000, free: 500 }, root: "/srv", net: { tailscale: "100.64.0.2", wan: "192.0.2.1" }, read_at: Date.now() / 1000, sampled_at: Date.now() / 1000 };
+      else if (p === "/api/konsol/onarim") result = {calisiyor:false,kurulu:true,baslatilabilir:true,rapor:null};  // DD-239
       else if (p === "/api/konsol/saglik") result = { status: "ok", read_at: 1, checks: [] };
       else if (p === "/api/konsol/oturum") result = { durum: "acik", kullanici: "fixture", oturum_gun: 7, kanal: "tailscale" };
       else if (p === "/api/konsol/ag") { const now = Math.floor(Date.now() / 1000); result = { read_at: now, iface: "eth0", window: 120, sampled_at: now, rx: 1, tx: 1, points: [], apps: [] }; }

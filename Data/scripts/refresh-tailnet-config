@@ -2,7 +2,8 @@
 # Tailscale adres değişince state.env güncelle; Caddy ve bağlı konteyner adreslerini yenile.
 # Modül siteleri (ör. Paylaşım'ın Infuse adresi {$TAILSCALE_IPV4}:port) Caddyfile'a içe
 # aktarılır; Caddy yeniden başlayınca onlar da yeni adresle açılır (DD-98, DD-149).
-# Yeni zamanlayıcı yok; konteyner işi yalnız kayıtlı adres değişimini tamamlar.
+# DD-239: 5 dakikalık döngü yok. Açılışta bir kez, Caddy çökünce (OnFailure) ve master-onar
+# (Konsol'un "Denetle ve onar" düğmesi ya da SSH) istediğinde çalışır.
 set -Eeuo pipefail
 umask 077
 
@@ -64,19 +65,18 @@ refresh_bound_containers() {
     [[ -n "${KONTEYNER_STATE_DIR:-}" && -n "${RUNTIME_DIR:-}" && -n "${SBIN_DIR:-}" ]] || return 0
     [[ -f "$RUNTIME_DIR/containers-tailnet.pending" ]] || return 0
     # Uzun yeniden oluşturma bu birimin 150 saniyelik bütçesini tüketmez. Çalışan iş
-    # varsa yeni iş açılmaz; işaret sonraki mevcut timer turunda tekrar denenir.
+    # varsa yeni iş açılmaz; işaret bir sonraki çalışmada (onarım ya da açılış) tekrar denenir.
     systemd-run --quiet --no-block --collect --unit=master-container-tailnet-refresh \
         --property=RuntimeMaxSec=900 --property=UMask=0077 \
         --setenv=PYTHONDONTWRITEBYTECODE=1 \
         /usr/bin/python3 "$SBIN_DIR/master_container_worker.py" --state "$STATE_FILE" --refresh-tailnet ||
-        printf 'refresh-tailnet: konteyner adres işi başlatılamadı; sonraki turda denenecek\n' >&2
+        printf 'refresh-tailnet: konteyner adres işi başlatılamadı; sonraki çalışmada denenecek\n' >&2
 }
 
 recover_failed_bound_units() {
     # Adres değişmediği hâlde unit failed kalmış olabilir: adres geç geldiği
     # için başlangıçta bind edememiş olan Caddy bu durumda kalır ve
-    # kendiliğinden dönmez. Zaten çalışan 5 dk'lık timer kurtarma yolu olur;
-    # yeni bir watcher veya timer eklenmez.
+    # kendiliğinden dönmez. Kurtarma yolu Caddy'nin OnFailure'ı ve master-onar'dır (DD-239).
     local unit
     for unit in $BOUND_UNITS; do
         if systemctl is-failed --quiet "$unit"; then
@@ -97,7 +97,7 @@ recover_firewall_if_broken() {
     local why="" state=""
     [[ -x "$FIREWALL_BIN" ]] || return 0
     # tailscaled restart'ı ikisini birlikte tetikler; apply sürerken --check
-    # geçici olarak fail eder. Bu turu atla, timer 5 dk sonra tekrar bakar.
+    # geçici olarak fail eder. Bu turu atla; saatlik duvar denetimi tekrar bakar (DD-239).
     state="$(systemctl show -p ActiveState --value "$FIREWALL_UNIT" 2>/dev/null || true)"
     [[ "$state" == "activating" || "$state" == "deactivating" ]] && return 0
     if systemctl is-failed --quiet "$FIREWALL_UNIT"; then
@@ -162,7 +162,7 @@ recover_firewall_if_broken
 warn_if_tailnet_unusable
 
 # DD-157: alan adı değişimiyle aynı state.env dosyasını yarıştırma. Bekleme:
-# Caddy OnFailure bu birimi tetikleyebilir; doluysa sonraki timer turu yeterli.
+# Caddy OnFailure bu birimi tetikleyebilir; doluysa sonraki çalışma yeterli.
 if [[ -n "${RUNTIME_DIR:-}" ]]; then
     mkdir -p "$RUNTIME_DIR"
     exec 8>"$RUNTIME_DIR/state.lock"

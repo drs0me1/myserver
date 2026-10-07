@@ -6,7 +6,8 @@ Working guide for any AI assistant in this repository. Read this first.
 
 Active code lives under `Data/`; the repository root holds the server bootstrap
 `kur.sh` (run on the server: `curl -fsSL https://raw.githubusercontent.com/drs0me1/myserver/main/kur.sh | sudo bash`,
-**DD-228**) and `wireguard.command`, plus the Git-ignored `kurulum/` (`wireguard.command`'s SSH host and downloaded
+**DD-228**), `wireguard.command` and `onar.command` (SSH "Denetle ve onar", **DD-239**), plus the Git-ignored
+`kurulum/` (the SSH host both use and downloaded
 WireGuard device profiles/QR codes), this file and `README.md`. The repository is public: never commit host
 addresses, real domains, credentials or personal paths. Bare paths in this file and in `Data/docs/` (`install.sh`,
 `config/defaults.env`, `tests/`, `CHANGELOG.md`, …) are relative to `Data/`.

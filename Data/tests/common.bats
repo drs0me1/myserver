@@ -881,9 +881,14 @@ assert not missing, missing
         "$V2_ROOT/scripts/refresh-tailnet-config")" ]
 }
 
-@test "refresh-tailnet timer is five minutes" {
-    grep -q 'OnUnitActiveSec=5min' \
-        "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+@test "refresh-tailnet runs once after boot; the firewall keeps an hourly check (DD-239)" {
+    # No 5-minute loop: after boot once, then Caddy's OnFailure, master-onar and SSH run it on demand.
+    grep -qx 'OnBootSec=2min' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    run ! grep -q 'OnUnitActiveSec\|OnUnitInactiveSec\|OnCalendar' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    grep -qx 'OnUnitActiveSec=1h' "$V2_ROOT/systemd/master-duvar-denetim.timer"
+    grep -qx 'ExecStart=__SBIN_DIR__/master-onar --duvar' "$V2_ROOT/systemd/master-duvar-denetim.service"
+    grep -qx '    systemctl enable --now master-duvar-denetim.timer' "$V2_ROOT/install.sh"
+    grep -qx 'OnFailure=refresh-tailnet-config.service' "$V2_ROOT/install.sh"
     grep -q 'WantedBy=timers.target' \
         "$V2_ROOT/systemd/refresh-tailnet-config.timer"
     grep -q 'refresh-tailnet-config.timer' "$V2_ROOT/install.sh"
@@ -1043,11 +1048,26 @@ EOF
     run ! grep -q 'rmem_max = 7500000' "$V2_ROOT/install.sh"
 }
 
+@test "master-onar is installed for Konsol and SSH; onar.command reads only SSH_HOST (DD-239)" {
+    local install="$V2_ROOT/install.sh" cmd="$V2_ROOT/../onar.command"
+    grep -qF 'atomic_write "$SBIN_DIR/master_onar.py" 0755 <"$V2_ROOT/panel/master_onar.py"' "$install"
+    grep -qF 'atomic_write "$SBIN_DIR/master-onar" 0755 <"$V2_ROOT/scripts/master-onar"' "$install"
+    for key in ONARIM_UNIT ONARIM_DURUM_FILE; do grep -qx "$key=\$$key" "$install"; done
+    bash -n "$cmd"
+    [ -x "$cmd" ]
+    grep -qF "index(\$0, \"SSH_HOST=\") == 1" "$cmd"
+    [ "$(grep -c 'kurulum.env' "$cmd")" -le 3 ]
+    run ! grep -qE 'scp |rsync|>> *"\$INPUT_FILE"' "$cmd"
+    grep -qF 'exec sudo $tool $mode' "$cmd"
+    grep -qF 'self.error(403, "Onarım yalnız Tailscale adresinden başlatılır.")' "$V2_ROOT/panel/master-panel"
+    grep -qF '"master-duvar-denetim.timer"' "$V2_ROOT/panel/master-panel"
+}
+
 @test "watch-tailnet-addr is removed; refresh timer remains" {
     [ ! -e "$V2_ROOT/scripts/watch-tailnet-addr" ]
     [ ! -e "$V2_ROOT/systemd/watch-tailnet-addr.service" ]
     run ! grep -q 'watch-tailnet-addr' "$V2_ROOT/install.sh"
-    grep -q 'OnUnitActiveSec=5min' \
+    grep -q 'OnBootSec=2min' \
         "$V2_ROOT/systemd/refresh-tailnet-config.timer"
     grep -q 'WantedBy=tailscaled.service' \
         "$V2_ROOT/systemd/refresh-tailnet-config.service"
@@ -1515,8 +1535,7 @@ EOF
 
 @test "refresh timer has no no-op Persistent key" {
     # Persistent= only applies to OnCalendar= timers; this one is monotonic.
-    run ! grep -q 'Persistent=' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
-    grep -q 'OnUnitActiveSec=5min' "$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    run ! grep -q 'Persistent=' "$V2_ROOT/systemd/refresh-tailnet-config.timer" "$V2_ROOT/systemd/master-duvar-denetim.timer"
 }
 
 @test "tailscale_login reaps stuck up child before retry" {
@@ -1577,8 +1596,8 @@ EOF
     top="$(cd "$V2_ROOT/.." && pwd)"
     [ -f "$top/kur.sh" ]
     copies=( "$top"/*.command )
-    [ "${#copies[@]}" -eq 1 ]
-    [ "$(basename "${copies[0]}")" = wireguard.command ]
+    # DD-239: onar.command is the SSH fallback for "Denetle ve onar".
+    [ "$(printf '%s\n' "${copies[@]##*/}" | sort | tr '\n' ' ')" = 'onar.command wireguard.command ' ]
     [ ! -e "$V2_ROOT/app" ]
     [ ! -e "$V2_ROOT/dev/export-installer.sh" ]
     # DD-122: the backup tool is retired; nothing of it may come back.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly master-stack firewall check (master-onar --duvar)
+After=master-firewall.service
+
+# DD-239: the only scheduled check left. Re-applies the owned rules when master-firewall --check
+# fails, so a flushed rule set does not stay open until someone presses Onar.
+[Service]
+Type=oneshot
+Environment=STATE_FILE=__STATE_FILE__
+Environment=PYTHONDONTWRITEBYTECODE=1
+TimeoutStartSec=300s
+ExecStart=__SBIN_DIR__/master-onar --duvar

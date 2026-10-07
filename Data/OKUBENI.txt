@@ -17,7 +17,8 @@ Kurulum sunucuda tek satırla başlar (v2-206, DD-228). Sunucuya kendiniz SSH il
 Repo kökünde:
   kur.sh                     sunucuda çalışan kurulum başlatıcısı (yukarıdaki satır)
   wireguard.command          Mac'te WireGuard menüsü: ağ seç, listele, ekle, çıkar, QR, DNS, ağı yeniden üret (kurulumdan sonra)
-  kurulum/kurulum.env        wireguard.command girdisi: yalnız SSH_HOST (git dışı)
+  onar.command               Konsol'a ulaşılamazsa: SSH ile sunucuyu denetler ve onarır (v2-221, DD-239)
+  kurulum/kurulum.env        wireguard.command ve onar.command girdisi: yalnız SSH_HOST (git dışı)
   kurulum/wireguard/         yalnız istediğinizde inen cihaz profilleri (.conf) ve QR resimleri (.png) (git dışı)
 Diğer her şey Data/ altındadır; elle çalıştırılmaz.
 

@@ -1,9 +1,10 @@
 [Unit]
-Description=Periodic Tailscale address refresh for master-stack
+Description=Tailscale address refresh for master-stack, once after boot
 
+# DD-239: no 5-minute loop any more. After boot it runs once; Caddy's OnFailure and Konsol's
+# "Denetle ve onar" (master-onar) run it on demand; the firewall has its own hourly check.
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
 AccuracySec=30s
 Unit=refresh-tailnet-config.service
 

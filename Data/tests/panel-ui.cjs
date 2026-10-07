@@ -72,6 +72,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
         result = {user:"admin",temp:temporaryLogin};
         if (url.searchParams.get("parola") === "1") { passwordReads++; result.pass = temporaryPassword; }
       }
+      else if (p === "/api/konsol/onarim") result = {calisiyor:false,kurulu:true,baslatilabilir:true,rapor:null};  // DD-239
       else if (p === "/api/konsol/saglik") result = {status:"ok",read_at:1,checks:[{id:"units",name:"Servisler",status:"ok",detail:"Başarısız servis yok"}]};
       else if (p === "/api/konsol/oturum") result = {durum:"acik",kullanici:"fixture",oturum_gun:7};
       else if (p === "/api/konsol/ag") {

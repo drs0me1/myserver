@@ -344,3 +344,16 @@ section[data-view="genel"] { padding-bottom:72px; }
   .store-detail-actions .danger-text { margin-left:0; }
 }
 @media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); } .widgets { grid-template-rows:none; grid-auto-rows:var(--w-row); grid-auto-flow:row dense; } .tile { padding-inline:2px; } }
+/* DD-239: Ayarlar → Sistem → Sağlık: "Denetle ve onar" and its step report. */
+.repair { display:grid; gap:10px; margin-top:6px; padding-top:14px; border-top:1px solid var(--glass-line); }
+.repair-head { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; }
+.repair-head h3 { margin:0; font-size:14px; }
+.repair-head small { color:var(--muted); font-size:12px; }
+.repair-acts { display:flex; gap:8px; }
+.repair-steps { margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+.repair-steps li { display:grid; grid-template-columns:22px minmax(110px,160px) minmax(0,1fr); gap:8px; align-items:start; font-size:12.5px; }
+.repair-steps li > span:last-child { color:var(--muted); overflow-wrap:anywhere; }
+.rs-mark { display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--glass-2); font-size:11px; font-weight:700; }
+.rs-mark.ok { background:var(--ok-soft); color:var(--ok); } .rs-mark.warn { background:var(--warn-soft); color:var(--warn); } .rs-mark.bad { background:var(--danger-soft); color:var(--danger); }
+.rs-calisiyor .rs-mark { animation:upd-spin 1.2s linear infinite; }
+@media(max-width:480px) { .repair-steps li { grid-template-columns:22px minmax(0,1fr); } .repair-steps li > span:last-child { grid-column:2; } }

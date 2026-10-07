@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-220"
+V2_VERSION="2026.08.06-v2-221"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -111,6 +111,8 @@ GUNCELLEME_DAL=$GUNCELLEME_DAL
 GUNCELLEME_UNIT=$GUNCELLEME_UNIT
 GUNCELLEME_DURUM_FILE=$GUNCELLEME_DURUM_FILE
 GUNCELLEME_LOG_FILE=$GUNCELLEME_LOG_FILE
+ONARIM_UNIT=$ONARIM_UNIT
+ONARIM_DURUM_FILE=$ONARIM_DURUM_FILE
 OS_ID=$OS_ID
 OS_CODENAME=$OS_CODENAME
 OS_VERSION_ID=$OS_VERSION_ID
@@ -980,6 +982,9 @@ stage_4() {
     atomic_write "$SBIN_DIR/master_update.py" 0755 <"$V2_ROOT/panel/master_update.py"
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 0 ]] || PANEL_HELPERS_CHANGED=1
     atomic_write "$SBIN_DIR/master-guncelle" 0755 <"$V2_ROOT/scripts/master-guncelle"
+    # DD-239: denetle ve onar (Konsol'un Sağlık kartı ve SSH: sudo master-onar).
+    atomic_write "$SBIN_DIR/master_onar.py" 0755 <"$V2_ROOT/panel/master_onar.py"
+    atomic_write "$SBIN_DIR/master-onar" 0755 <"$V2_ROOT/scripts/master-onar"
     # Konteyner okuma/yönetim araçları. Yazma çalışanı backend sandbox'ının dışında çalışır.
     atomic_write "$SBIN_DIR/master_containers.py" 0755 <"$V2_ROOT/panel/master_containers.py"
     [[ "${V2_LAST_ATOMIC_CHANGED:-0}" -eq 0 ]] || PANEL_HELPERS_CHANGED=1
@@ -1018,6 +1023,9 @@ stage_4() {
         <"$V2_ROOT/systemd/refresh-tailnet-config.service"
     atomic_write "$UNIT_DIR/refresh-tailnet-config.timer" 0644 \
         <"$V2_ROOT/systemd/refresh-tailnet-config.timer"
+    render_template "$V2_ROOT/systemd/master-duvar-denetim.service" "$UNIT_DIR/master-duvar-denetim.service" 0644 \
+        SBIN_DIR="$SBIN_DIR" STATE_FILE="$STATE_FILE"
+    atomic_write "$UNIT_DIR/master-duvar-denetim.timer" 0644 <"$V2_ROOT/systemd/master-duvar-denetim.timer"
     systemctl daemon-reload
     systemctl enable --now master-settings-guard.timer
 }
@@ -1027,7 +1035,9 @@ stage_5() {
 
     systemctl enable master-firewall.service
     systemctl enable refresh-tailnet-config.service
+    # DD-239: once after boot (no 5-minute loop); the firewall keeps an hourly check of its own.
     systemctl enable --now refresh-tailnet-config.timer
+    systemctl enable --now master-duvar-denetim.timer
 
     if [[ "$FIREWALL_NEEDS_RESTART" -eq 1 ]] ||
         ! systemctl is-active --quiet master-firewall.service; then

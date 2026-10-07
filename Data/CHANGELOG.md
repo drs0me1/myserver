@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — "Denetle ve onar" instead of a 5-minute background check (v2-221)
+
+- The Tailscale/Caddy/firewall check no longer runs every five minutes. It runs once after boot and
+  when Caddy fails; the firewall alone is checked hourly.
+- Ayarlar → Sistem → Sağlık has "Denetle" (report only) and "Onar". Onar checks and repairs the
+  firewall, Tailscale and its address, Konsol's and the installed apps' services, DNS and Konsol
+  itself, and shows each step as it runs. Only from a Tailscale device.
+- When Konsol cannot be reached: `sudo master-onar` over SSH, or double-click `onar.command` on the
+  Mac (it uses the SSH host in `kurulum/kurulum.env`) (DD-239).
+
 ### 2026-10-07 — "Sistem (/)": full access, no warning strip (v2-220)
 
 - The red "Root olarak çalışıyorsunuz" strip is gone from Files' "Sistem (/)" view.

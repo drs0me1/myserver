@@ -84,7 +84,7 @@ HEALTH_CACHE_SECONDS = 30
 HEALTH_UNITS = ("tailscaled.service", "caddy.service", "dnsmasq.service",
                 "master-firewall.service", "master-panel.service",
                 "master-files-panel.service", "master-sistem-dosya.service", "master-paylasim.service",
-                "refresh-tailnet-config.timer", "master-share-network.timer")
+                "refresh-tailnet-config.timer", "master-duvar-denetim.timer", "master-share-network.timer")
 # Tailscale düğüm anahtarının süresi bu kadar gün kala uyarılır.
 KEY_EXPIRY_WARN_DAYS = 14
 CERT_EXPIRY_WARN_DAYS = 14
@@ -760,6 +760,58 @@ class Panel:
                 raise master_update.UpdateError(502, "Güncelleme başlatılamadı: %s" % (lines[-1] if lines else "systemd-run %d" % proc.returncode))
         return version
 
+    # -- denetle ve onar (DD-239)
+    def repair_info(self):
+        """The last master-onar report and whether its unit runs now. A report left "calisiyor" by a
+        unit that is gone (reboot, killed) reads as failed."""
+        env = read_env(self.args.state)
+        running = self.unit_active(env.get("ONARIM_UNIT", ""))
+        report = None
+        try:
+            raw, _ = master_settings.read_regular(env.get("ONARIM_DURUM_FILE", ""), 65536)
+            report = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError, UnicodeDecodeError, KeyError, master_settings.SettingsError):
+            report = None
+        if not isinstance(report, dict) or not isinstance(report.get("adimlar"), list):
+            report = None
+        elif report.get("durum") == "calisiyor" and not running:
+            report["durum"] = "hata"
+            report["yarida"] = True
+        if report and isinstance(report.get("bitis"), int):
+            with self.health_lock:
+                if report["bitis"] > self.health_cache[0]:
+                    self.health_cache = (0.0, None)  # show the health after the repair, not before it
+        return {"calisiyor": running, "rapor": report, "kurulu": bool(env.get("ONARIM_UNIT"))}
+
+    def repair_start(self, kip):
+        env = read_env(self.args.state)
+        unit = env.get("ONARIM_UNIT", "")
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,40}\.service", unit):
+            raise master_update.UpdateError(503, "Onarım kurulu değil; kurulumu terminalden bir kez yeniden çalıştırın.")
+        if kip not in ("onar", "denetle"):
+            raise master_update.UpdateError(400, "kip onar ya da denetle olmalı")
+        with self.install_lock:
+            if self.unit_active(unit):
+                raise master_update.UpdateError(409, "Onarım zaten sürüyor.")
+            if self.unit_active(env.get("GUNCELLEME_UNIT", "") or "-"):
+                raise master_update.UpdateError(409, "Güncelleme sürüyor; bitince yeniden deneyin.")
+            tool = os.path.join(os.path.dirname(os.path.abspath(self.args.master_modul)), "master-onar")
+            argv = ["systemd-run", "--unit=" + unit, "--collect", "--quiet",
+                    "--description=Konsol: " + ("denetle ve onar" if kip == "onar" else "denetle")]
+            if self.args.state_env:
+                argv.append("--setenv=STATE_FILE=%s" % self.args.state)
+            argv += [tool] + (["--denetle"] if kip == "denetle" else [])
+            try:
+                proc = subprocess.run(argv, capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.TimeoutExpired) as err:
+                raise master_update.UpdateError(502, "Onarım başlatılamadı (%s)." % err.__class__.__name__)
+            if proc.returncode != 0:
+                lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+                raise master_update.UpdateError(502, "Onarım başlatılamadı: %s" % (lines[-1] if lines else "systemd-run %d" % proc.returncode))
+        with self.health_lock:
+            self.health_cache = (0.0, None)  # the next health read shows the result
+        return kip
+
     def module_busy(self, mid, busy=None):
         return self.module_unit(mid) in (self.busy_units() if busy is None else busy)
 
@@ -1350,7 +1402,7 @@ class Panel:
 
         rc, out = self.health_cmd(["master-firewall", "--check"], timeout=30)
         add("firewall", "Güvenlik duvarı", "ok" if rc == 0 else "bad",
-            "Kurallar beklenen biçimde" if rc == 0 else "Denetim başarısız; 5 dk içinde yeniden uygulanır")
+            "Kurallar beklenen biçimde" if rc == 0 else "Denetim başarısız; Onar ya da saatlik denetim yeniden kurar")
 
         add("reboot", "Yeniden başlatma", *self.health_reboot())
 
@@ -2079,6 +2131,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/konsol/duzen":
             self.json(200, {"duzen": self.panel.layout()})
             return
+        if path == "/api/konsol/onarim":
+            info = self.panel.repair_info()
+            info["baslatilabilir"] = self.channel() != "internet"  # DD-239: like the update, tailnet only
+            self.json(200, info)
+            return
         if path == "/api/konsol/guncelleme":
             info = self.panel.update_info(force="yenile" in query)
             # DD-233: only a Tailscale device (or root on the socket) starts an update.
@@ -2240,6 +2297,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.audit(user, "duzen", detail, True)
             self.json(200, {"duzen": value})
+            return
+        if path == "/api/konsol/onarim":
+            if self.channel() == "internet":
+                self.error(403, "Onarım yalnız Tailscale adresinden başlatılır.")
+                return
+            try:
+                kip = self.panel.repair_start(data.get("kip", "onar"))
+            except master_update.UpdateError as err:
+                self.error(err.status, str(err))
+                return
+            self.audit(user, "onarim", kip, True)
+            self.json(202, {"kip": kip})
             return
         if path == "/api/konsol/guncelleme":
             if self.channel() == "internet":

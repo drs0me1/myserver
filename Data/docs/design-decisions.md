@@ -13,6 +13,32 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-239: Repair on request ("Denetle ve onar", `master-onar`) instead of a 5-minute loop (v2-221)
+
+- **Request (user, 2026-10-07):** stop the round-the-clock service; run it from Ayarlar → Sağlık with one
+  button, give it more repair capacity, and keep an SSH script for when Konsol cannot be reached. The
+  plan, including the trade-offs below, was approved; the firewall keeps an hourly check
+  ("security over convenience").
+- **Schedule:** `refresh-tailnet-config.timer` keeps only `OnBootSec=2min` (once after boot); Caddy's
+  `OnFailure` still starts it at once. The new `master-duvar-denetim.timer` runs `master-onar --duvar`
+  hourly. Supersedes the "every 5 minutes" in DD-87/DD-94/DD-180/DD-182 and the old "do not shorten
+  the timer" note.
+- **`master-onar` (`panel/master_onar.py`, root):** seven fixed steps (firewall, tailscaled,
+  Tailscale address via `refresh-tailnet-config`, base and running-package units, DNS, Konsol through
+  Caddy, other failed units listed only). `--denetle` changes nothing. A lock allows one run; the
+  report (`ONARIM_DURUM_FILE`, JSON, rewritten after every step) feeds Konsol; a terminal gets one
+  line per step. It restarts only units that are not active and never rewrites configuration, so it
+  stays an operator tool, not the reconcile engine contract §2 excludes.
+- **Konsol:** `GET/POST /api/konsol/onarim`; the start is tailnet only, never beside a running update
+  or another repair, and runs as its own unit (`ONARIM_UNIT`) because it may restart Caddy or Konsol.
+  The Sağlık card shows "Denetle" (no confirmation) and "Onar" (confirmation), the steps live while it
+  runs and the last report afterwards. Audit: `onarim <kip>`.
+- **SSH:** `sudo master-onar` on the server; `onar.command` at the repository root does it from the
+  Mac (reads only `SSH_HOST`, `sudo` when the SSH user is not root).
+- **Trade-off:** a Tailscale address change (rare: the node re-registered) is no longer picked up
+  within 5 minutes; Konsol stays unreachable on the tailnet until a repair over SSH. A flushed rule
+  set stays open for up to an hour. In return nothing polls every 5 minutes.
+
 ### DD-238: "Sistem (/)" without read-only roots or the root warning strip (v2-220)
 
 - **Request (user, 2026-10-07):** "Root olarak çalışıyorsunuz ibaresini kaldıralım. salt okunur dosyalara

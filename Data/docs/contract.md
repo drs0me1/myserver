@@ -1198,9 +1198,18 @@ The installer deliberately does not provide these:
 
 - **No reconcile or self-healing engine.** `refresh-tailnet-config` reacts to
   a Tailscale address change and watches only the network edge (§10); there
-  is no general health probe that restarts services and no reconcile
+  is no automatic health probe that restarts services and no reconcile
   `--check` surface. systemd's `Restart=` handles a crash. **A Tailscale
   restart must not restart a module.**
+  - **Operator repair (DD-239).** `master-onar` checks and repairs on request only: from Konsol
+    (Ayarlar → Sistem → Sağlık, tailnet only, its own unit `ONARIM_UNIT`), over SSH
+    (`sudo master-onar`, or `onar.command` on the Mac) or `--denetle` to only report. Fixed steps:
+    firewall (`--check`, re-apply), tailscaled (start; a login is never forced), the Tailscale
+    address (hands over to `refresh-tailnet-config`), the base units and the running packages'
+    units from `master-modul saglik` (restart only units that are not active; a stopped package and
+    a network switched off in Konsol are left alone), DNS (`panel.<domain>`, dnsmasq), Konsol through
+    Caddy; other failed units are only listed. It never rewrites configuration. The only schedule is
+    `master-duvar-denetim.timer` (hourly, `--duvar`: the firewall step).
 - **No canonical copies or automatic restore.** There is no generation
   directory, `SHA256SUMS` manifest or timer that reverts a managed file. An
   operator edit is the operator's decision; a drifted file is repaired by a
@@ -1633,7 +1642,8 @@ declared in `config/defaults.env` and nowhere else.
 |---|---|---|---|
 | `tailscale-udp-gro.service` | `network-online.target` | none | `no`, oneshot, `RemainAfterExit` |
 | `master-firewall.service` | `network-online.target tailscaled.service` | `PartOf=tailscaled.service` only (**DD-152**) | `on-failure` (oneshot, `RemainAfterExit`, `RestartSec=10s`, `StartLimitBurst=12` / 300s) |
-| `refresh-tailnet-config.timer` | — | address poll + firewall watchdog (checked again once Tailscale answers); resets a failed Caddy's start limit before restarting it; reopens failed WireGuard networks (**DD-180**, **DD-182**); hands a recorded Tailscale address change to the bounded container worker (**DD-211**) | starts oneshot every 5 min (`OnBootSec=2min`) |
+| `refresh-tailnet-config.timer` | — | address refresh + firewall watchdog (checked again once Tailscale answers); resets a failed Caddy's start limit before restarting it; reopens failed WireGuard networks (**DD-180**, **DD-182**); hands a recorded Tailscale address change to the bounded container worker (**DD-211**) | once after boot (`OnBootSec=2min`); otherwise Caddy's `OnFailure` and `master-onar` (**DD-239**) |
+| `master-duvar-denetim.timer` | — | `master-onar --duvar`: re-applies the owned firewall rules when `master-firewall --check` fails (**DD-239**) | hourly (`OnBootSec=10min`, `OnUnitActiveSec=1h`) |
 | `caddy.service` (drop-in) | `tailscaled.service master-firewall.service` | `Wants=` both (no `PartOf`); `ExecStartPre=+master-firewall --check` (**DD-179**); `OnFailure=refresh-tailnet-config.service` (**DD-87**) | `on-failure` + StartLimit (drop-in) |
 | `dnsmasq.service` (drop-in) | `tailscaled.service` | `Wants=tailscaled.service` | `on-failure`, `RestartSec=5s` (drop-in) |
 | `master-panel.service` (Konsol root backend) | `network-online.target` | none; Unix socket only (**DD-180**) | `on-failure`, `RestartSec=3s` |
@@ -1668,7 +1678,7 @@ Invariants:
   `tailscaled.service`.** Host `INPUT` must land as early as possible
   (**DD-94**).
 - **One bounded watchdog, at the network edge only.**
-  `refresh-tailnet-config` — which already runs every 5 minutes — restarts
+  `refresh-tailnet-config` (after boot and on demand) and the hourly `master-duvar-denetim` restart
   `master-firewall` when the unit is `failed` or `--check` fails, after a
   `reset-failed` so an exhausted start limit cannot block the recovery. It
   skips the round while the oneshot is mid-apply. Beyond the firewall it only
