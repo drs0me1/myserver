@@ -77,13 +77,14 @@
 
       <!-- DOSYALAR -->
       <section data-view="dosyalar" hidden>
-        <!-- DD-232: Finder-style window: contents on the left; places, the selection's details/actions and
-             the disk on the right. Uploads drop anywhere in the window. -->
+        <!-- DD-232/DD-237: Finder-style window: the contents with the selection's details/actions in a fixed
+             panel under them; places and the disk on the right. Uploads drop anywhere in the window. -->
         <div class="fx" id="fs-panel">
-          <div class="fx-main"><div id="fs-body" class="fs-body"></div></div>
-          <aside class="fx-side" aria-label="Dosya konumları ve ayrıntılar">
-            <nav class="fx-nav" id="fs-rail" aria-label="Konumlar"></nav>
+          <div class="fx-main"><div id="fs-body" class="fs-body"></div>
             <section class="fx-detail" id="fs-detail" aria-labelledby="fs-detail-title" aria-live="polite" hidden></section>
+          </div>
+          <aside class="fx-side" aria-label="Dosya konumları">
+            <nav class="fx-nav" id="fs-rail" aria-label="Konumlar"></nav>
             <div class="fx-disk" id="fs-disk"></div>
           </aside>
         </div>

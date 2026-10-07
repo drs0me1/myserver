@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: details under the contents, the folder in the address (v2-219)
+
+- The selected item's details and actions moved from the right column to a fixed panel under the
+  files. Its height never changes, so selecting something no longer resizes the file area.
+- A shared folder shows one line there: Tailscale/WAN state with the days left, the account,
+  Yönet and Kaldır. The full connection cards stay on Paylaşımlar.
+- Favoriler lists the first eight folders and "Tümünü göster"; Konumlar and the disk stay in view.
+- The open folder is in the address: a reload or a bookmark opens it, and the browser's back and
+  forward buttons move between folders (DD-237).
+
 ### 2026-10-07 — Files behaves like a file manager (v2-218)
 
 - Opening a folder changes only the folder's contents. The toolbar, search box, places column and

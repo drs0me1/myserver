@@ -603,7 +603,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     // DD-183: no jobs page. Files stays open; a bar above the list shows the running job.
     const archiveBar = page.locator("#archive-bar");
     await archiveBar.getByText("media-backup.zip",{exact:true}).waitFor();
-    assert.equal(await page.evaluate(() => location.hash),"#/dosyalar");
+    assert.equal(await page.evaluate(() => location.hash),"#/dosyalar/klasor");  // DD-237: the folder is in the address
     assert.equal(await page.getByRole("button",{name:"Arşiv işleri",exact:true}).count(),0);
     assert.match(await archiveBar.innerText(),/Çalışıyor · İşleniyor/);
     assert.equal(submitted.operation,"zip");

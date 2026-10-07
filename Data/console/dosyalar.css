@@ -256,3 +256,34 @@
   [data-view="dosyalar"] .fx #fs-bar .fs-search { flex:0 1 13rem; min-width:7rem; }
 }
 .fx-rows:focus-visible { box-shadow:none; }
+
+/* ---- DD-237: the selection's details/actions in a fixed panel under the contents (desktop width); the right
+   column keeps Favoriler, Konumlar and the disk. The panel's height never changes, so selecting never
+   resizes the contents above it; what does not fit scrolls inside the panel. ---- */
+.fx-main > .fx-detail { flex:none; }
+@media(min-width:1101px) {
+  .fx-main > .fx-detail { height:164px; overflow:auto; overscroll-behavior:contain; display:grid; grid-template-columns:minmax(150px,200px) minmax(0,1fr) minmax(0,1.25fr);
+    grid-auto-rows:min-content; gap:10px 22px; align-items:start; margin:0; padding:14px 18px; border-top:1px solid var(--glass-line); background:var(--tint); }
+  .fx-main > .fx-detail .fx-head { grid-column:1; grid-row:1 / span 3; justify-items:start; text-align:left; }
+  .fx-main > .fx-detail .fx-head h2 { margin-top:4px; }
+  .fx-main > .fx-detail .fx-preview .fx-art { width:56px; height:46px; }
+  .fx-main > .fx-detail .fx-preview .fx-doc { width:42px; height:52px; }
+  .fx-main > .fx-detail .fx-preview .fx-stack { width:52px; height:56px; }
+  .fx-main > .fx-detail .fx-facts { grid-column:2; }
+  .fx-main > .fx-detail .fx-hint, .fx-main > .fx-detail .fx-note { grid-column:2; text-align:left; margin:0; }
+  .fx-main > .fx-detail .fx-acts { grid-column:3; grid-row:1; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .fx-main > .fx-detail .fx-clear { grid-column:3; justify-self:start; }
+  .fx-main > .fx-detail .fx-share { grid-column:2 / -1; }
+  .fx-side .fx-disk { margin-top:auto; }
+}
+/* A shared folder: one line of connection states, the account, Yönet and Kaldır. */
+.fx-share { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-width:0; }
+.fx-chip { padding:3px 10px; border-radius:999px; border:1px solid var(--glass-line); background:var(--glass-2); color:var(--muted); font-size:12px; white-space:nowrap; }
+.fx-chip[data-network]::before { content:"○ "; }
+.fx-chip.on { color:#2E9E6B; }
+.fx-chip.on::before { content:"● "; }
+.fx-share .btn { background:var(--glass-2); }
+/* Favoriler: "Tümünü göster (N)" / "Daha az göster". */
+.fx-nav .rl-more { justify-self:start; margin:0 0 4px; padding:4px 8px; border:0; border-radius:8px; background:none; color:var(--accent); font:inherit; font-size:12.5px; cursor:pointer; }
+.fx-nav .rl-more:hover { background:var(--glass-2); }
+@media(max-width:1100px) { .fx-nav .rl-more { flex:none; margin:0; background:var(--glass-2); } }

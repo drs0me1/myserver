@@ -1023,3 +1023,8 @@ frame's DOM nodes surviving every open, no layout shift, the contents' scroll re
 restored on back, the cache shown at once and read again, the dimmed inert old listing while a held
 folder loads, a stale answer dropped, a failed open staying put, a poll that keeps tile nodes, the
 keyboard, the search box, and the page scroll at 1024 and 390 px.
+
+`files-nav-ui.cjs` also checks DD-237 (v2-219): the detail panel under the contents with a height that
+selecting never changes, the right column without details, Favoriler's eight entries and switch, the
+folder in the address (pushed on open, opened after a reload, browser back/forward, bare `#/dosyalar`
+keeping the folder, an undecodable address opening the root). `files-ui.cjs` checks the one-line share.

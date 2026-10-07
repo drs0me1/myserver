@@ -13,6 +13,27 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-237: Files details in a fixed panel under the contents; the folder in the address (v2-219)
+
+- **Request (user, 2026-10-07):** "klasör yolunu ekleyelim" and move the area under Favoriler that opens
+  the details and sharing "alta … uzun listelerde karmaşık görülmekte"; mock-up C (a fixed bottom panel,
+  a one-line share, a short Favoriler) was approved over B (details pinned at the column's bottom).
+- **Panel:** `#fs-detail` moved from the right column into `.fx-main`, under the contents. From 1101 px it
+  is a 164 px panel in three columns (icon/name, facts, actions in a 3-wide grid; a share line under
+  them). Its height never changes with the selection, so selecting never resizes the contents; what
+  does not fit scrolls in the panel. Narrow screens keep it in the flow under the contents.
+- **Share line:** `sharesPage.summary()` shows each connection's state and remaining days, the account,
+  Yönet and Kaldır. Addresses, copy buttons, permissions and expiry choices stay on Paylaşımlar and in
+  Yönet; the access note ("Paylaşmadan önce erişim sınırını…") stays on Paylaşımlar.
+- **Favoriler:** the first 8 top folders, plus the one you are in, and "Tümünü göster (N)" /
+  "Daha az göster" (not remembered). Konumlar and the disk no longer move out of view.
+- **Address:** `#/dosyalar/klasor/<parts>` (`/srv`) and `#/dosyalar/sistem/<parts>`, each part
+  URI-encoded. Opening a folder pushes a history entry (`pushState`, no reload, no route run); the
+  browser's back/forward and a typed address open the folder in place with its scroll; a reload or a
+  bookmark opens it. Bare `#/dosyalar` keeps the folder on screen (the sidebar link) and is rewritten
+  with `replaceState`. An undecodable address, `.`/`..` or a part with `/` opens the tree's root; the
+  backends still check every path. A failed open rewrites the address back.
+
 ### DD-236: Files navigates like a file manager: a fixed window, only the contents change (v2-218)
 
 - **Request (user, 2026-10-07):** "her klasör tıklamada sayfa yeniden oluşturuyor gibi … pencere ve menü

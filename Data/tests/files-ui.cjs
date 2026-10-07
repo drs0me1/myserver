@@ -97,6 +97,20 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         assert.deepEqual(await card.locator(".dav-infuse dd").allTextContents(),[url.hostname,url.port || (url.protocol === "https:" ? "443" : "80"),url.pathname]);
       }
     };
+    // DD-237: the detail panel shows a shared folder in one line: each connection's state, the account,
+    // Yönet and Kaldır. Addresses and copy buttons stay on Paylaşımlar.
+    const checkShareSummary = async (locator, share = shares.items[0]) => {
+      await locator.locator(".fx-share").waitFor();
+      assert.deepEqual(await locator.locator(".fx-chip[data-network]").evaluateAll(n=>n.map(x=>x.dataset.network)),["tailscale","wan"]);
+      for (const scope of ["tailscale","wan"]) {
+        const c = share.connections[scope], text = await locator.locator(`.fx-chip[data-network="${scope}"]`).innerText();
+        assert.match(text, scope === "tailscale" ? /^Tailscale/ : /^(HTTP \(WAN\)|HTTPS|WAN)/);
+        assert.equal(/ açık · /.test(text), !!c.active, scope + ": " + text);
+      }
+      assert(new RegExp("Kullanıcı: " + share.username).test(await locator.locator(".fx-share").innerText()));
+      assert.equal(await locator.locator(".dav-address, .dav-connection").count(), 0, "addresses stay on Paylaşımlar");
+      for (const name of ["Yönet","Kaldır"]) assert.equal(await locator.getByRole("button",{name,exact:true}).count(), 1);
+    };
     // DD-232: grid tiles select on click (a second click opens); the right column holds the actions.
     const tile = name => page.locator(`#fs-table [data-item="${name}"]`);
     const select = async name => { if (await tile(name).getAttribute("aria-pressed") !== "true") await tile(name).click(); };
@@ -221,10 +235,10 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       tailscale:{enabled:true,permission:"rw",days:7,ack_write:true},wan:{enabled:false,permission:"ro",days:7}}});
     assert(!JSON.stringify(await page.evaluate(()=>({...localStorage,...sessionStorage}))).includes("Pass8!xy"));
     await select("media");
-    await checkShareAddresses(page.locator("#fs-detail"));
+    await checkShareSummary(page.locator("#fs-detail"));
     await page.reload();
     await select("media");
-    await checkShareAddresses(page.locator("#fs-detail"));
+    await checkShareSummary(page.locator("#fs-detail"));
     await rail("Paylaşımlar").click();
     const row = page.locator(".dav-share-row").first();
     const card = scope => row.locator('.dav-connection[data-network="'+scope+'"]');
@@ -399,7 +413,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         tailscale:{enabled:selected.includes("tailscale"),permission:"ro",days:7},
         wan:{enabled:selected.includes("wan"),permission:"rw",days:30,ack_write:true}});
       assert.equal(submitted.ack_wan_http,selected.includes("wan")?true:undefined);
-      await checkShareAddresses(page.locator("#fs-detail"),shares.items[1]);
+      await checkShareSummary(page.locator("#fs-detail"),shares.items[1]);
       await page.locator("#fs-detail").getByRole("button",{name:"Kaldır",exact:true}).click();
       const beforeRemove = shareWrites.length;
       await page.locator("#cf-cancel").click(); assert.equal(shareWrites.length,beforeRemove);
@@ -437,7 +451,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         }
         await rail("Sunucu").click();
         await select("media");
-        await checkShareAddresses(page.locator("#fs-detail"));
+        await checkShareSummary(page.locator("#fs-detail"));
         // Finder grid by default; the icon/list switch sits in the bar.
         assert(await page.locator(".fx-rows.grid #fs-table.fx-grid").count()===1);
         assert.equal(await page.locator('.fx-views [aria-pressed="true"]').getAttribute("aria-label"),"Simgeler");
@@ -495,7 +509,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await title(),"Sunucu","Clicking empty grid space clears the selection");
     await select("media");
     assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","cop"],"A shared folder shows its share instead of Paylaş");
-    assert.equal(await page.locator("#fs-detail .dav-connection").count(),2);
+    assert.equal(await page.locator("#fs-detail .fx-chip[data-network]").count(),2);
     await select("Belgeler ve uzun klasör adı");
     assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","paylas","cop"]);
     await act("paylas").click();
@@ -683,7 +697,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.setViewportSize({width:1440,height:1000});
     await rail("Sunucu").click();
     await page.locator(".offbar.sysbar").waitFor({state:"detached"});
-    assert.equal(new URL(page.url()).hash, "#/dosyalar");
+    assert.equal(new URL(page.url()).hash, "#/dosyalar/klasor");
     assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/srv");
     assert.deepEqual(errors, []);
     console.log("PASS: schema4 twin cards, independent partial writes/RO/RW/expiry, paused creation, HTTP consent, HTTPS, global gates, expired candidates, shared account edits, failed saves/retry/busy/poll guards, Infuse/copy, responsive light/dark/CSP; Finder grid/detail column/multi-selection, trash, the root system view (DD-235) and Files regressions. Screenshots: " + shots);

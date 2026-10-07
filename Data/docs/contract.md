@@ -904,6 +904,11 @@ Contract in §5–§7 and `folder-shares.md`.
   `/api/state.protected`, **DD-203**) and says which application writes there.
   Since DD-178 new qBittorrent profiles do not enable separate temporary
   storage; the declared folder is a reserved default, not an enabled setting.
+- **Details and address (DD-237).** The selection's details/actions are a fixed-height panel under the
+  contents (desktop width); a shared folder shows a one-line summary, the full share cards stay on
+  Paylaşımlar. Favoriler shows 8 top folders and a "show all" switch. The open folder is in the address
+  (`#/dosyalar/klasor/…`, `#/dosyalar/sistem/…`); a malformed address opens the tree's root and the
+  backends keep checking every path.
 - **Navigation (DD-236).** Opening a folder repaints only the contents, the path, the count, the
   places mark and the detail; the window's frame is built once per tree. The listing on screen stays
   (inert) until the next arrives; a failed open stays in place; back/forward keep each folder's

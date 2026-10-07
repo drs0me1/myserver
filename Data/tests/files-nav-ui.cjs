@@ -89,11 +89,24 @@ let hold = {};   // path -> Promise to wait for before answering
     assert.equal(await rows.evaluate((b) => b.scrollTop), 0, "an opened folder starts at its top");
     assert(await sameNodes(), "opening a folder rebuilt the frame");
     const opened = await frame();
-    for (const k of ["side", "title", "panel", "rail", "page"]) assert.deepEqual(opened[k], first[k], `${k} moved when the folder opened`);
+    for (const k of ["side", "title", "panel", "page"]) assert.deepEqual(opened[k], first[k], `${k} moved when the folder opened`);
+    // The places column stays put; it may grow by the opened folder's entry when that is past the first eight (DD-237).
+    assert.deepEqual(opened.rail.slice(0, 3), first.rail.slice(0, 3), "the places column moved when the folder opened");
+    // DD-237: the folder is in the address (a history entry, no reload).
+    assert.equal(new URL(page.url()).hash, "#/dosyalar/klasor/klasor-60");
     assert(await page.evaluate(() => window.__shift) < 0.01, "layout shift while opening a folder");
     assert.equal(await page.locator("#fs-back").isDisabled(), false);
     assert(await page.locator("#fs-fwd").isDisabled());
 
+    // DD-237: the details sit in a fixed panel under the contents; selecting never changes its height.
+    const panelBox = () => page.evaluate(() => { const d = document.querySelector("#fs-detail").getBoundingClientRect(), r = document.querySelector("#fs-rows").getBoundingClientRect(); return { top: Math.round(d.top), h: Math.round(d.height), rowsBottom: Math.round(r.bottom), left: Math.round(d.left), right: Math.round(r.right) }; });
+    const emptyPanel = await panelBox();
+    await tile("a.txt").click();
+    const filePanel = await panelBox();
+    assert.deepEqual(filePanel, emptyPanel, "selecting resized the detail panel or the contents");
+    assert(filePanel.top >= filePanel.rowsBottom - 1, "the detail panel is under the contents");
+    assert(await page.evaluate(() => !document.querySelector(".fx-side #fs-detail")), "the right column no longer holds the details");
+    await page.keyboard.press("Escape");
     // Back: at once from the cache, at the scroll position it was left at; read again behind the scenes.
     let release; hold[""] = new Promise((r) => { release = r; });
     await page.locator("#fs-back").click();
@@ -127,6 +140,15 @@ let hold = {};   // path -> Promise to wait for before answering
     assert.equal(await crumb(), "/srv", "a stale answer replaced the newer folder");
     assert.equal(await tile("gec.txt").count(), 0);
 
+    // DD-237: Favoriler shows eight folders and a switch; the switch shows them all and back.
+    const favs = () => page.locator("#fs-rail .rl").count();
+    const fewer = await favs();
+    await page.locator("#fs-rail .rl-more").click();
+    assert.equal(await page.locator("#fs-rail .rl-more").innerText(), "Daha az göster");
+    assert(await favs() > fewer + 50, "show all lists every top folder");
+    await page.locator("#fs-rail .rl-more").click();
+    assert.equal(await favs(), fewer);
+    assert.match(await page.locator("#fs-rail .rl-more").innerText(), /^Tümünü göster \(62\)$/);
     // A folder that cannot be opened leaves you where you were.
     await rows.evaluate((b) => { b.scrollTop = 0; });
     await open("bozuk");
@@ -178,6 +200,29 @@ let hold = {};   // path -> Promise to wait for before answering
     assert.equal(await page.locator("#fs-q").inputValue(), "");
     assert(await sameNodes());
 
+    // DD-237: the address opens the folder after a reload; the browser's back/forward walk folders; a bad
+    // address falls back to the root; bare #/dosyalar keeps the folder you are in.
+    await page.reload();
+    await tile("alt").waitFor();
+    assert.equal(await crumb(), "klasor-60");
+    await open("alt");
+    await tile("derin.txt").waitFor();
+    assert.equal(new URL(page.url()).hash, "#/dosyalar/klasor/klasor-60/alt");
+    await page.goBack();
+    await tile("a.txt").waitFor();
+    assert.equal(await crumb(), "klasor-60");
+    await page.goForward();
+    await tile("derin.txt").waitFor();
+    await page.evaluate(() => { location.hash = "#/dosyalar"; });
+    await page.waitForFunction(() => location.hash === "#/dosyalar/klasor/klasor-60/alt");
+    assert.equal(await crumb(), "alt");
+    await page.evaluate(() => { location.hash = "#/dosyalar/klasor/%E0%A4%A"; });
+    await tile("klasor-01").waitFor();
+    assert.equal(await crumb(), "/srv", "an undecodable address opens the root");
+    await page.evaluate(() => { location.hash = "#/dosyalar/klasor/klasor-60/alt"; });
+    await tile("derin.txt").waitFor();
+    await page.locator("#fs-up").click();
+    await tile("alt").waitFor();
     // Leaving Files gives the page its scroll back; phones keep the page scroll.
     await page.evaluate(() => { location.hash = "#/moduller"; });
     await page.waitForFunction(() => !document.documentElement.classList.contains("fx-fixed"));

@@ -445,7 +445,7 @@
      folder swaps only its contents. The listing on screen stays (dimmed, inert) until the next one arrives, a
      failed open stays where it was, back/forward keep each folder's scroll, and recent folders show at once
      from a short cache while they are read again. */
-  let fsNav = 0, fsBusy = false, fsShownPath = null, fsBack = [], fsFwd = [];
+  let fsRouteGo = null, fsNav = 0, fsBusy = false, fsShownPath = null, fsBack = [], fsFwd = [];
   const fsScrolls = new Map(), fsCache = new Map(), FS_CACHE_MS = 60000, FS_CACHE_MAX = 20;
   const fsKey = (sys, parts) => (sys ? "s:" : "f:") + parts.join("/");
   const FX_WIDE = window.matchMedia("(min-width: 1101px)");
@@ -514,6 +514,7 @@
       if (nav && fsList && fsShownPath && pathText(fsShownPath) !== pathText(fsPath)) {
         fsPath = fsShownPath.slice();
         if (nav.push) fsBack.pop();
+        syncHash(false);
         renderFs();
         return;
       }
@@ -539,7 +540,8 @@
   function loadTrash() {
     return api("/api/trash").then((r) => { fsTrash = r.items || []; renderFs(); }).catch(fail);
   }
-  // how: "push" (a new place: history grows), "back"/"fwd" (history moves, the folder's scroll comes back).
+  // how: "push" (a new place: history grows), "back"/"fwd" (history moves, the folder's scroll comes back),
+  // "hash" (the browser's own back/forward or an address: the folder's scroll comes back, the address is already right).
   function fsGo(parts, how = "push") {
     const same = pathText(parts) === pathText(fsPath), box = $("fs-rows");
     if (box && fsShownPath) fsScrolls.set(fsKey(fsSys, fsShownPath), box.scrollTop);
@@ -552,6 +554,7 @@
     fsQuery = "";
     // Phones scroll the page; the desktop window scrolls only its contents (DD-236).
     if (current === "dosyalar" && !FX_WIDE.matches) window.scrollTo({ top: 0 });
+    if (how !== "hash") syncHash(!same);
     paintBar();
     renderRail();
     return loadFs({ restore: how !== "push", push });
@@ -562,7 +565,24 @@
     to.push(fsPath.slice());
     fsGo(from.pop(), dir < 0 ? "back" : "fwd");
   }
-  const fsHash = (v) => (v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : fsSys ? "#/dosyalar/sistem" : "#/dosyalar");
+  /* DD-237: the open folder is in the address: #/dosyalar/klasor/<a>/<b> (/srv) or #/dosyalar/sistem/<a>/<b>
+     (the system view), each part URI-encoded. Opening a folder pushes a browser history entry without a
+     reload; a reload or a bookmark opens that folder; bare #/dosyalar keeps the folder you were in. */
+  const fsPathHash = (sys, parts) => (sys ? "#/dosyalar/sistem" : "#/dosyalar/klasor") + parts.map((p) => "/" + encodeURIComponent(p)).join("");
+  const fsHash = (v) => (v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : fsPathHash(fsSys, fsPath));
+  function syncHash(push) {
+    if (current !== "dosyalar" || fsView !== "files") return;
+    const want = fsHash("files");
+    if (location.hash !== want) history[push ? "pushState" : "replaceState"](null, "", want);
+  }
+  // Path parts from the address; null when it names no folder (bare #/dosyalar) or cannot be decoded.
+  function hashParts(raw) {
+    if (raw[1] !== "klasor" && raw[1] !== "sistem") return null;
+    try {
+      const parts = raw.slice(2).filter(Boolean).map(decodeURIComponent);
+      return parts.some((p) => p === "." || p === ".." || p.includes("/") || p.includes("\0")) ? [] : parts;
+    } catch (e) { return []; }
+  }
   function fsSetView(v) {
     fsView = v;
     location.hash = fsHash(v);
@@ -579,6 +599,17 @@
       h("span", { class: "rl-nm" }, o.title),
       o.count != null && o.count !== "" ? h("span", { class: "rl-c" }, String(o.count)) : null);
   }
+  /* DD-237: Favoriler lists the first FAV_MAX top folders (plus the one you are in) and a "show all" switch,
+     so a long root does not push Konumlar and the disk out of the column. */
+  const FAV_MAX = 8;
+  let fsFavAll = false;
+  function favDirs(files) {
+    const dirs = fsRootDirs || [], long = dirs.length > FAV_MAX;
+    const shown = !long || fsFavAll ? dirs : dirs.filter((d, i) => i < FAV_MAX || d.name === fsPath[0]);
+    return [...shown.map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir", title: d.name, onclick: () => fsOpen([d.name]) })),
+      long ? h("button", { type: "button", class: "rl-more", "aria-expanded": fsFavAll ? "true" : "false",
+        onclick: () => { fsFavAll = !fsFavAll; renderRail(); } }, fsFavAll ? "Daha az göster" : `Tümünü göster (${dirs.length})`) : null];
+  }
   function renderRail() {
     const rail = $("fs-rail");
     if (!rail) return;
@@ -587,11 +618,9 @@
     const specs = [
       h("p", { class: "fx-group" }, "Favoriler"),
       railBtn({ cur: files && !fsSys && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: (S.fs && S.fs.root) || "/srv", onclick: () => fsOpen([], false) }),
-      ...(!fsSys && fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
-        title: d.name, onclick: () => fsOpen([d.name]) })),
+      ...(!fsSys ? favDirs(files) : []),
       S.sysfs ? railBtn({ cur: files && fsSys && !fsPath.length, icon: "lock", tone: "t-sys", title: "Sistem (/)", count: "root", onclick: () => fsOpen([], true) }) : null,
-      ...(fsSys && fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
-        title: d.name, onclick: () => fsOpen([d.name]) })),
+      ...(fsSys ? favDirs(files) : []),
       h("p", { class: "fx-group" }, "Konumlar"),
       railBtn({ cur: fsView === "shares", icon: "share", tone: "t-dir", title: "Paylaşımlar", count: shares || null, onclick: () => fsSetView("shares") }),
       railBtn({ cur: fsView === "trash", icon: "trash", tone: "t-dir", title: "Çöp", count: trash || null, onclick: () => fsSetView("trash") })].filter(Boolean);
@@ -613,7 +642,7 @@
   function fsOpen(parts, sys = fsSys) {
     // Another tree (Sunucu ↔ Sistem): nothing of the old one stays on screen or in history.
     if (sys !== fsSys) { fsSys = sys; fsRootDirs = null; fsList = null; fsShownPath = null; fsBack = []; fsFwd = []; }
-    if (fsView !== "files" || location.hash !== fsHash("files")) { fsView = "files"; location.hash = fsHash("files"); }
+    if (fsView !== "files") { fsView = "files"; renderFs(); }
     fsGo(parts);
   }
 
@@ -1238,8 +1267,8 @@
         fsSys ? action("Kalıcı sil", "trash", () => askDelete(item), { danger: true, act: "sil" })
           : action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })),
       // replaceChildren() writes a null argument as the text "null": absent parts are empty strings.
-      sh ? sharesPage.info(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : "",
-      directory && !fsSys ? sharesPage.warning() : "");
+      // DD-237: a shared folder shows one line; the full cards and the access note live on Paylaşımlar.
+      sh ? sharesPage.summary(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s fx-note" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : "");
   }
 
   /* çöp */
@@ -2264,7 +2293,17 @@
     genel: { title: "Ana Menü", eyebrow: "", actions: () => [],
       render: () => { renderOverview(); loadLayout(); loadNetwork(); if (!(MODS || []).some((m) => m.busy)) loadModules(); } },
     dosyalar: { title: "Dosyalar", eyebrow: "Sunucu alanı", actions: () => [],
-      render: () => { renderFs(); loadSysState(); if (fsView === "trash") loadTrash(); else if (fsView === "shares") loadShares(); else if (fsView === "files") { loadShares(); if (!fsList && !fsBusy) loadFs(); } } },
+      render: () => {
+        renderFs(); loadSysState();
+        if (fsView === "trash") loadTrash();
+        else if (fsView === "shares") loadShares();
+        else if (fsView === "files") {
+          loadShares();
+          const go = fsRouteGo; fsRouteGo = null;
+          if (go) fsGo(go, "hash"); else if (!fsList && !fsBusy) loadFs();
+          syncHash(false);  // bare #/dosyalar names the folder on screen
+        }
+      } },
     moduller: { title: "App Store", eyebrow: "", actions: () => [h("span", {class:"hm", id:"mod-sum"}, "Okunuyor…")], render: () => { renderModules(); loadModules(); } },
     // #/konteynerler[/AD]: liste ya da bir konteynerin ayrıntısı (ad URL'de kodlu).
     konteynerler: { title: (sub) => containers.title(sub), eyebrow: (sub) => containers.eyebrow(sub), actions: (sub) => containers.actions(sub),
@@ -2404,8 +2443,12 @@
     if (key === "dosyalar") {
       fsView = raw[1] === "cop" ? "trash" : raw[1] === "paylasim" ? "shares" : "files";
       // DD-235: #/dosyalar/sistem is the system view; switching views starts at its root.
+      const parts = hashParts(raw);
       if (fsView === "files" && (raw[1] === "sistem") !== fsSys) {
-        fsSys = raw[1] === "sistem"; fsPath = []; fsList = null; fsShownPath = null; fsBack = []; fsFwd = []; fsRootDirs = null; fsSel.clear(); fsQuery = "";
+        fsSys = raw[1] === "sistem"; fsPath = parts || []; fsList = null; fsShownPath = null; fsBack = []; fsFwd = []; fsRootDirs = null; fsSel.clear(); fsQuery = "";
+      } else if (fsView === "files" && parts && pathText(parts) !== pathText(fsPath)) {
+        // The browser's back/forward or a typed address inside the same tree: open it in place.
+        if (fsList || fsBusy) fsRouteGo = parts; else fsPath = parts;
       }
     }
     if (key === "ayarlar") settingsTab = ["fw","web","dns","log"].includes(raw[1]) ? raw[1] : "system";

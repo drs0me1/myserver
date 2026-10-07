@@ -94,6 +94,21 @@ window.createSharesPage = function ({ h, svg, post, toast, fail, copyButton, get
         ["info", "WebDAV servisi yenilenir; diğer paylaşımların sürmekte olan aktarımları da kesilir, yeniden bağlanabilirler."]],
       onOk: () => update("kaldir", { id: s.id }).then(() => toast("Paylaşım kaldırıldı; dosyalar korundu.")).catch(fail) });
   }
+  // DD-237: the Files detail panel's one-line share: each connection's state and remaining days, the account,
+  // Yönet and Kaldır. Addresses, copy buttons, permissions and expiry choices stay on Paylaşımlar and in Yönet.
+  function summary(s) {
+    const chip = (scope) => {
+      const c = s.connections?.[scope], name = label(scope);
+      if (!c) return h("span", { class: "fx-chip", "data-network": scope }, name + ": bilgi yok");
+      const left = c.expires == null ? "süresiz" : Math.max(0, Math.ceil((c.expires - Date.now() / 1000) / 86400)) + " gün";
+      const text = c.active ? `${name} açık · ${left}` : c.expired ? `${name} · süresi doldu` : !c.enabled ? `${name} kapalı` : `${name} kullanılamıyor`;
+      return h("span", { class: "fx-chip" + (c.active ? " on" : ""), "data-network": scope,
+        title: c.reason || (c.expires != null ? "Bitiş: " + expiry(c) : "") || null }, text);
+    };
+    return h("div", { class: "fx-share", "data-share-id": s.id },
+      ...scopes.map(chip), h("span", { class: "fx-chip" }, "Kullanıcı: ", s.username),
+      button("Yönet", "sliders", () => edit(s)), button("Kaldır", "trash", () => remove(s)));
+  }
   function info(s) {
     return h("article", { class: "dav-share-row", "data-share-id": s.id },
       h("header", { class: "dav-share-top" },
@@ -203,6 +218,6 @@ window.createSharesPage = function ({ h, svg, post, toast, fail, copyButton, get
     }
     body.append(h("div", { class: "dav-shares", "aria-busy": busy }, ...data.items.map(info)));
   }
-  return { list, create, edit, info, warning, stateText,
+  return { list, create, edit, info, summary, warning, stateText,
     interacting: () => busy || !!document.querySelector("#sh[open] .dav-form, #cf[open]") || !!document.activeElement?.closest(".dav-connection select") };
 };
