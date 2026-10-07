@@ -47,6 +47,7 @@ let hold = {};   // path -> Promise to wait for before answering
       else if (p === "/api/konsol/kaynaklar") result = { host: "nrm", version: "x", domain: "ev", os: "Debian 13", kernel: "t", uptime: 1, cores: 2, cpu: [1],
         mem: { total: 1000, used: 200 }, disk: { total: 1000, free: 500 }, root: "/srv", net: { tailscale: "100.64.0.2", wan: "192.0.2.1" }, read_at: now, sampled_at: now };
       else if (p === "/api/konsol/oturum") result = { durum: "acik", kullanici: "fixture", kanal: "tailscale" };
+      else if (p === "/api/konsol/favoriler") result = { favoriler: [] };  // DD-250
       else if (p === "/api/konsol/guncelleme") result = { kurulu: "x", son: "x", commit: null, yeni: false, denetlendi: 1, hata: "", baslatilabilir: true, is: { durum: "yok" } };
       else if (p === "/api/konsol/duzen") result = { duzen: null };
       else { errors.push("Unexpected endpoint: " + p); return route.fulfill({ status: 404, body: "unexpected" }); }

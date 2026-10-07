@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: favourite folders (v2-232)
+
+- A selected folder (or the open one) has a star on its picture in the details: a hollow star adds it
+  to Favoriler, a filled one takes it out. It works in both views, "Sistem (/)" included.
+- Favourites are listed first in the places column, above Sunucu and Sistem (/), with where they are
+  ("/srv/media", "root · /etc"). A click opens the folder; the × on hover takes it out.
+- The list is kept on the server, so every device shows the same favourites (at most 20). Favourites
+  from "Sistem (/)" appear only over Tailscale, like that view (DD-250).
+
 ### 2026-10-07 — Files: a text editor with syntax colours, also as root in "Sistem (/)" (v2-231)
 
 - A double click on a text file (yml, json, conf, sh, py, log, …) opens it in an editor with line

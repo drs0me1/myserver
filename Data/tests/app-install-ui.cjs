@@ -111,6 +111,7 @@ const PASS = "fixture-install-phrase", EDIT_PASS = "fixture-edit-phrase";
         mem: { total: 1000, used: 200 }, disk: { total: 1000, free: 500 }, root: "/srv", net: { tailscale: "100.64.0.2", wan: "192.0.2.1" }, read_at: Date.now() / 1000, sampled_at: Date.now() / 1000 };
       else if (p === "/api/konsol/saglik") result = { status: "ok", read_at: 1, checks: [] };
       else if (p === "/api/konsol/oturum") result = { durum: "acik", kullanici: "fixture", oturum_gun: 7, kanal: url.protocol === "https:" ? "internet" : "tailscale" };
+      else if (p === "/api/konsol/favoriler") result = { favoriler: [] };  // DD-250
       else if (p === "/api/konsol/ag") { const now = Math.floor(Date.now() / 1000); result = { read_at: now, iface: "eth0", window: 120, sampled_at: now, rx: 1, tx: 1, points: [], apps: [] }; }
       else if (p === "/api/konsol/guncelleme") result = {kurulu:"2026.08.06-v2-131",son:"2026.08.06-v2-131",commit:"a".repeat(40),yeni:false,denetlendi:1,hata:"",baslatilabilir:true,is:{durum:"yok",hedef:"",mesaj:"",bitis:null,asama:""}};  // DD-233: up to date
       else if (p === "/api/konsol/duzen") result = { duzen: null };

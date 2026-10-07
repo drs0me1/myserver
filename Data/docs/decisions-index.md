@@ -235,6 +235,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-250 | Favourite folders in Files: a star on the details' folder picture, listed first in the places column, kept in `KONSOL_AUTH_DIR/favoriler.json` | v2-232 | design-decisions.md |
 | DD-249 | Files text editor (CodeMirror 6 bundle, CSP-safe styles); atomic, version-checked saves, as root in "Sistem (/)" (amends DD-235) | v2-231 | design-decisions.md |
 | DD-248 | "Sistem (/)" walks folder sizes on local disk file systems, one device at a time (amends DD-235) | v2-230 | design-decisions.md |
 | DD-247 | Folder tiles give the item count and the total size | v2-229 | design-decisions.md |

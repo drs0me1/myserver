@@ -104,6 +104,7 @@ function setHttps(domain, status = "ready", enabled = !!domain) {
         result = projectShares();
       } else if (endpoint === "/api/konsol/moduller" || endpoint === "/api/konsol/islemler" || endpoint === "/api/archives") result = { items: [] };
       else if (endpoint === "/api/konsol/oturum") result = { durum: "giris", kullanici: "fixture", kanal: "tailscale" };  // DD-205
+      else if (endpoint === "/api/konsol/favoriler") result = { favoriler: [] };  // DD-250
       else if (endpoint === "/api/konsol/kaynaklar") result = { host: "fixture", version: "fixture", domain: "ayc", os: "Debian 13", kernel: "fixture", uptime: 100,
         cores: 2, cpu: [1], mem: { total: 1000, used: 200, graph: [20] }, net: { wan: data.wan.ipv4, tailscale: data.tailscale }, root: "/srv", disk: { total: 1000, free: 800 }, ports: [] };
       else if (endpoint === "/api/state") result = { root: "/srv", downloads: "downloads", disk: { total: 1000, free: 800 }, trash: { count: 0, size: 0 } };

@@ -40,6 +40,15 @@ that named route, not the shared Caddy listener.
 Portable validation should compare the complete embedded file set with runtime
 sources, excluding Python caches, metadata, tests, docs and private input.
 
+## Files favourites (v2-232, DD-250)
+
+`test_favorites.py` drives `/api/konsol/favoriler` on the root backend's handler: add/remove in order,
+duplicates, the 0600 file removed when empty, bad paths and requests (400), the 20-entry limit, a damaged
+record, the gates, and the internet channel rule (system entries hidden and kept) through the Panel
+methods. `files-ui.cjs` adds and removes a favourite with the detail star, checks it is listed before
+Sunucu with its location, opens it, removes it with the row's ×, and does the same for a system-view
+folder ("root · /"). The other UI suites answer the endpoint with an empty list.
+
 ## Files text editor (v2-231, DD-249)
 
 `test_text_edit.py` covers the backend in temporary directories: the version and the reasons the text

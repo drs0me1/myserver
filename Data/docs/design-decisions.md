@@ -13,6 +13,29 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-250: Favourite folders in Files, kept by the root backend (v2-232)
+
+- **Request (user, 2026-10-07):** "klasörlere bir favoriler tanımı yapalım klasör seçilince alta
+  sabitlediğimiz kartta favoriye ekle seçeneği koyalım. favoriye eklenen klasör sağ menüde root yolunun
+  üstünde kısayol olarak belirsin"; after a mock-up: "klasör görselinin olduğu yere alalım favoriye ekle
+  butonunu, hatta sadece simge olarak yapalım. içi boş ve dolu simge ama temaya uygun renkte olsun".
+- **Control:** a star button on the details' folder picture (`.fx-star`, `aria-pressed`, the accent colour;
+  hollow adds, filled removes), for a selected folder and for the open folder when nothing is selected.
+  Not on a tree's root (Sunucu and Sistem (/) are already places) and not for files or a multi-selection.
+- **Places column:** the favourites come first under "Favoriler", above both trees' rows (so above the
+  root path in either reading of the request), then a thin separator. Each row: a filled star, the
+  folder's name, its parent ("/srv/media", "root · /etc") and a × shown on hover or focus. The automatic
+  top-folder list of DD-237 stays as it was.
+- **Storage:** on the server, not in the browser, so every device shows the same list:
+  `KONSOL_AUTH_DIR/favoriler.json` beside the overview layout (DD-206), through `/api/konsol/favoriler`
+  with add/remove operations instead of whole-list writes (two open tabs cannot undo each other). The
+  store reads only objects, so the file is `{"favoriler": [...]}`. 20 entries, 1024-byte paths: well
+  inside the store's 64 KiB read limit.
+- **Channels:** the system view exists only on the tailnet (DD-235), so its favourites are neither listed
+  to nor changed from the internet channel; a save from there keeps them.
+- **Not done:** no check that the folder still exists (a missing one answers "bulunamadı" and keeps its
+  ×), no renaming of a favourite when its folder is renamed or moved, no reordering.
+
 ### DD-249: Files text editor (CodeMirror 6); saves as root in "Sistem (/)" (v2-231)
 
 - **Request (user, 2026-10-07):** "dosyalar menüsünde sunucu erişimi tam erişim olarak ayarlayalım.

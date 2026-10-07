@@ -35,6 +35,7 @@
     clock: '<circle cx="9" cy="9" r="6.6"/><path d="M9 5.4V9l2.4 1.6"/>',
     restore: '<path d="M3.6 8.8a5.4 5.4 0 1 0 1.6-3.9"/><path d="M3.4 2.6v3.2h3.2"/>',
     share: '<circle cx="4.8" cy="9" r="2"/><circle cx="13.2" cy="4.6" r="2"/><circle cx="13.2" cy="13.4" r="2"/><path d="M6.6 8.1l4.8-2.6M6.6 9.9l4.8 2.6"/>',
+    star: '<path d="M9 2.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L9 13l-4.2 2.2.8-4.7-3.4-3.3 4.7-.7z"/>',
     eye: '<path d="M1.8 9S4.4 4.2 9 4.2 16.2 9 16.2 9 13.6 13.8 9 13.8 1.8 9 1.8 9z"/><circle cx="9" cy="9" r="2.2"/>',
     upload: '<path d="M9 11.6V3.2M5.6 6.6L9 3.2l3.4 3.4M3.2 14.6h11.6"/>',
     box: '<path d="M2.8 5.4L9 2.4l6.2 3v7.2L9 15.6l-6.2-3z"/><path d="M2.8 5.4L9 8.4l6.2-3M9 8.4v7.2"/>',
@@ -209,6 +210,21 @@
   function loadFsState() {
     return api("/api/state").then((s) => { S.fs = s; paintFsState(); }).catch(fail);
   }
+  // DD-250: the operator's favourite folders (root backend, KONSOL_AUTH_DIR/favoriler.json); none if unavailable.
+  function loadFavorites() {
+    return api("/api/konsol/favoriler").then((r) => {
+      S.fav = Array.isArray(r.favoriler) ? r.favoriler : [];
+      if (current === "dosyalar") { renderRail(); renderDetail(); }
+    }).catch(() => { S.fav = S.fav || []; });
+  }
+  const isFav = (yol, sistem) => (S.fav || []).some((f) => f.yol === yol && f.sistem === sistem);
+  function toggleFav(yol, sistem, add) {
+    return post("/api/konsol/favoriler", { [add ? "ekle" : "cikar"]: { yol, sistem } }).then((r) => {
+      S.fav = r.favoriler || [];
+      renderRail(); renderDetail();
+      toast(add ? "Favorilere eklendi." : "Favorilerden çıkarıldı.");
+    }).catch(fail);
+  }
   // DD-235: the system view answers only on the tailnet site; elsewhere it is absent (404/403). Files only.
   function loadSysState() {
     return api("/api/sistem/state").then((s) => { S.sysfs = s; paintFsState(); }).catch(() => { S.sysfs = null; paintFsState(); });
@@ -359,6 +375,7 @@
     "geri-yukle": (e) => `Çöpten geri yüklendi: ${e.detail}`, "kalici-sil": (e) => `Kalıcı silindi: ${e.detail}`,
     "cop-bosalt": (e) => `Çöp boşaltıldı (${e.detail} öge)`, indir: (e) => `İndirildi: ${e.detail}`,
     duzenle: (e) => `Düzenlendi: ${e.detail}`,
+    favori: (e) => `${e.detail.startsWith("+") ? "Favorilere eklendi" : "Favorilerden çıkarıldı"}: ${e.detail.slice(2)}`,
     "modul-kur": (e) => `${modName(e.detail)} kurulumu başlatıldı`, "modul-baslat": (e) => `${modName(e.detail)} başlatıldı`,
     "modul-durdur": (e) => `${modName(e.detail)} durduruldu`,
     "modul-kaldir": (e) => `${modName(e.detail)} kaldırıldı${e.detail.endsWith("+veri") ? " · verisiyle" : ""}`,
@@ -655,6 +672,7 @@
     const shares = S.share && Array.isArray(S.share.items) ? S.share.items.length : null;
     const specs = [
       h("p", { class: "fx-group" }, "Favoriler"),
+      ...favRows(),
       railBtn({ cur: files && !fsSys && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: (S.fs && S.fs.root) || "/srv", onclick: () => fsOpen([], false) }),
       ...(!fsSys ? favDirs(files) : []),
       S.sysfs ? railBtn({ cur: files && fsSys && !fsPath.length, icon: "lock", tone: "t-sys", title: "Sistem (/)", count: "root", onclick: () => fsOpen([], true) }) : null,
@@ -676,6 +694,22 @@
         h("progress", { max: "100", value: String(pct), "aria-label": "Disk doluluğu", hidden: !known }),
         h("small", null, known ? `${bytes(d.total - d.free)} / ${bytes(d.total)} · ${bytes(d.free)} boş` : "Disk bilgisi yok"));
     }
+  }
+  /* DD-250: the operator's favourites first: a star, the folder's name and where it is (root · for the system
+     view, listed only while that view is reachable); the × removes it. A missing folder answers "bulunamadı". */
+  function favRows() {
+    const list = (S.fav || []).filter((f) => !f.sistem || S.sysfs);
+    if (!list.length) return [];
+    return [...list.map((f) => {
+      const parts = f.yol.split("/"), name = parts[parts.length - 1], parent = parts.slice(0, -1).join("/");
+      const where = f.sistem ? "root · /" + parent : [(S.fs && S.fs.root) || "/srv", ...(parent ? [parent] : [])].join("/");
+      const full = (f.sistem ? "/" : ((S.fs && S.fs.root) || "/srv") + "/") + f.yol;
+      return h("div", { class: "rl-fav" },
+        h("button", { type: "button", class: "rl", title: full, "data-fav": full, onclick: () => fsOpen(parts, f.sistem) },
+          h("span", { class: "rl-ico t-fav" }, svg("star")), h("span", { class: "rl-nm" }, name), h("span", { class: "rl-c" }, where)),
+        h("button", { type: "button", class: "rl-x", title: "Favorilerden çıkar", "aria-label": `${name} favorilerden çıkar`,
+          onclick: () => toggleFav(f.yol, f.sistem, false) }, svg("close")));
+    }), h("div", { class: "rl-sep", role: "separator" })];
   }
   function fsOpen(parts, sys = fsSys) {
     // Another tree (Sunucu ↔ Sistem): nothing of the old one stays on screen or in history.
@@ -1334,16 +1368,24 @@
       svg(icon), h("span", { class: "fx-act-label" }, label));
     // DD-244: under the name, one line: what it is, its size, where it is and when it changed (and a shared
     // folder's open connections); the whole line is the tooltip when it is cut.
-    const head = (art, title, parts) => {
+    const head = (art, title, parts, star) => {
       const line = parts.filter(Boolean);
-      return h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art), h("h2", { id: "fs-detail-title" }, title),
+      return h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art, star || null), h("h2", { id: "fs-detail-title" }, title),
         h("small", { class: "fx-line", title: line.map((p) => (typeof p === "string" ? p : p.textContent)).join(" · ") },
           ...line.flatMap((p, i) => (i ? [" · ", p] : [p]))));
     };
     const all = fsPicking ? action("Tümünü seç", "check", selectAll, { act: "tumu" }) : null;
+    // DD-250: a folder's star sits on its picture: hollow adds it to Favoriler, filled takes it out. The tree's
+    // own root is already in the places column.
+    const favStar = (parts) => {
+      if (!parts.length) return null;
+      const yol = parts.join("/"), sistem = fsSys, on = isFav(yol, sistem), label = on ? "Favorilerden çıkar" : "Favorilere ekle";
+      return h("button", { type: "button", class: "fx-star" + (on ? " on" : ""), "aria-pressed": on ? "true" : "false", "aria-label": label,
+        title: label, "data-act": "favori", onclick: () => toggleFav(yol, sistem, !on) }, svg("star"));
+    };
     if (!sel.length) {
       const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : fsSys ? "Sistem" : "Sunucu";
-      box.replaceChildren(head(folderArt(), name, [fsHere(), `${shown.length} öge`, bytes(shown.reduce((t, e) => t + (e.size || 0), 0))]),
+      box.replaceChildren(head(folderArt(), name, [fsHere(), `${shown.length} öge`, bytes(shown.reduce((t, e) => t + (e.size || 0), 0))], favStar(fsPath)),
         h("div", { class: "fx-acts" }, all,
           action("Yeni klasör", "plus", startNewFolder, { act: "yeni" }),
           action("Yükle", "upload", () => $("fs-file")?.click(), { act: "yukle" })));
@@ -1374,7 +1416,8 @@
         locked ? `Yazan: ${protectedOwner(path)}` : "",
         // DD-237: the full share cards and the access note live on Paylaşımlar.
         share ? h("span", { class: "fx-shared" + (share.on ? " on" : "") }, share.text)
-          : directory && !eligible && !fsSys ? h("span", { title: "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin." }, "Paylaşılamaz") : ""]),
+          : directory && !eligible && !fsSys ? h("span", { title: "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin." }, "Paylaşılamaz") : ""],
+        directory ? favStar(fsPath.concat(item.name)) : null),
       h("div", { class: "fx-acts" }, all,
         directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name)), { act: "ac" })
           : action("İndir", "download", () => download(item), { act: "indir" }),
@@ -2514,7 +2557,7 @@
       render: () => { renderOverview(); loadLayout(); loadNetwork(); if (!(MODS || []).some((m) => m.busy)) loadModules(); } },
     dosyalar: { title: "Dosyalar", eyebrow: "Sunucu alanı", actions: () => [],
       render: () => {
-        renderFs(); loadSysState();
+        renderFs(); loadSysState(); loadFavorites();
         if (fsView === "trash") loadTrash();
         else if (fsView === "shares") loadShares();
         else if (fsView === "files") {

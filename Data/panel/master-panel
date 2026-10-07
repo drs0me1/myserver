@@ -145,6 +145,24 @@ LAYOUT_KEY_RE = re.compile(r"^[a-z]{2,16}$")
 LAYOUT_MAX_TILES = 32
 LAYOUT_MAX_WIDGETS = 8
 LAYOUT_SPANS = (1, 2, 3, 4)
+# DD-250: Dosyalar'da elle eklenen favori klasörler KONSOL_AUTH_DIR/favoriler.json. Kayıt bir ağaçtaki
+# göreli yol ve ağaçtır ("sistem": "Sistem (/)" görünümü; o görünüm gibi yalnız Tailscale'den görünür
+# ve değişir). Klasörün var olduğu denetlenmez: silinmiş bir favori açılınca "bulunamadı" der.
+FAVORITES_FILE = "favoriler.json"
+FAVORITES_MAX = 20
+FAVORITE_PATH_MAX = 1024
+
+
+def clean_favorite(value):
+    """DD-250: {"yol": "a/b", "sistem": bool}; yol is relative to its tree, never empty or escaping it."""
+    if not isinstance(value, dict) or set(value) != {"yol", "sistem"} or not isinstance(value["sistem"], bool):
+        raise ValueError("Favori geçersiz.")
+    path = value["yol"]
+    if (not isinstance(path, str) or not path or len(path.encode("utf-8", "surrogatepass")) > FAVORITE_PATH_MAX
+            or any(not p or p in (".", "..") or len(p.encode("utf-8", "surrogatepass")) > 255
+                   or any(ord(c) < 32 or ord(c) == 127 for c in p) for p in path.split("/"))):
+        raise ValueError("Favori klasörün yolu geçersiz.")
+    return {"yol": path, "sistem": value["sistem"]}
 
 
 def clean_layout(value):
@@ -1111,6 +1129,45 @@ class Panel:
         with store.locked():
             store.write(LAYOUT_FILE, value)
         return "kaydet", value
+
+    def favorites(self, channel):
+        """DD-250: the saved favourite folders the channel may see (none when the record is damaged)."""
+        try:
+            value = self.auth().read(FAVORITES_FILE)
+        except (master_auth.AuthError, OSError):
+            return []
+        raw, items = (value or {}).get("favoriler"), []
+        for entry in raw if isinstance(raw, list) else []:
+            try:
+                entry = clean_favorite(entry)
+            except ValueError:
+                continue
+            if entry not in items and (channel != "internet" or not entry["sistem"]):
+                items.append(entry)
+        return items[:FAVORITES_MAX]
+
+    def save_favorite(self, data, channel):
+        """POST /api/konsol/favoriler: {"ekle": {...}} appends, {"cikar": {...}} removes. Returns the log
+        detail and the list the channel may see. A "Sistem (/)" entry changes only from Tailscale."""
+        if not isinstance(data, dict) or len(data) != 1 or next(iter(data)) not in ("ekle", "cikar"):
+            raise ValueError("Favori isteği geçersiz.")
+        op, entry = next(iter(data.items()))
+        entry = clean_favorite(entry)
+        if entry["sistem"] and channel == "internet":
+            raise PermissionError("Sistem görünümünün favorileri yalnız Tailscale adresinden değişir.")
+        store = self.auth()
+        with store.locked():
+            items = [f for f in self.favorites("tailscale") if f != entry]
+            if op == "ekle":
+                if len(items) >= FAVORITES_MAX:
+                    raise ValueError("En çok %d favori eklenebilir." % FAVORITES_MAX)
+                items.append(entry)
+            if items:
+                store.write(FAVORITES_FILE, {"favoriler": items})
+            else:
+                store.remove(FAVORITES_FILE)
+        detail = "%s %s%s" % ("+" if op == "ekle" else "-", "/" if entry["sistem"] else "", entry["yol"])
+        return detail, [f for f in items if channel != "internet" or not f["sistem"]]
 
     def meminfo(self):
         info = {}
@@ -2176,6 +2233,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/konsol/duzen":
             self.json(200, {"duzen": self.panel.layout()})
             return
+        if path == "/api/konsol/favoriler":
+            self.json(200, {"favoriler": self.panel.favorites(self.channel())})
+            return
         if path == "/api/konsol/onarim/gunluk":
             try:
                 text = self.panel.repair_log(query.get("sure", ["72s"])[0])
@@ -2350,6 +2410,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.audit(user, "duzen", detail, True)
             self.json(200, {"duzen": value})
+            return
+        if path == "/api/konsol/favoriler":
+            try:
+                detail, items = self.panel.save_favorite(data, self.channel())
+            except PermissionError as err:
+                self.error(403, str(err))
+                return
+            except ValueError as err:
+                self.error(400, str(err))
+                return
+            except master_auth.AuthError as err:
+                self.error(err.status, str(err))
+                return
+            except OSError:
+                self.error(503, "Favoriler kaydedilemedi; kurulumu yeniden çalıştırın.")
+                return
+            self.audit(user, "favori", detail, True)
+            self.json(200, {"favoriler": items})
             return
         if path == "/api/konsol/onarim":
             if self.channel() == "internet":

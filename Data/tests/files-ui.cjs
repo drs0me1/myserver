@@ -40,6 +40,9 @@ let submitted, failShare = false, holdShare = false, releaseShare;
 // DD-249: the editor's fixtures; every save is recorded and answered with the next version.
 const textStart = "ad: nrm\nport: 22\n", textSaves = [], sysSaves = [];
 let textNow = textStart, textVersion = "a".repeat(64), sysText = "127.0.0.1 localhost\n";
+// DD-250: the root backend's favourites, kept in order like favoriler.json.
+let favorites = [];
+const favWrites = [];
 const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {}) });
@@ -135,6 +138,15 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       else if (p === "/api/konsol/oturum") result = { durum: "giris", kullanici: "fixture", kanal: "tailscale" };  // DD-205: tailnet, no sign-out
       else if (p === "/api/konsol/kaynaklar") result = { host: "nrm", version: "v128", domain: "ayc", os: "Debian 13", kernel: "test", uptime: 300, cores: 2, cpu: [1], mem: { total: 10000, used: 200, graph: [20] }, net: { wan: "192.0.2.1", tailscale: "100.64.0.2" }, root: "/srv", disk: { total: 100000, free: 80000 }, ports: [{ port: 22, proto: "tcp", scope: "internet", name: "SSH" }] };
       else if (p === "/api/konsol/islemler") result = { items: [] };
+      else if (p === "/api/konsol/favoriler") {
+        if (req.method() === "POST") {
+          const data = req.postDataJSON(), [op, entry] = Object.entries(data)[0];
+          favWrites.push(data);
+          favorites = favorites.filter((f) => !(f.yol === entry.yol && f.sistem === entry.sistem));
+          if (op === "ekle") favorites.push(entry);
+        }
+        result = { favoriler: favorites };
+      }
       else if (p === "/api/state") result = { root: "/srv", downloads:"downloads", protected: [{ path: "downloads/incomplete", owner: "Deneme Uygulaması" }], disk: { total: 100000, free: 80000 }, trash: { count: 0, size: 0 } };
       else if (p === "/api/list") result = { path: url.searchParams.get("path") || "", entries: [
         // DD-247: "movies" was not walked (size null), "series" is empty.
@@ -229,6 +241,31 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.match(await tile("media").getAttribute("aria-label"), /^media, klasör, 2 öge · 1 KB$/);
     await select("media");
     assert.match(await page.locator("#fs-detail").innerText(), /media/);
+    // DD-250: the star on the selected folder's picture adds it to Favoriler, above the tree's own rows; a
+    // favourite opens its folder; the filled star or the row's × takes it out.
+    const star = () => page.locator('#fs-detail .fx-preview [data-act="favori"]');
+    assert.deepEqual([await star().getAttribute("aria-pressed"), await star().getAttribute("aria-label")], ["false", "Favorilere ekle"]);
+    await star().click();
+    await page.locator('#fs-rail [data-fav="/srv/media"]').waitFor();
+    assert.deepEqual(favWrites.at(-1), { ekle: { yol: "media", sistem: false } });
+    assert.deepEqual([await star().getAttribute("aria-pressed"), await star().getAttribute("aria-label")], ["true", "Favorilerden çıkar"]);
+    assert(await page.locator("#fs-rail").evaluate((r) => {
+      const kids = [...r.children], fav = kids.findIndex((c) => c.querySelector("[data-fav]")), root = kids.findIndex((c) => c.title === "Sunucu");
+      return fav > 0 && fav < root;
+    }), "the favourite comes first, before Sunucu");
+    assert.equal(await page.locator('#fs-rail [data-fav="/srv/media"] .rl-c').innerText(), "/srv");
+    await page.locator('#fs-rail [data-fav="/srv/media"]').click();
+    await tile("movies").waitFor();
+    assert.deepEqual(await page.locator("#fs-bar .crumb").allInnerTexts(), ["/srv","media"]);
+    assert.equal(await star().getAttribute("aria-pressed"), "true", "the open folder's own star is filled");
+    await page.locator("#fs-rail .rl-fav").hover();
+    await page.locator("#fs-rail .rl-fav .rl-x").click();
+    await page.waitForFunction(() => !document.querySelector("#fs-rail .rl-fav"));
+    assert.deepEqual(favWrites.at(-1), { cikar: { yol: "media", sistem: false } });
+    assert.equal(await page.locator("#fs-rail .rl-sep").count(), 0);
+    await rail("Sunucu").click();
+    await tile("media").waitFor();
+    await select("media");
     assert.match(await page.locator("#fs-detail .fx-line").getAttribute("title"), /^Klasör · 2 öge · 1 KB · /);
     await page.screenshot({ path: path.join(shots, "desktop-list.png"), fullPage: true });
     await act("paylas").click();
@@ -734,6 +771,14 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     // DD-236: while a folder loads, the listing on screen stays (dimmed, inert) and the window's frame is the
     // same DOM: nothing shrinks, nothing is rebuilt. A double-click on the selected folder opens it once.
     await select("etc");
+    // DD-250: a system-view favourite carries its tree: listed as "root · /", removed with the filled star.
+    await page.locator('#fs-detail [data-act="favori"]').click();
+    await page.locator('#fs-rail [data-fav="/etc"]').waitFor();
+    assert.deepEqual(favWrites.at(-1), { ekle: { yol: "etc", sistem: true } });
+    assert.equal(await page.locator('#fs-rail [data-fav="/etc"] .rl-c').innerText(), "root · /");
+    await page.locator('#fs-detail [data-act="favori"][aria-pressed="true"]').click();
+    await page.waitForFunction(() => !document.querySelector('#fs-rail [data-fav="/etc"]'));
+    assert.deepEqual(favWrites.at(-1), { cikar: { yol: "etc", sistem: true } });
     const panelHeight = () => page.locator("#fs-panel").evaluate((p) => p.getBoundingClientRect().height);
     const tall = await panelHeight();
     await page.evaluate(() => { window.__frame = [document.querySelector("#fs-bar .pathfield"), document.querySelector("#fs-q"), document.querySelector("#fs-rail")]; });

@@ -928,7 +928,7 @@ Contract in §5–§7 and `folder-shares.md`.
   storage; the declared folder is a reserved default, not an enabled setting.
 - **Details and address (DD-237).** The selection's details/actions are a fixed-height panel under the
   contents (desktop width); a shared folder shows a one-line summary, the full share cards stay on
-  Paylaşımlar. Favoriler shows 8 top folders and a "show all" switch. The open folder is in the address
+  Paylaşımlar. Favoriler shows the operator's favourites first (**DD-250**), then 8 top folders and a "show all" switch. The open folder is in the address
   (`#/dosyalar/klasor/…`, `#/dosyalar/sistem/…`); a malformed address opens the tree's root and the
   backends keep checking every path.
 - **Separate panels (DD-243).** On screens of at least 1101 px the contents, the details and the places
@@ -940,6 +940,16 @@ Contract in §5–§7 and `folder-shares.md`.
 - **Folder count and size (DD-247).** A folder's icon-view tile and its info line give "N öge · size"; the
   size is the backend's walked total and is left out when the folder is empty or was not walked (walk
   budget, a non-local file system in "Sistem (/)" per DD-248, unreadable), leaving the count alone.
+- **Favourites (DD-250).** The details' folder picture carries a star (hollow: add, filled: remove) for a
+  selected folder or the open one (not a tree's root), in both views. `GET /api/konsol/favoriler` →
+  `{favoriler: [{yol, sistem}]}`, `POST` `{ekle: {yol, sistem}}` (appended last, once) or `{cikar: …}`;
+  the root backend keeps them in order in `KONSOL_AUTH_DIR/favoriler.json` (0600, atomic, removed when
+  empty; an account reset keeps it), at most 20, `yol` relative to its tree without empty, `.`/`..` or
+  control-character parts (255 bytes a part, 1024 in all), and logs `favori +|- <path>`. Entries of the
+  system view (`sistem: true`) are neither listed to nor changed from the internet channel (403). A
+  favourite is not checked against the disk: a missing folder answers "bulunamadı" when opened. In the
+  places column they come first, above Sunucu and Sistem (/), with their location and a × on hover or
+  focus; on narrow screens the strip shows the name only (the filled star removes it).
 - **Seç (DD-244).** A toggle beside Yükle: each item shows a check and a click adds or removes it without
   opening it; "Tümünü seç" is a detail action. Seç again, Esc, an empty-space click, "Seçimi bırak" or
   another folder ends it.
