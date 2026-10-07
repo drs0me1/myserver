@@ -149,7 +149,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await page.waitForURL("**/#/moduller");
     await navigate("#/genel");
     const widgetState = () => page.locator("#genel-widgets .widget").evaluateAll(els => els.map(e => [e.dataset.widget,e.dataset.span,e.dataset.boy]));
-    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]],"retired clock/status preferences are ignored; DD-231: Sunucu and Hız are 1×1, Ağ is 2×2");
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x1"]],"retired clock/status preferences are ignored; DD-242: Sunucu and Hız are 1×1, Ağ is 2×1");
     assert.equal(await page.locator("#genel-health,#genel-clock,#genel-widgets .rings").count(),0);
     assert(!calls.includes("/api/uygulama/wireguard/state") && !calls.includes("/api/konsol/islemler"));
     assert.equal(await page.locator('script[src^="/uygulama/"]').count(),0,"no package page is loaded while none is installed");
@@ -166,7 +166,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
       return [...side.children].filter(el => el.offsetParent !== null).at(-1) === r; }),"server resources close the sidebar");
     assert.equal(await page.locator('#panel-sidebar time').count(),0,"the sidebar does not duplicate the home clock");
     // WAN rates, module state and host resources refresh together every five seconds.
-    // DD-231: live rates are the 1×1 "Hız" card (no chart); "Ağ" (2×2) lists application totals.
+    // DD-231: live rates are the 1×1 "Hız" card (no chart); "Ağ" (2×1, DD-242) lists application totals.
     const netCard = page.locator('#genel-widgets .widget[data-widget="ag"]'), rateCard = page.locator('#genel-widgets .widget[data-widget="hiz"]');
     await rateCard.locator("#ag-rx").filter({hasText:"MB/s"}).waitFor();
     assert.equal(await rateCard.locator("#ag-sub").innerText(),"eth0 · anlık");
@@ -229,17 +229,37 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await page.mouse.move(to.x + 12, to.y + to.height/2, {steps:16});
     await page.mouse.up();
     assert.deepEqual(await order(),["wireguard","torrent"],"dragging WireGuard to the front");
-    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x1"]]);
     const netBox = await netCard.boundingBox(), tileBoxes = await page.locator("#genel-tiles .tile").evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return [r.left, r.right]; }));
-    // DD-230: widgets share the tiles' columns, so the network card spans exactly the first two tiles.
-    // DD-231: Sunucu and Hız stack in the first tile column; Ağ spans the next two columns and both rows.
+    // DD-230: widgets share the tiles' columns. DD-242: Sunucu and Hız share the first row over the first two
+    // tiles; Ağ is the row below them, exactly as wide as those two tiles.
     const srvBox = await page.locator('#genel-widgets [data-widget="sunucu"]').boundingBox(), rateBox = await rateCard.boundingBox();
     const near = (a, b) => Math.abs(a - b) < 2;
-    assert(near(srvBox.x, tileBoxes[0][0]) && near(srvBox.x + srvBox.width, tileBoxes[0][1]) && near(rateBox.x, srvBox.x) && rateBox.y > srvBox.y + srvBox.height,
-      `1×1 cards stack over the first tile: ${JSON.stringify([srvBox, rateBox, tileBoxes])}`);
-    assert(near(netBox.x, tileBoxes[1][0]) && near(netBox.y, srvBox.y) && near(netBox.y + netBox.height, rateBox.y + rateBox.height),
-      `the 2×2 card spans both rows beside them: ${JSON.stringify([netBox, srvBox, rateBox])}`);
-    assert(near(srvBox.height, rateBox.height) && near(netBox.height, srvBox.height * 2 + 14), "1×1 is half of 2×2 (plus the gap)");
+    assert(near(srvBox.x, tileBoxes[0][0]) && near(srvBox.x + srvBox.width, tileBoxes[0][1]) && near(rateBox.x, tileBoxes[1][0]) && near(rateBox.y, srvBox.y),
+      `1×1 cards share the first row over the first two tiles: ${JSON.stringify([srvBox, rateBox, tileBoxes])}`);
+    assert(near(netBox.x, tileBoxes[0][0]) && near(netBox.x + netBox.width, tileBoxes[1][1]) && near(netBox.y, srvBox.y + srvBox.height + 14),
+      `the 2×1 card is the row below them: ${JSON.stringify([netBox, srvBox, rateBox])}`);
+    assert(near(srvBox.height, rateBox.height) && near(netBox.height, srvBox.height), "every widget is one row tall");
+    // DD-242: ◀ ▶ move a widget one place in the order; a step the block would show unchanged goes on.
+    const widgetIds = () => page.locator("#genel-widgets .widget").evaluateAll(els => els.map(e => e.dataset.widget));
+    const stuck = () => page.locator("#genel-widgets [data-move]").evaluateAll(els => els.filter(b => b.disabled).map(b => b.getAttribute("aria-label")));
+    assert.deepEqual(await stuck(),["Sunucu: öne taşı","Hız: geriye taşı","Ağ: geriye taşı"],"Hız cannot follow Ağ: a 2×1 card has no room beside a 1×1 card");
+    await page.getByRole("button",{name:"Ağ: öne taşı",exact:true}).click();
+    assert.deepEqual(await widgetIds(),["ag","sunucu","hiz"],"one press takes Ağ above both 1×1 cards");
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")),"Ağ: geriye taşı","at the front, focus moves to the same widget's enabled arrow");
+    const [agTop, srvLow, rateLow] = await Promise.all(["ag","sunucu","hiz"].map(id => page.locator(`#genel-widgets [data-widget="${id}"]`).boundingBox()));
+    assert(near(agTop.y, srvBox.y) && near(agTop.x, srvBox.x) && near(srvLow.y, agTop.y + agTop.height + 14) && near(rateLow.y, srvLow.y) && near(srvLow.x, agTop.x) && rateLow.x > srvLow.x,
+      `Ağ is the first row, the 1×1 cards the second: ${JSON.stringify([agTop, srvLow, rateLow])}`);
+    await page.getByRole("button",{name:"Hız: öne taşı",exact:true}).click();
+    assert.deepEqual(await widgetIds(),["ag","hiz","sunucu"]);
+    assert.deepEqual(await stuck(),["Ağ: öne taşı","Sunucu: geriye taşı"]);
+    await page.getByRole("button",{name:"Sunucu: öne taşı",exact:true}).click();
+    await page.getByRole("button",{name:"Ağ: geriye taşı",exact:true}).click();
+    assert.deepEqual(await widgetIds(),["sunucu","hiz","ag"],"the same arrows lead back to the default order");
+    assert.notEqual(await page.locator('#genel-widgets [data-widget="ag"] [data-tool="gizle"] .wt-label').evaluate(el => getComputedStyle(el).display),"none","the 2×1 strip has room for the word");
+    assert.equal(await page.locator('#genel-widgets [data-widget="sunucu"] [data-tool="gizle"] .wt-label').evaluate(el => getComputedStyle(el).display),"none","a narrow 1×1 strip keeps only the eye");
+    assert.equal(await page.locator('#genel-widgets [data-widget="sunucu"] [data-tool="gizle"]').getAttribute("title"),"Gizle");
+    assert(await page.locator("#genel-widgets .widget-tools").evaluateAll(els => els.every(t => t.scrollWidth<=t.clientWidth+1)),"no edit strip overflows its card");
     await page.getByRole("button",{name:"Ağ: gizle",exact:true}).click();
     assert.equal(await page.locator('#genel-widgets .widget[data-widget="ag"].is-hidden').count(),1,"a hidden widget stays visible, dimmed, while editing");
     assert.equal(await page.getByRole("button",{name:"Ağ: göster",exact:true}).count(),1);
@@ -270,15 +290,23 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.deepEqual(await order(),["torrent","wireguard"]);
     assert.equal(layoutWrites.length,writes,"cancel saves nothing");
     await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
-    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x1"]],"a record that lists only some widgets keeps the default order");
     await page.getByRole("button",{name:"Ağ: göster",exact:true}).click();
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await netCard.waitFor();
     assert.deepEqual(layoutWrites.at(-1),{duzen:{kareler:["torrent","wireguard"],widgetlar:[{id:"sunucu",genislik:1,gizli:false},{id:"hiz",genislik:1,gizli:false},{id:"ag",genislik:2,gizli:false}]}});
+    // DD-242: the widget order is saved with the layout and comes back on the next visit.
+    await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
+    await page.getByRole("button",{name:"Ağ: öne taşı",exact:true}).click();
+    await bar.getByRole("button",{name:"Bitti",exact:true}).click();
+    await bar.getByRole("button",{name:"Düzenle",exact:true}).waitFor();
+    assert.deepEqual(layoutWrites.at(-1).duzen.widgetlar,[{id:"ag",genislik:2,gizli:false},{id:"sunucu",genislik:1,gizli:false},{id:"hiz",genislik:1,gizli:false}]);
+    await navigate("#/dosyalar"); await navigate("#/genel");
+    await page.waitForFunction(() => [...document.querySelectorAll("#genel-widgets .widget")].map(w => w.dataset.widget).join() === "ag,sunucu,hiz");
     await bar.getByRole("button",{name:"Düzenle",exact:true}).click();
     await bar.getByRole("button",{name:"Varsayılan",exact:true}).click();
     assert.deepEqual(await order(),["wireguard","torrent"]);
-    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x2"]]);
+    assert.deepEqual(await widgetState(),[["sunucu","1","1x1"],["hiz","1","1x1"],["ag","2","2x1"]]);
     await bar.getByRole("button",{name:"Bitti",exact:true}).click();
     await page.getByText("Ana Menü varsayılan düzene döndü.",{exact:true}).first().waitFor();
     assert.deepEqual(layoutWrites.at(-1),{sifirla:true});
@@ -478,6 +506,10 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.equal(await page.locator("#ag-apps table.net-table").getAttribute("aria-label"),"Uygulama aktarım toplamları");
     assert.equal(await page.locator("#ag-apps").getAttribute("aria-label"),"Uygulama trafiği");
     assert.deepEqual(await page.locator("#ag-apps .net-table thead th").allTextContents(),["Uygulama","İndirme","Yükleme"]);
+    // DD-242: the headings stay for screen readers; on screen each total carries the Hız card's glyph.
+    assert(await page.locator("#ag-apps .net-table thead").evaluate(el => el.getBoundingClientRect().height<=1),"the headings are visually hidden");
+    assert.equal(await appTraffic.locator('td.down svg[aria-hidden="true"]').count(),1);
+    assert.equal(await appTraffic.locator('td.up svg[aria-hidden="true"]').count(),1);
     assert.equal(await appTraffic.evaluate(el => el.tagName),"TR");
     assert.equal(await appTraffic.locator("th,td").count(),3);
     assert.deepEqual(await appTraffic.locator("th,td").allTextContents(),["qBittorrent","5,0 GB","1,0 GB"]);
@@ -510,7 +542,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     await page.waitForFunction(() => document.querySelectorAll("#ag-apps .net-app").length === 24);
     const manyRows = await geometry();
     assert(Math.abs(singleRow.apps.height-manyRows.apps.height)<2,"more applications must not grow the table area");
-    assert(Math.abs(singleRow.card.height-manyRows.card.height)<2,"more applications must not grow the 2×2 card");
+    assert(Math.abs(singleRow.card.height-manyRows.card.height)<2,"more applications must not grow the 2×1 card");
     const trafficList = page.locator("#ag-apps");
     await trafficList.focus();
     const scrollBefore = await trafficList.evaluate(el => { el.scrollTop=80; return el.scrollTop; });
@@ -530,7 +562,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         const {card} = await geometry();
         assert(await page.evaluate(() => document.documentElement.scrollWidth<=innerWidth+1),`network overflow at ${width}/${colorScheme}`);
-        assert(card.height<=330,`the 2×2 card keeps its fixed height at ${width}/${colorScheme}: ${card.height}`);
+        assert(card.height<=160,`the 2×1 card keeps its fixed height at ${width}/${colorScheme}: ${card.height}`);
         const over = await page.locator("#genel-widgets").evaluate(el => [...el.querySelectorAll(".widget")].map(w => [w.dataset.widget, w.scrollHeight, w.clientHeight]));
         assert(over.every(([, sh, ch]) => sh<=ch+1),
           `no widget overflows its cell at ${width}/${colorScheme}: ${JSON.stringify(over)}`);
@@ -543,9 +575,9 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
           return rows;
         });
         assert.deepEqual(clipped,[],`Sunucu rows are not clipped at ${width}/${colorScheme}`);
-        const heads = await page.locator("#ag-apps thead").evaluate(el => [...el.querySelectorAll("th")].map(th => [th.textContent, th.scrollWidth, th.clientWidth]));
-        assert(heads.every(([, sw, cw]) => sw<=cw+1),
-          `the table headings are not clipped at ${width}: ${JSON.stringify(heads)}`);
+        const cells = await page.locator("#ag-apps tbody").evaluate(el => [...el.querySelectorAll("td")].map(td => [td.textContent, td.scrollWidth, td.clientWidth]));
+        assert(cells.every(([, sw, cw]) => sw<=cw+1),
+          `the totals and their glyphs are not clipped at ${width}: ${JSON.stringify(cells.slice(0, 4))}`);
         assert(await page.locator("#ag-apps").evaluate(el => [el,...el.querySelectorAll("*")].some(e =>
           /auto|scroll/.test(getComputedStyle(e).overflowY) && e.scrollHeight>e.clientHeight+1)),"long application tables scroll within their half");
         assert.equal(await page.locator("#ag-apps .net-app small").count(),0);
@@ -742,7 +774,7 @@ const entry = (name,type="dir") => ({name,type,count:3,size:2048,mtime:Date.now(
     assert.equal(await secure.locator("#torrent-open").count(),0,"no tailnet link on the public address");
     assert.equal(await secure.locator("#torrent-open-note").getByRole("link").getAttribute("href"),"#/ayarlar/web");
     await secure.close();
-    console.log("PASS: Ana Menü, home-only clock/date, five-second polling without duplicates or hidden-page reads; 1×1 Sunucu/Hız stacked beside the 2×2 Ağ card on the tiles' columns, legacy layout migration, hide/show and tile reorder; Sunucu widget IP/version/fresh uptime, resources closing the sidebar; cumulative app traffic table, missing/zero totals, fixed-height 2×2 card, scrolling/focus across refresh, desktop/320/390 light/dark; routes/navigation, subtitle-free Store cards with full details/progress/failure/focus/logs/lifecycle, qBittorrent password/privacy, shared settings, keyboard/5 widths, resources/stale/offline/recovery, archive jobs, WG deep link, public-address links, production CSP. Screenshots: " + shots);
+    console.log("PASS: Ana Menü, home-only clock/date, five-second polling without duplicates or hidden-page reads; 1×1 Sunucu/Hız side by side above the 2×1 Ağ card on the tiles' columns, widget order arrows and their saved order, legacy layout migration, hide/show and tile reorder; Sunucu widget IP/version/fresh uptime, resources closing the sidebar; cumulative app traffic table with glyphs, missing/zero totals, fixed-height 2×1 card, scrolling/focus across refresh, desktop/320/390 light/dark; routes/navigation, subtitle-free Store cards with full details/progress/failure/focus/logs/lifecycle, qBittorrent password/privacy, shared settings, keyboard/5 widths, resources/stale/offline/recovery, archive jobs, WG deep link, public-address links, production CSP. Screenshots: " + shots);
   } catch (err) { if (errors.length) console.error("Browser errors:",errors); throw err;
   } finally { await browser.close(); }
 })().catch(err => {console.error(err); process.exit(1);});

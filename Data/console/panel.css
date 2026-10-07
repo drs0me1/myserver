@@ -129,23 +129,25 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .rl:hover { background:var(--glass-2); }
 .toast { border-radius:12px; }
 
-/* ---- home (DD-213, DD-230, DD-231): widgets share the tiles' columns. A 1×1 widget is one tile wide
-   and half a tile tall; the 2×2 card is two tiles wide and two rows tall. Desktop flows by column, so
-   the 1×1 cards stack in the first column and the 2×2 card sits beside them. ---- */
+/* ---- home (DD-213, DD-230, DD-242): widgets share the tiles' columns. Their block spans the first two
+   columns and fills them in order, row by row: a 1×1 card is one tile wide and one --w-row tall, the
+   2×1 card a whole row (two tiles wide). Phones have two columns, so the block looks the same. ---- */
 :root { --w-row:150px; }
-.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); grid-template-rows:repeat(2,var(--w-row));
-  grid-auto-flow:column dense; gap:14px; }
+.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); gap:14px; }
 .widgets:empty { display:none; }
+.widget-block { grid-column:1 / span 2; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:var(--w-row); gap:14px; }
 .widget { position:relative; container-type:inline-size; min-width:0; min-height:0; padding:12px; display:flex; flex-direction:column; overflow:hidden; }
-.widget[data-boy="2x2"] { grid-column:span 2; grid-row:span 2; padding:14px; }
+.widget[data-boy="2x1"] { grid-column:span 2; }
 .widget .card-head h2 { font-size:13.5px; }
 .widget .card-head small { font-size:11px; }
-.widget[data-boy="2x2"] .card-head h2 { font-size:14.5px; }
-.widget[data-boy="2x2"] .card-head small { font-size:12px; }
 .widget .card-head .hm { font-size:10.5px; padding:2px 7px; }
 .widget[data-boy="1x1"] .card-head { flex-wrap:nowrap; align-items:flex-start; }
 .widget[data-boy="1x1"] .card-head h2 { margin:0; line-height:1.2; }
 .widget[data-boy="1x1"] .card-head small { display:block; margin:2px 0 0; line-height:1.3; }
+/* The 2×1 card's title and subtitle share a line, so four applications fit its single row. */
+.widget[data-boy="2x1"] .card-head > div { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.widget[data-boy="2x1"] .card-head h2 { margin:0; line-height:1.2; }
+.widget[data-boy="2x1"] .card-head small { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* DD-231: the type follows the card's width so the longest row ("WAN" + a 15-character IPv4, ~11.2em
    with the 6px gap) fits even the narrowest 1×1 cell; wide cells keep 11.5px. */
 .server-facts { margin:auto 0 0; padding-top:6px; display:grid; gap:3px; font-size:clamp(9px, calc((100cqi - 6px) / 11.5), 11.5px); line-height:1.35; }
@@ -154,28 +156,30 @@ h1 { font-size:28px; font-weight:650; letter-spacing:-.02em; }
 .server-facts dd { margin:0; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
 .server-facts .mono { font-size:inherit; }
 
-/* ---- Hız (1×1): the server's live rates; Ağ (2×2): application totals, one line per application ---- */
+/* ---- Hız (1×1): the server's live rates; Ağ (2×1): application totals, one line per application ---- */
 :root { --net-down:var(--accent); --net-up:#C2783A; }
 .net-rates { flex:1; display:grid; align-content:center; gap:6px; margin-top:4px; }
 .net-rate { display:flex; align-items:center; gap:8px; min-width:0; }
 .net-rate svg { width:18px; height:18px; flex:none; color:var(--net-down); stroke-width:2; }
 .net-rate.up svg { color:var(--net-up); }
 .net-rate b { min-width:0; font:600 18px/1.15 var(--f-display); font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.net-apps { flex:1; min-height:0; margin-top:10px; overflow:auto; scrollbar-width:thin; }
+.net-apps { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; }
 .net-table { display:block; width:100%; border-collapse:collapse; font-size:12px; }
-.net-table thead, .net-table tbody { display:block; }
-.net-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto auto; column-gap:12px; align-items:center; min-width:0; }
-.net-table tbody tr { padding:4px 0; border-top:1px solid var(--glass-line); }
+.net-table tbody { display:block; }
+/* DD-242: the headings stay for screen readers; on screen the download/upload glyphs name the columns. */
+.net-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.net-table tr { display:grid; grid-template-columns:minmax(0,1fr) minmax(5.6em,auto) minmax(5.6em,auto); column-gap:12px; align-items:center; min-width:0; }
+.net-table tbody tr { padding:2px 0; border-top:1px solid var(--glass-line); }
+.net-table tbody tr:first-child { border-top:0; }
 .net-table th, .net-table td { border:0; padding:0; text-align:right; min-width:0; }
-.net-table thead th { color:var(--muted); font-size:10px; font-weight:500; white-space:nowrap; padding-bottom:5px; }
-.net-table thead th:first-child, .net-table tbody th { text-align:left; }
-.net-table thead th + th::before { content:""; display:inline-block; width:6px; height:6px; margin-right:4px; border-radius:50%; background:var(--net-down); vertical-align:1px; }
-.net-table thead th:last-child::before { background:var(--net-up); }
+.net-table tbody th { text-align:left; }
 .net-app-name { display:flex; align-items:center; gap:5px; min-width:0; }
 .net-app .ico { width:18px; height:18px; border-radius:5px; flex:none; display:grid; place-items:center; color:#fff; }
 .net-app .ico svg { width:12px; height:12px; }
 .net-app strong { min-width:0; font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.net-app .v { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.net-app .v { display:flex; align-items:center; justify-content:space-between; gap:4px; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; }
+.net-app .v svg { width:13px; height:13px; flex:none; stroke-width:2; color:var(--net-down); }
+.net-app .v.up svg { color:var(--net-up); }
 .net-empty { grid-column:1 / -1; color:var(--muted); line-height:1.6; text-align:left!important; }
 
 /* ---- edit mode: fixed to the bottom-right corner of the screen; the page keeps room below the tiles ---- */
@@ -198,8 +202,13 @@ section[data-view="genel"] { padding-bottom:72px; }
 .tile-move button:focus-visible, .widget-tools .btn:focus-visible, .edit-bar .btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .widgets.editing .widget { outline:2px dashed var(--accent-soft); outline-offset:3px; }
 .widget.is-hidden > :not(.widget-tools) { opacity:.38; }
-.widget-tools { position:absolute; right:8px; bottom:8px; z-index:1; display:flex; gap:6px; }
-.widget-tools .btn { min-width:34px; justify-content:center; }
+/* DD-242: an opaque strip along the card's bottom edge: ◀ ▶ on the left, Gizle/Göster on the right. */
+.widget-tools { position:absolute; left:0; right:0; bottom:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:6px;
+  padding:6px 8px; border-top:1px solid var(--glass-line); background:var(--surface-2); }
+.widget-tools .tile-move { gap:6px; }
+.widget-tools .btn { flex:none; min-width:34px; justify-content:center; }
+/* The arrows and the word need ~162px of strip: the card's content box (the query's width) plus 26px. */
+@container (max-width:137px) { .widget-tools .wt-label { display:none; } }
 .widget-tools .btn svg { width:14px; height:14px; }
 .section-title { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin:6px 2px 0; flex-wrap:wrap; }
 .section-title h2 { margin:0; font-size:15px; font-weight:650; }
@@ -343,7 +352,7 @@ section[data-view="genel"] { padding-bottom:72px; }
   .store-detail { padding:16px; }
   .store-detail-actions .danger-text { margin-left:0; }
 }
-@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); } .widgets { grid-template-rows:none; grid-auto-rows:var(--w-row); grid-auto-flow:row dense; } .tile { padding-inline:2px; } }
+@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); } .tile { padding-inline:2px; } }
 /* DD-239: Ayarlar → Sistem → Sağlık: "Denetle ve onar" and its step report. */
 .repair { display:grid; gap:10px; margin-top:6px; padding-top:14px; border-top:1px solid var(--glass-line); }
 .repair-head { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; }

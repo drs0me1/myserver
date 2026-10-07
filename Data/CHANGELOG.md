@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Ana Menü widgets in order; Ağ as a wide row (v2-224)
+
+- Sunucu and Hız sit side by side; the Ağ card is one row tall and two tiles wide below them, the same
+  on phones. Each application's totals carry the download/upload icons of the Hız card.
+- Düzenle moves the widgets with ◀ ▶ like the application tiles; the order is saved with the layout.
+  An arrow that would change nothing is disabled (DD-242).
+
 ### 2026-10-07 — "Onar" covers more; last check and a log on the Sağlık card (v2-223)
 
 - Onar now also puts back exit-node forwarding, Tailscale's exit-node and SSH settings, the

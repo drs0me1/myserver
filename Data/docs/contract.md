@@ -543,16 +543,17 @@ Contract in §5–§7 and `folder-shares.md`.
     and starts as a whole (**DD-229**). **Günlükler** opens a dialog backed by the existing
     module journal. Settings stay usable while the app is stopped. The page stays
     reachable from App Store details and its route.
-  - **Home layout and network card (DD-206, DD-212/213, DD-229, DD-230).** "Düzenle" (fixed to the
+  - **Home layout and network card (DD-206, DD-212/213, DD-229, DD-230, DD-242).** "Düzenle" (fixed to the
     screen's bottom-right corner; the page keeps room below the last row) lets the operator move tiles (dragging with mouse or finger, or arrow
-    buttons) and hide or show the widgets (**DD-231**): "Sunucu" (`sunucu`, 1×1: Tailscale and
+    buttons), move the widgets with ◀ ▶ and hide or show them (**DD-231**, **DD-242**): "Sunucu" (`sunucu`, 1×1: Tailscale and
     WAN address, uptime, short version with the full one as tooltip, access channel), "Hız"
     (`hiz`, 1×1: the server's live WAN download/upload with download/upload glyphs, no chart)
-    and "Ağ" (`ag`, 2×2: each application's total download/upload, one line per application,
-    scrolling inside the card). A 1×1 widget is one tile wide and half a tile tall; the area
-    uses the tiles' column template. On desktop the 1×1 cards stack in the first column with
-    "Ağ" beside them; on phones "Ağ" spans the width and the 1×1 cards share a row. Sizes are
-    fixed; there are no width controls. The network is read only while "Hız" or "Ağ" is
+    and "Ağ" (`ag`, 2×1: each application's total download/upload with the same glyphs, one line per
+    application, scrolling inside the card). The widgets fill a block over the first two tile columns
+    in order, row by row: a 1×1 card is one tile wide and one row tall, "Ağ" a whole row. The default
+    order is Sunucu, Hız, Ağ (the 1×1 cards side by side, "Ağ" below them), the same on phones. An arrow
+    moves a widget one place and skips steps the block would show unchanged; an arrow that would change
+    nothing is disabled. Sizes are fixed; there are no width controls. The network is read only while "Hız" or "Ağ" is
     shown. App Store cards use the same column template and width as the home tiles. "Bitti" saves, "Vazgeç"/Escape drops the
     draft, "Varsayılan" returns to the defaults. The layout lives on the server:
     `GET /api/konsol/duzen` → `{duzen: {schema, kareler, widgetlar} | null}`, `POST`
@@ -560,7 +561,8 @@ Contract in §5–§7 and `folder-shares.md`.
     `^[a-z]{2,16}$`, at most 32 tiles and 8 widgets, width 1–4, boolean visibility), writes
     `KONSOL_AUTH_DIR/duzen.json` (0600, atomic) and logs `duzen kaydet|sifirla`; a damaged
     record means the defaults. The frontend ignores saved IDs of removed tiles/widgets
-    and normalizes older `ag` widths to 2, preserving visibility. Tiles missing from
+    and normalizes older `ag` widths to 2, preserving visibility; a saved widget order counts only
+    when it names every widget (older records keep the default order). Tiles missing from
     the saved order (a newly installed application) follow in the default order.
     The network card reads `GET
     /api/konsol/ag` every 5 s while shown, alongside host resources and module state.

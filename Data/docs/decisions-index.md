@@ -232,9 +232,10 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-228 | Install from the public repository with one curl line on the server | v2-206 | design-decisions.md |
 | DD-229 | Overview controls, WireGuard as a whole, and a host closed to containers | v2-207; tile word amended by DD-230 | design-decisions.md |
 | DD-230 | Home widgets on the tiles' grid, a "Sunucu" widget and uniform Store cards | v2-208; widget sizes amended by DD-231 | design-decisions.md |
-| DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210 | design-decisions.md |
+| DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-242 | Home widgets in order: Sunucu and Hız side by side, Ağ a 2×1 row below, ◀ ▶ reorder them (amends DD-231) | v2-224 | design-decisions.md |
 | DD-241 | `master-onar` covers the installer's own settings (sysctl, Tailscale flags, timers, SSH, clock, modes, disk, dpkg) and reports the rest; Sağlık shows the last run and a 72 h / 1 week log | v2-223 | design-decisions.md |
 | DD-240 | Address refresh after boot and nightly 03:00–04:00 (amends DD-239) | v2-222 | design-decisions.md |
 | DD-239 | Repair on request (Konsol "Denetle ve onar", `master-onar`, `onar.command`) instead of the 5-minute refresh loop; hourly firewall check | v2-221 | design-decisions.md |

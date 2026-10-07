@@ -13,6 +13,34 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-242: Home widgets in order — Sunucu and Hız side by side, Ağ a 2×1 row below; arrows reorder them (v2-224)
+
+- **Request (user, 2026-10-07):** after mock-ups of a 1×2 network card with direction-aware arrows and
+  a free-placement alternative: "1x1 widgetları yan yana alalım önce sunucu sonra hız, ağ kartını 1 kare
+  yükseklik 2 kare genişlik olarak yatay uzun olarak altına koyalım oklarla değişim daha mantıklı olsun
+  sıralı dursunlar".
+- **Block:** the widgets sit in one `.widget-block` over the first two tile columns (the tiles' column
+  template is kept, so a 1×1 card is exactly one tile wide). The block fills its two cells per row in
+  order: a 1×1 card takes a cell, the 2×1 "Ağ" card a whole row. Phones have two columns, so the block
+  looks the same there. Rows are one `--w-row` (150 px) tall; nothing spans two rows any more.
+- **Order:** the order of the saved `widgetlar` list, used only when it names every widget; records
+  written before this change list some or none (v2-205…209 wrote `[ag]` or `[ag, sunucu]`) and keep
+  the default order (Sunucu, Hız, Ağ). The backend is unchanged: it already keeps the list's order.
+- **Arrows:** every widget has ◀ ▶ ("öne taşı"/"geriye taşı") beside Gizle in an opaque strip at the
+  card's bottom edge, like the tiles' arrows. A step moves the widget one place in the order; the order
+  is kept as the block shows it (rows top to bottom, cells left to right), and a step that the block would
+  show unchanged (a 2×1 card has no room beside a 1×1 card) goes on until the arrangement changes. A
+  button that cannot change anything is disabled: from the default, Sunucu ◀, Hız ▶ and Ağ ▶ are
+  disabled and Ağ ◀ takes Ağ above both 1×1 cards in one press. No widget dragging; tiles keep theirs.
+- **Ağ (2×1):** one line per application; the title and subtitle share a line so four applications fit
+  without scrolling (more scroll inside the card). The column headings stay for screen readers but are
+  visually hidden; each total carries the Hız card's download/upload glyph.
+- **Narrow cards:** below ~162 px of strip the Gizle/Göster word is dropped (the eye stays, the word
+  is the tooltip and the accessible name keeps the widget's name), so the strip never overflows.
+- **Rejected:** direction-aware arrows on a 1×2 card (↓ ↑ ← depending on where the widget would land)
+  and free placement in empty cells, which would need a new stored position and fall back to order on
+  phones anyway.
+
 ### DD-241: `master-onar` covers what the installer sets up; Sağlık shows the last run and a log (v2-223)
 
 - **Request (user, 2026-10-07):** after a scope study, "A ve B yi kabul ediyorum"; the disk clean-up and
@@ -253,6 +281,8 @@ with its status and the file that holds it.
   next two columns and both rows. Phones (two columns) flow by row: the two 1×1 cards share a row
   under or above the 2×2 card. Every widget clips to its cell; "Ağ" scrolls its table. Edit
   tools overlay the card instead of growing it.
+  - **Amended by DD-242:** Sunucu and Hız share the first row and "Ağ" is a 2×1 row below them, in
+    an order the operator changes with ◀ ▶.
 - **Hız:** the server's WAN rates with the existing download/upload glyphs in the legend colours;
   each row keeps "İndirme"/"Yükleme" as its accessible name and tooltip. The chart and its code are
   gone (`/api/konsol/ag` still returns its points; nothing reads them).

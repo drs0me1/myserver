@@ -3385,26 +3385,32 @@ PY
     # ag and sunucu (DD-230) are the widgets; an old width is ignored while visibility is retained.
     local widgets tools totals
     widgets="$(awk '/^  const WIDGETS = \[/,/^  ];$/' "$js")"
-    # DD-231: two 1×1 widgets (Sunucu, Hız) and the 2×2 application traffic card, in that order.
+    # DD-242: two 1×1 widgets (Sunucu, Hız) and the 2×1 application traffic card, in that order.
     [ "$(grep -c 'id:' <<<"$widgets")" -eq 3 ]
     [ "$(grep -o 'id: "[a-z]*"' <<<"$widgets" | tr '\n' ' ')" = 'id: "sunucu" id: "hiz" id: "ag" ' ]
     grep -qF '{ id: "hiz", ad: "Hız", label: "Anlık ağ hızı", genislik: 1, boy: "1x1" },' <<<"$widgets"
-    grep -qF '{ id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x2" },' <<<"$widgets"
+    grep -qF '{ id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x1" },' <<<"$widgets"
     grep -qF 'return { genislik: base.genislik, gizli: own ? own.gizli : false };' "$js"
-    grep -qF 'widgetlar: WIDGETS.map((w) => ({ id: w.id, ...widgetSetting(w.id) }))' "$js"
+    grep -qF 'widgetlar: widgetOrder().map((id) => ({ id, ...widgetSetting(id) }))' "$js"
+    # DD-242: the widget order is the saved list's order when it names every widget, packed row by row.
+    grep -qF 'return packWidgets(saved.length === ids.length && new Set(saved).size === ids.length ? saved : ids);' "$js"
+    grep -qF 'const c = wide ? (row[0] || row[1] ? -1 : 0) : row.indexOf(false);' "$js"
+    grep -qF 'if (shown.join() !== order.join()) return shown;' "$js"
+    grep -qF 'disabled: !widgetStep(order, def.id, step), onclick: () => moveWidget(def.id, step) }, svg(icon));' "$js"
+    grep -qF "widgets.replaceChildren(...(cards.length ? [h(\"div\", { class: \"widget-block\" }, ...cards)] : []));" "$js"
     grep -qF 'const defs = tileDefs(), order = activeLayout().kareler || [];' "$js"
     # DD-230: widgets share the tiles' column template, so a span-2 widget is exactly two tiles wide.
     grep -qF '.widgets { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
     grep -qF '.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
-    grep -qF 'grid-template-rows:repeat(2,var(--w-row));' "$css"
-    grep -qF 'grid-auto-flow:column dense;' "$css"
-    grep -qF '.widget[data-boy="2x2"] { grid-column:span 2; grid-row:span 2;' "$css"
+    grep -qF '.widget-block { grid-column:1 / span 2; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:var(--w-row); gap:14px; }' "$css"
+    grep -qF '.widget[data-boy="2x1"] { grid-column:span 2; }' "$css"
+    run ! grep -qE 'grid-auto-flow:column|data-boy="2x2"|grid-row:span' "$css"
     grep -qF '@media(max-width:480px) { .tiles, .widgets { grid-template-columns:repeat(2,minmax(0,1fr)); }' "$css"
     grep -qF '.store-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr));' "$css"
-    tools="$(awk '/^  function widgetTools\(def, set\)/,/^  }$/' "$js")"
+    tools="$(awk '/^  function widgetTools\(def, set, order\)/,/^  }$/' "$js")"
     grep -qF 'change({ gizli: !set.gizli }, "gizle")' <<<"$tools"
     run ! grep -qE '"data-tool": "(dar|genis)"|genislik:' <<<"$tools"
-    run ! grep -qE 'data-height|yukseklik' "$js" "$css"  # DD-231: sizes are fixed per widget (1×1, 2×2), never operator-set
+    run ! grep -qE 'data-height|yukseklik' "$js" "$css"  # DD-242: sizes are fixed per widget (1×1, 2×1), never operator-set
     # The layout is stored by the root backend in KONSOL_AUTH_DIR (format checks only); the shell names no application.
     grep -qx 'LAYOUT_FILE = "duzen.json"' "$backend"
     grep -qx 'LAYOUT_SPANS = (1, 2, 3, 4)' "$backend"
@@ -3430,9 +3436,11 @@ PY
     grep -qF '...["Uygulama", "İndirme", "Yükleme"].map' "$js"
     grep -qF 'class: "net-app-name", title: name' <<<"$totals"
     # Equal-width, equal-height sections and a borderless table with fixed-height overflow.
-    # DD-231: no chart; the table scrolls inside the fixed 2×2 cell.
+    # DD-231: no chart; DD-242: the table scrolls inside the fixed 2×1 row, its headings visually hidden.
     run ! grep -qE 'netChart|net-svg|net-chart|net-live' "$js" "$css"
-    grep -qF '.net-apps { flex:1; min-height:0; margin-top:10px; overflow:auto; scrollbar-width:thin; }' "$css"
+    grep -qF '.net-apps { flex:1; min-height:0; overflow:auto; scrollbar-width:thin; }' "$css"
+    grep -qF '.net-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }' "$css"
+    grep -qF 'svg(cls === "down" ? "download" : "upload"), fresh && Number.isFinite(a[key]) ? bytes(a[key]) : "—");' <<<"$totals"
     grep -qF 'svg("download"), h("b", { id: "ag-rx" }' "$js"
     grep -qF 'svg("upload"), h("b", { id: "ag-tx" }' "$js"
     grep -qF '.net-table th, .net-table td { border:0;' "$css"

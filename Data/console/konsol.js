@@ -1989,15 +1989,15 @@
     }}, svg("refresh"), "Yenile")];
   /* ---------- Ana Menü (DD-213): yalnız kurulu uygulamalar ve kompakt ağ kartı ---------- */
   // Kaynaklar yan menüde; ağ /api/konsol/ag'den, kareler modül listesinden; görünürken 5 sn'de bir.
-  // Kare sırası ve ağ kartının görünürlüğü aynı sunucu düzen kaydında durur.
+  // Kare ve widget sırası ile widget'ların görünürlüğü aynı sunucu düzen kaydında durur.
   const uptimeText = (sec) => { const d = Math.floor(sec / 86400), hh = Math.floor((sec % 86400) / 3600), mm = Math.floor((sec % 3600) / 60);
     return d ? `${d} g ${hh} sa` : hh ? `${hh} sa ${mm} dk` : `${mm} dk`; };
-  // Eski saat/sistem ayarları yok sayılır; ağ kartı masaüstündeki altı alanın ikisini kullanır.
+  // Eski saat/sistem ayarları yok sayılır; widget'lar kare sütunlarının ilk ikisini kullanır.
   const WIDGETS = [
-    // DD-231: 1×1 widgets stack in the first column; the 2×2 application traffic card sits beside them.
+    // DD-242: the 1×1 widgets share the first row; the 2×1 application traffic card is the row below.
     { id: "sunucu", ad: "Sunucu", label: "Sunucu adresleri", genislik: 1, boy: "1x1" },
     { id: "hiz", ad: "Hız", label: "Anlık ağ hızı", genislik: 1, boy: "1x1" },
-    { id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x2" },
+    { id: "ag", ad: "Ağ", label: "Uygulama trafiği", genislik: 2, boy: "2x1" },
   ];
   // layout: sunucudaki kayıt (null: varsayılan); editing: Düzenle açıkken taslak, değilse null.
   // modsSettled: the module list answered once (or failed), so the tiles do not jump in after the page.
@@ -2007,6 +2007,41 @@
   function widgetSetting(id) {
     const own = (activeLayout().widgetlar || []).find((w) => w.id === id), base = WIDGETS.find((w) => w.id === id);
     return { genislik: base.genislik, gizli: own ? own.gizli : false };
+  }
+  // DD-242: widgets fill a two-column block in order, row by row: a 1×1 card takes a cell, a 2×1 card a
+  // whole row. The order is kept as the block shows it (rows top to bottom, cells left to right), so an
+  // order and what is on screen always agree.
+  function packWidgets(ids) {
+    const rows = [], at = new Map();
+    for (const id of ids) {
+      const wide = WIDGETS.find((w) => w.id === id).genislik > 1;
+      for (let r = 0; !at.has(id); r++) {
+        const row = rows[r] || (rows[r] = [false, false]);
+        const c = wide ? (row[0] || row[1] ? -1 : 0) : row.indexOf(false);
+        if (c < 0) continue;
+        row[c] = true;
+        if (wide) row[1] = true;
+        at.set(id, r * 2 + c);
+      }
+    }
+    return [...ids].sort((a, b) => at.get(a) - at.get(b));
+  }
+  // A saved order counts only when it names every widget; records from before DD-242 list some or none.
+  function widgetOrder() {
+    const ids = WIDGETS.map((w) => w.id);
+    const saved = (activeLayout().widgetlar || []).map((w) => w.id).filter((id) => ids.includes(id));
+    return packWidgets(saved.length === ids.length && new Set(saved).size === ids.length ? saved : ids);
+  }
+  // One place earlier or later. A step the block would show unchanged (a 2×1 card cannot sit beside a
+  // 1×1 card) goes on until the arrangement changes; null when nothing changes in that direction.
+  function widgetStep(order, id, step) {
+    const next = [...order];
+    for (let i = next.indexOf(id); i + step >= 0 && i + step < next.length; i += step) {
+      [next[i], next[i + step]] = [next[i + step], next[i]];
+      const shown = packWidgets(next);
+      if (shown.join() !== order.join()) return shown;
+    }
+    return null;
   }
   function loadLayout() {
     return api("/api/konsol/duzen").then((r) => { if (!editing) layout = r && r.duzen ? r.duzen : null; })
@@ -2032,9 +2067,10 @@
     return apps.map((a) => {
       const meta = metaOf(a.id), fresh = netReplyFresh() && a.state === "calisiyor";
       const name = meta.name === a.id ? (typeof a.name === "string" && a.name ? a.name : a.id) : meta.name;
+      // DD-242: the column headings are for assistive technology; on screen the glyphs of "Hız" name them.
       const total = (key, cls) => h("td", { class: "v " + cls,
         title: !fresh || !Number.isFinite(a[key]) ? (a.state === "durduruldu" ? "Uygulama durduruldu" : "Aktarım miktarı okunamadı") : "" },
-        fresh && Number.isFinite(a[key]) ? bytes(a[key]) : "—");
+        svg(cls === "down" ? "download" : "upload"), fresh && Number.isFinite(a[key]) ? bytes(a[key]) : "—");
       return h("tr", { class: "net-app", "data-app": a.id },
         h("th", { scope: "row" }, h("span", { class: "net-app-name", title: name }, h("span", { class: "ico " + meta.tone }, svg(meta.icon)), h("strong", null, name))),
         total("down", "down"), total("up", "up"));
@@ -2100,21 +2136,34 @@
       h("div", { class: "net-apps", id: "ag-apps", tabindex: "0", role: "region", "aria-label": "Uygulama trafiği" }, appsTable()),
     ];
   }
-  function widgetTools(def, set) {
+  // DD-242: ◀ ▶ move a widget one place earlier or later in the order, like the tiles' arrows.
+  function widgetTools(def, set, order) {
     const change = (patch, tool) => {
       Object.assign(editing.widgetlar.find((w) => w.id === def.id), patch);
       renderOverview(true, `[data-widget="${def.id}"] [data-tool="${tool}"]`);
     };
+    const arrow = (step, icon, word) => h("button", { type: "button", "data-move": String(step), "aria-label": `${def.ad}: ${word}`,
+      disabled: !widgetStep(order, def.id, step), onclick: () => moveWidget(def.id, step) }, svg(icon));
     return h("div", { class: "widget-tools", role: "group", "aria-label": def.ad + " düzeni" },
+      h("span", { class: "tile-move" }, arrow(-1, "chevl", "öne taşı"), arrow(1, "chev", "geriye taşı")),
+      // A narrow 1×1 card keeps only the eye; the word stays as the tooltip.
       h("button", { type: "button", class: "btn btn-sm btn-quiet", "data-tool": "gizle", "aria-label": `${def.ad}: ${set.gizli ? "göster" : "gizle"}`,
-        onclick: () => change({ gizli: !set.gizli }, "gizle") }, svg("eye"), set.gizli ? "Göster" : "Gizle"));
+        title: set.gizli ? "Göster" : "Gizle", onclick: () => change({ gizli: !set.gizli }, "gizle") },
+        svg("eye"), h("span", { class: "wt-label" }, set.gizli ? "Göster" : "Gizle")));
+  }
+  function moveWidget(id, step) {
+    const order = editing && widgetStep(widgetOrder(), id, step);
+    if (!order) return;
+    editing.widgetlar = order.map((key) => editing.widgetlar.find((w) => w.id === key));
+    renderOverview(true, `[data-widget="${id}"] [data-move="${step}"]`);
   }
   function overviewWidgets() {
-    return WIDGETS.filter((w) => editing || !widgetSetting(w.id).gizli).map((def) => {
-      const set = widgetSetting(def.id);
+    const order = widgetOrder();
+    return order.filter((id) => editing || !widgetSetting(id).gizli).map((id) => {
+      const def = WIDGETS.find((w) => w.id === id), set = widgetSetting(id);
       const el = h("article", { class: "card widget" + (set.gizli ? " is-hidden" : ""), "aria-label": def.label, "data-widget": def.id,
         "data-span": String(set.genislik), "data-boy": def.boy }, ...widgetContent(def.id));
-      if (editing) el.append(widgetTools(def, set));
+      if (editing) el.append(widgetTools(def, set, order));
       return el;
     });
   }
@@ -2269,13 +2318,13 @@
   /* -- düzenleme modu -- */
   function sameAsDefault(draft) {
     const keys = tileDefs().map((d) => d.key), order = orderedTiles().map((d) => d.key);
-    return order.join() === keys.join() && WIDGETS.every((w) => {
+    return order.join() === keys.join() && draft.widgetlar.map((w) => w.id).join() === WIDGETS.map((w) => w.id).join() && WIDGETS.every((w) => {
       const own = draft.widgetlar.find((x) => x.id === w.id);
       return own && own.genislik === w.genislik && !own.gizli;
     });
   }
   function startEdit() {
-    const draft = { kareler: orderedTiles().map((d) => d.key), widgetlar: WIDGETS.map((w) => ({ id: w.id, ...widgetSetting(w.id) })) };
+    const draft = { kareler: orderedTiles().map((d) => d.key), widgetlar: widgetOrder().map((id) => ({ id, ...widgetSetting(id) })) };
     editing = draft;
     renderOverview(true, "#genel-bitti");
   }
@@ -2306,7 +2355,7 @@
     if (!bar) return;
     bar.classList.toggle("editing", !!editing);
     bar.replaceChildren(...(editing ? [
-      h("span", { class: "edit-hint" }, "Kareleri sürükleyin ya da oklarla taşıyın"),
+      h("span", { class: "edit-hint" }, "Kareleri sürükleyin; kareleri ve widget'ları oklarla taşıyın"),
       h("button", { type: "button", class: "btn btn-sm btn-quiet", id: "genel-varsayilan", onclick: resetDraft }, "Varsayılan"),
       h("button", { type: "button", class: "btn btn-sm btn-quiet", id: "genel-vazgec", onclick: cancelEdit }, "Vazgeç"),
       h("button", { type: "button", class: "btn btn-sm btn-primary", id: "genel-bitti", onclick: finishEdit }, "Bitti"),
@@ -2320,7 +2369,9 @@
     if (!layoutLoaded) { widgets.replaceChildren(); tiles.replaceChildren(); paintEditBar(); return; }
     const oldApps = $("ag-apps"), appScroll = oldApps?.scrollTop || 0;
     const appFocused = !focus && oldApps && document.activeElement === oldApps;
-    widgets.replaceChildren(...overviewWidgets());
+    // DD-242: the cards sit in one block over the first two tile columns.
+    const cards = overviewWidgets();
+    widgets.replaceChildren(...(cards.length ? [h("div", { class: "widget-block" }, ...cards)] : []));
     const newApps = $("ag-apps");
     if (newApps) {
       newApps.scrollTop = appScroll;
