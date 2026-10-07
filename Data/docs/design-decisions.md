@@ -13,6 +13,35 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-236: Files navigates like a file manager: a fixed window, only the contents change (v2-218)
+
+- **Request (user, 2026-10-07):** "her klasör tıklamada sayfa yeniden oluşturuyor gibi … pencere ve menü
+  davranışını sabit olarak sabitleyelim. klasör tıklamada sadece klasör layout kısmı güncellensin, gerçek
+  bir dosya yöneticisi davranışını taklit edelim", after a technical review was approved.
+- **Cause:** opening a folder set the listing to null and rebuilt the whole window twice (toolbar,
+  search, archive strip, places column, detail), showed "Yükleniyor…" in between and scrolled the
+  whole page. v2-216 (held height) and v2-217 (`scrollbar-gutter`) only hid the symptoms.
+- **Frame built once:** `renderFs()` builds the toolbar, archive strip and contents box once per tree
+  (`/srv` or "Sistem (/)") and afterwards repaints in place: `paintBar()` updates back/forward/up, the
+  crumbs, the search text, the view switch and the count; the places column is rebuilt only when its
+  entries change, otherwise only the mark moves. The v2-216 held height is gone.
+- **Loading:** the listing on screen stays, inert and dimmed after 120 ms, with a thin bar under the
+  toolbar; the new path shows at once. Answers for a folder no longer wanted are dropped (token). A
+  folder that cannot be opened leaves you where you were (it used to jump to the root).
+- **History and cache:** back/forward (buttons, Alt+←/→) within a tree; each folder's scroll is kept
+  and restored on back/forward, a new folder starts at its top. The last 20 listings are kept for a
+  minute: a cached folder shows at once and is read again behind the scenes; any change (refresh
+  after an operation) drops the cache. Switching tree clears history and cache use.
+- **Fixed window:** from 1101 px the window has the viewport's height (`fitFs`, CSS `--fx-h`, at
+  least 460 px) and the page does not scroll; the contents, the places/detail column and the trash
+  or share lists scroll inside it. Phones and narrow windows keep the page scroll.
+- **Quiet polling:** an unchanged share list repaints nothing; the 10-second state poll only touches
+  counts. Tiles keep their DOM node, focus and hover.
+- **Keyboard (contents focused):** arrows move the selection (Shift extends), Enter or Ctrl/⌘+↓
+  opens, Backspace or Ctrl/⌘+↑ goes up, Ctrl/⌘+A selects all that may be selected.
+- **Not done:** the folder path is not in the browser address (a reload starts at the tree's root);
+  that needs the router to treat a Files sub-path as navigation, a separate step.
+
 ### DD-235: Files' "Sistem (/)" view: the whole server as root, tailnet only (v2-214)
 
 - **Request (user, 2026-10-06):** see the whole server in Files as root, read and write, over

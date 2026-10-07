@@ -223,3 +223,36 @@
 .fx-nav .rl-ico.t-sys { color:var(--danger); }
 .offbar.sysbar { border-color:var(--danger); background:var(--danger-soft); }
 .offbar.sysbar strong { color:var(--danger); }
+
+/* ---- DD-236: a file manager's window. On a desktop-width screen it has the viewport's height (fitFs) and
+   only its parts scroll: the contents, the places/detail column, the trash and share lists. ---- */
+.fx-fixed .main { padding-bottom:20px; }
+@media(min-width:1101px) {
+  .fx-fixed .fx { height:var(--fx-h, auto); min-height:0; }
+  .fx-fixed .fx-main { min-height:0; }
+  .fx-fixed .fx-main .fs-body { flex:1; min-height:0; }
+  .fx-fixed .fx[data-fs="files"] .fs-body { overflow:hidden; }
+  .fx-fixed .fx-rows { overflow:auto; overscroll-behavior:contain; }
+  .fx-fixed .fx[data-fs="trash"] .fs-body, .fx-fixed .fx[data-fs="shares"] .fs-body { overflow:auto; overscroll-behavior:contain; }
+  .fx-fixed .fx-side { overflow:auto; overscroll-behavior:contain; }
+}
+.fx-rows:focus { outline:none; }
+.fx-wait { padding:18px; }
+/* Opening a folder: the listing stays and dims after a short delay; a thin bar runs under the toolbar. */
+.fx-main #fs-bar .pathfield { position:relative; }
+.fx-progress { position:absolute; left:0; right:0; bottom:-1px; height:2px; overflow:hidden; opacity:0; pointer-events:none; transition:opacity .1s; }
+.fx-progress::after { content:""; position:absolute; top:0; bottom:0; width:30%; background:var(--accent); animation:fx-run 1s ease-in-out infinite; }
+@keyframes fx-run { from { left:-30%; } to { left:100%; } }
+.fx-rows, .fx-detail { transition:opacity .1s; }
+.fx-loading .fx-progress { opacity:1; transition-delay:.12s; }
+.fx-loading .fx-rows, .fx-loading .fx-detail { opacity:.55; transition-delay:.12s; }
+/* One toolbar line on a desktop-width screen: a long path scrolls inside the crumbs (its end in view). */
+@media(min-width:1101px) {
+  [data-view="dosyalar"] .fx #fs-bar .pathfield { flex-wrap:nowrap; }
+  .fx .pf-crumbs { flex:1 1 0; overflow:hidden; }
+  .fx .pf-crumbs .crumbs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .fx .pf-crumbs .crumbs li { flex:none; max-width:none; }
+  .fx .pf-crumbs .crumb { white-space:nowrap; overflow-wrap:normal; }
+  [data-view="dosyalar"] .fx #fs-bar .fs-search { flex:0 1 13rem; min-width:7rem; }
+}
+.fx-rows:focus-visible { box-shadow:none; }

@@ -904,6 +904,11 @@ Contract in §5–§7 and `folder-shares.md`.
   `/api/state.protected`, **DD-203**) and says which application writes there.
   Since DD-178 new qBittorrent profiles do not enable separate temporary
   storage; the declared folder is a reserved default, not an enabled setting.
+- **Navigation (DD-236).** Opening a folder repaints only the contents, the path, the count, the
+  places mark and the detail; the window's frame is built once per tree. The listing on screen stays
+  (inert) until the next arrives; a failed open stays in place; back/forward keep each folder's
+  scroll; a one-minute cache of 20 listings is always re-read. On screens of at least 1101 px the
+  window has the viewport's height and only its parts scroll.
 - **"Sistem (/)" (DD-235).** A separate unit, `master-sistem-dosya.service`, runs the same
   backend with `--sistem --root /` **as root**, for the whole server. The `/srv` view above is
   unchanged and still never runs as root.

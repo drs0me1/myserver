@@ -193,6 +193,8 @@
     const previous = S.share;
     return api("/api/konsol/paylasim").then((s) => {
       if (S.share !== previous || sharesPage.interacting()) return;
+      // DD-236: an unchanged answer repaints nothing (the Files window keeps its focus and hover).
+      if (previous && JSON.stringify(previous) === JSON.stringify(s)) return;
       S.share = s; if (current === "dosyalar") renderFs();
     })
       .catch((e) => { if (S.share === previous && !sharesPage.interacting()) { S.share = null; fail(e); } });
@@ -439,6 +441,14 @@
   /* DD-235: "Sistem (/)": the same page over the root backend's system view (/api/sistem/*). No trash,
      archives or shares there; delete is permanent and asks for the item's name. */
   let fsSys = false;
+  /* DD-236: a real file manager's navigation. The window's frame (bar, places, detail) is built once; opening a
+     folder swaps only its contents. The listing on screen stays (dimmed, inert) until the next one arrives, a
+     failed open stays where it was, back/forward keep each folder's scroll, and recent folders show at once
+     from a short cache while they are read again. */
+  let fsNav = 0, fsBusy = false, fsShownPath = null, fsBack = [], fsFwd = [];
+  const fsScrolls = new Map(), fsCache = new Map(), FS_CACHE_MS = 60000, FS_CACHE_MAX = 20;
+  const fsKey = (sys, parts) => (sys ? "s:" : "f:") + parts.join("/");
+  const FX_WIDE = window.matchMedia("(min-width: 1101px)");
   const fsApi = (p) => (fsSys ? "/api/sistem" + p.slice(4) : p);
   const fsState = () => (fsSys ? S.sysfs : S.fs);
   /* DD-144: kök kullanıcı alanı (/srv); adı arka uçtan gelir, hiçbir yerde sabit yazılmaz. */
@@ -467,16 +477,55 @@
   const stackArt = (count) => svgFrom(`<svg class="fx-art fx-stack" viewBox="0 0 72 76" aria-hidden="true"><path class="page2" d="M22 4h24l12 12v44a4 4 0 0 1-4 4H22a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4z"/><path class="page" d="M12 14h24l12 12v42a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4z"/><path class="fold" d="M36 14v8a4 4 0 0 0 4 4h8"/><circle class="badge" cx="50" cy="62" r="11"/><text x="50" y="66.5" text-anchor="middle">${Math.min(count, 99)}</text></svg>`);
   const itemArt = (item) => (item.type === "dir" ? folderArt() : docArt(item.name));
 
-  function loadFs() {
-    const sys = fsSys, at = pathText(fsPath);
+  function applyList(r, scroll) {
+    fsList = r;
+    fsShownPath = fsPath.slice();
+    fsSel.forEach((n) => { if (!r.entries.some((e) => e.name === n)) fsSel.delete(n); });
+    if (!fsPath.length) fsRootDirs = r.entries.filter((e) => e.type === "dir").map((e) => ({ name: e.name, count: e.count }));
+    setFsLoading(false);
+    renderFs();
+    const box = $("fs-rows");
+    if (box && scroll != null) box.scrollTop = scroll;
+    // The opened tile is gone; keep the keyboard in the contents instead of the page.
+    if (box && current === "dosyalar" && (document.activeElement === document.body || !document.activeElement)) box.focus({ preventScroll: true });
+    if (fsRootDirs == null) loadRootDirs();
+  }
+  // nav: undefined refreshes the folder on screen in place (after a change; the cache is dropped);
+  // {restore, push} opens fsPath: from the cache at once when recent, otherwise over the dimmed old listing.
+  function loadFs(nav) {
+    const sys = fsSys, parts = fsPath.slice(), at = pathText(parts), key = fsKey(sys, parts), token = ++fsNav;
+    if (!nav) fsCache.clear();
+    const hit = nav && fsCache.get(key), cached = hit && Date.now() - hit.at < FS_CACHE_MS ? hit.list : null;
+    const scroll = nav ? (nav.restore ? fsScrolls.get(key) || 0 : 0) : null;
+    if (cached) applyList(cached, scroll); else if (nav) setFsLoading(true);
+    fsBusy = true;
     return api(fsApi(`/api/list?path=${enc(at)}`)).then((r) => {
-      if (sys !== fsSys || at !== pathText(fsPath)) return; // DD-235: the view changed meanwhile
-      fsList = r;
-      fsSel.forEach((n) => { if (!r.entries.some((e) => e.name === n)) fsSel.delete(n); });
-      if (!fsPath.length) fsRootDirs = r.entries.filter((e) => e.type === "dir").map((e) => ({ name: e.name, count: e.count }));
-      renderFs();
-      if (fsRootDirs == null) loadRootDirs();
-    }).catch((e) => { fail(e); if (fsPath.length) { fsPath = []; loadFs(); } else if (fsSys) fsOpen([], false); });
+      if (token !== fsNav || sys !== fsSys || at !== pathText(fsPath)) return;
+      fsCache.delete(key);
+      fsCache.set(key, { list: r, at: Date.now() });
+      while (fsCache.size > FS_CACHE_MAX) fsCache.delete(fsCache.keys().next().value);
+      if (cached && JSON.stringify(cached) === JSON.stringify(r)) return;
+      applyList(r, cached ? null : scroll);
+    }).catch((e) => {
+      if (token !== fsNav) return;
+      setFsLoading(false);
+      fail(e);
+      // A folder that cannot be opened leaves you where you were, like any file manager.
+      if (nav && fsList && fsShownPath && pathText(fsShownPath) !== pathText(fsPath)) {
+        fsPath = fsShownPath.slice();
+        if (nav.push) fsBack.pop();
+        renderFs();
+        return;
+      }
+      if (fsPath.length) { fsPath = []; loadFs({}); } else if (fsSys) fsOpen([], false);
+    }).finally(() => { if (token === fsNav) fsBusy = false; });
+  }
+  function setFsLoading(on) {
+    const panel = $("fs-panel");
+    if (!panel) return;
+    panel.classList.toggle("fx-loading", on);
+    for (const id of ["fs-rows", "fs-detail"]) { const el = $(id); if (el) el.inert = on; }
+    if (on) paintBar();
   }
   /* Alt klasörden açılan sayfada da kısayol sütunu dolsun. */
   function loadRootDirs() {
@@ -490,17 +539,28 @@
   function loadTrash() {
     return api("/api/trash").then((r) => { fsTrash = r.items || []; renderFs(); }).catch(fail);
   }
-  function fsGo(parts) {
+  // how: "push" (a new place: history grows), "back"/"fwd" (history moves, the folder's scroll comes back).
+  function fsGo(parts, how = "push") {
+    const same = pathText(parts) === pathText(fsPath), box = $("fs-rows");
+    if (box && fsShownPath) fsScrolls.set(fsKey(fsSys, fsShownPath), box.scrollTop);
+    const push = how === "push" && !same && !!fsShownPath;
+    if (push) { fsBack.push(fsPath.slice()); if (fsBack.length > 50) fsBack.shift(); fsFwd = []; }
     fsPath = parts;
     fsAdding = false;
     fsRename = null;
-    fsList = null;
     fsSel.clear();
     fsQuery = "";
-    renderFs();
-    // A folder opens at its top; the held height (renderFs) no longer pulls the page up by itself (v2-217).
-    if (current === "dosyalar") window.scrollTo({ top: 0 });
-    loadFs();
+    // Phones scroll the page; the desktop window scrolls only its contents (DD-236).
+    if (current === "dosyalar" && !FX_WIDE.matches) window.scrollTo({ top: 0 });
+    paintBar();
+    renderRail();
+    return loadFs({ restore: how !== "push", push });
+  }
+  function fsHistory(dir) {
+    const from = dir < 0 ? fsBack : fsFwd, to = dir < 0 ? fsFwd : fsBack;
+    if (!from.length || !fsShownPath) return;
+    to.push(fsPath.slice());
+    fsGo(from.pop(), dir < 0 ? "back" : "fwd");
   }
   const fsHash = (v) => (v === "trash" ? "#/dosyalar/cop" : v === "shares" ? "#/dosyalar/paylasim" : fsSys ? "#/dosyalar/sistem" : "#/dosyalar");
   function fsSetView(v) {
@@ -509,7 +569,7 @@
     renderFs();
     if (v === "trash") loadTrash();
     else if (v === "shares") loadShares();
-    else if (v === "files" && !fsList) loadFs();
+    else if (v === "files" && !fsList && !fsBusy) loadFs();
   }
 
   /* ---- sağ menü (DD-232): Favoriler (kök ve kök klasörleri), Konumlar (Paylaşımlar, Çöp), disk ---- */
@@ -524,7 +584,7 @@
     if (!rail) return;
     const files = fsView === "files", trash = S.fs && S.fs.trash ? S.fs.trash.count : null;
     const shares = S.share && Array.isArray(S.share.items) ? S.share.items.length : null;
-    rail.replaceChildren(
+    const specs = [
       h("p", { class: "fx-group" }, "Favoriler"),
       railBtn({ cur: files && !fsSys && !fsPath.length, icon: "server", tone: "t-dir", title: "Sunucu", count: (S.fs && S.fs.root) || "/srv", onclick: () => fsOpen([], false) }),
       ...(!fsSys && fsRootDirs || []).map((d) => railBtn({ cur: files && fsPath[0] === d.name, icon: "folder", tone: "t-dir",
@@ -534,7 +594,14 @@
         title: d.name, onclick: () => fsOpen([d.name]) })),
       h("p", { class: "fx-group" }, "Konumlar"),
       railBtn({ cur: fsView === "shares", icon: "share", tone: "t-dir", title: "Paylaşımlar", count: shares || null, onclick: () => fsSetView("shares") }),
-      railBtn({ cur: fsView === "trash", icon: "trash", tone: "t-dir", title: "Çöp", count: trash || null, onclick: () => fsSetView("trash") }));
+      railBtn({ cur: fsView === "trash", icon: "trash", tone: "t-dir", title: "Çöp", count: trash || null, onclick: () => fsSetView("trash") })].filter(Boolean);
+    // DD-236: the places column is rebuilt only when its entries change; otherwise only the mark moves.
+    const sig = specs.map((e) => e.textContent + "|" + (e.querySelector(".rl-ico") || {}).className).join("\n");
+    if (rail.dataset.sig !== sig || rail.children.length !== specs.length) { rail.dataset.sig = sig; rail.replaceChildren(...specs); }
+    else specs.forEach((e, i) => {
+      const b = rail.children[i], cur = e.classList.contains("cur");
+      if (b.classList.contains("cur") !== cur) { b.classList.toggle("cur", cur); b.setAttribute("aria-current", cur ? "true" : "false"); }
+    });
     const disk = $("fs-disk"), d = fsState() && fsState().disk;
     if (disk) {
       const known = d && d.total > 0, pct = known ? Math.round(100 * (d.total - d.free) / d.total) : 0;
@@ -544,7 +611,8 @@
     }
   }
   function fsOpen(parts, sys = fsSys) {
-    if (sys !== fsSys) { fsSys = sys; fsRootDirs = null; }
+    // Another tree (Sunucu ↔ Sistem): nothing of the old one stays on screen or in history.
+    if (sys !== fsSys) { fsSys = sys; fsRootDirs = null; fsList = null; fsShownPath = null; fsBack = []; fsFwd = []; }
     if (fsView !== "files" || location.hash !== fsHash("files")) { fsView = "files"; location.hash = fsHash("files"); }
     fsGo(parts);
   }
@@ -589,66 +657,123 @@
   }
 
   function renderFs() {
-    // While a folder loads the window keeps its height: it used to shrink for a moment, the page's scroll bar
-    // vanished and the whole page jumped sideways and back (v2-216). A hidden page (height 0) holds nothing.
-    const panel = $("fs-panel"), tall = panel.getBoundingClientRect().height;
-    panel.style.minHeight = fsView === "files" && !fsList && tall ? `${tall}px` : "";
     renderRail();
-    const body = $("fs-body");
-    body.textContent = "";
+    const panel = $("fs-panel"), body = $("fs-body");
     panel.dataset.fs = fsView;
-    if (fsView === "trash") { body.append(h("h2", { class: "fx-title" }, "Çöp")); renderTrashList(body); renderDetail(); return; }
-    if (fsView === "shares") { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); renderDetail(); return; }
-    if (!fsList) { body.append(h("p", { class: "hint-s" }, "Yükleniyor…")); renderDetail(); return; }
-    // DD-183: a running archive job shows here (progress, cancel); results go to Günlük.
-    const archiveBar = h("div", { id: "archive-bar", class: "archive-bars", hidden: true });
-    body.append(h("div", { id: "fs-bar" }), archiveBar, h("div", { id: "fs-rows", class: "fx-rows " + fsLayout }));
-    if (!fsSys) archiveTools.mount(archiveBar);
-    initDrop();
-    renderBar();
+    if (fsView !== "files") {
+      body.dataset.mode = fsView;
+      body.textContent = "";
+      if (fsView === "trash") { body.append(h("h2", { class: "fx-title" }, "Çöp")); renderTrashList(body); }
+      else { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); }
+      renderDetail();
+      return;
+    }
+    // DD-236: the bar, the archive strip and the contents box are built once per tree; later calls repaint them.
+    const mode = fsSys ? "sys" : "files";
+    if (body.dataset.mode !== mode || !$("fs-rows")) {
+      body.dataset.mode = mode;
+      // DD-183: a running archive job shows here (progress, cancel); results go to Günlük.
+      const archiveBar = h("div", { id: "archive-bar", class: "archive-bars", hidden: true });
+      body.replaceChildren(h("div", { id: "fs-bar" }), archiveBar,
+        h("div", { id: "fs-rows", class: "fx-rows " + fsLayout, tabindex: "-1", "aria-label": "Klasör içeriği", onkeydown: fsKeys }));
+      if (!fsSys) archiveTools.mount(archiveBar);
+      initDrop();
+      buildBar();
+    }
+    paintBar();
+    if (!fsList) { $("fs-rows").replaceChildren(h("p", { class: "hint-s fx-wait" }, "Yükleniyor…")); renderDetail(); return; }
     renderRows();
     renderDetail();
   }
 
-  function renderBar() {
-    const bar = $("fs-bar");
-    if (!bar) return;
-    const shown = fsShown();
-    const crumbs = h("ol", { class: "crumbs" },
-      h("li", null, h("button", { type: "button", class: "crumb root" + (fsPath.length ? "" : " cur"), onclick: () => fsGo([]) }, fsRoot())),
-      ...fsPath.map((part, i) => h("li", null, h("button", { type: "button", class: "crumb" + (i === fsPath.length - 1 ? " cur" : ""),
-        onclick: () => fsGo(fsPath.slice(0, i + 1)) }, part))));
-    const sum = shown.reduce((tot, e) => tot + (e.size || 0), 0);
+  function buildBar() {
     const picker = h("input", { type: "file", id: "fs-file", multiple: true, class: "vis-hidden",
       onchange: (e) => { uploadFiles(e.target.files); e.target.value = ""; } });
-    bar.replaceChildren(h("div", { class: "pathfield" },
-      h("button", { type: "button", class: "pf-btn", title: "Üst klasör", "aria-label": "Üst klasör", disabled: !fsPath.length, onclick: () => fsGo(fsPath.slice(0, -1)) }, svg("up")),
-      h("button", { type: "button", class: "pf-btn", title: "Sunucu kökü", "aria-label": "Sunucu kökü", disabled: !fsPath.length, onclick: () => fsGo([]) }, svg("home")),
+    const nav = (id, label, icon, fn) => h("button", { type: "button", class: "pf-btn", id, title: label, "aria-label": label, onclick: fn }, svg(icon));
+    $("fs-bar").replaceChildren(h("div", { class: "pathfield" },
+      nav("fs-back", "Geri", "chevl", () => fsHistory(-1)),
+      nav("fs-fwd", "İleri", "chev", () => fsHistory(1)),
+      nav("fs-up", "Üst klasör", "up", () => fsGo(fsPath.slice(0, -1))),
+      nav("fs-home", "Sunucu kökü", "home", () => fsGo([])),
       h("span", { class: "pf-sep" }),
-      h("nav", { class: "pf-crumbs", "aria-label": "Konum" }, crumbs),
+      h("nav", { class: "pf-crumbs", id: "fs-crumbs", "aria-label": "Konum" }),
       h("span", { class: "fs-search" }, svg("search"),
-        h("input", { type: "search", id: "fs-q", value: fsQuery, placeholder: "Bu klasörde ara", "aria-label": "Bu klasörde ara",
+        h("input", { type: "search", id: "fs-q", placeholder: "Bu klasörde ara", "aria-label": "Bu klasörde ara",
           autocomplete: "off", spellcheck: "false",
           oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); updateMeta(); },
           onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDetail(); updateMeta(); } } })),
       h("span", { class: "fx-views", role: "group", "aria-label": "Görünüm" }, ...[["grid", "Simgeler", "grid"], ["list", "Liste", "list"]].map(([id, label, icon]) =>
-        h("button", { type: "button", class: "pf-btn", "aria-pressed": fsLayout === id ? "true" : "false", "aria-label": label, title: label, onclick: () => {
+        h("button", { type: "button", class: "pf-btn", "data-layout": id, "aria-pressed": "false", "aria-label": label, title: label, onclick: () => {
           fsLayout = id; try { localStorage.setItem("konsol-files-view", id); } catch (e) { /* özel pencere */ }
-          $("fs-rows").className = "fx-rows " + fsLayout; renderBar(); renderRows();
+          $("fs-rows").className = "fx-rows " + fsLayout; paintBar(); renderRows();
         } }, svg(icon)))),
       picker,
       h("button", { type: "button", class: "btn btn-sm", onclick: () => $("fs-file").click() }, svg("upload"), "Yükle"),
       h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör", onclick: startNewFolder }, svg("plus")),
-      h("span", { class: "pf-meta", id: "fs-meta" }, `${shown.length} öge · ${bytes(sum)}`)));
+      h("span", { class: "pf-meta", id: "fs-meta" }),
+      h("span", { class: "fx-progress", "aria-hidden": "true" })));
+  }
+  // Repaints the bar in place: history and up buttons, the path, the search text, the view switch, the count.
+  function paintBar() {
+    if (!$("fs-crumbs")) return;
+    $("fs-back").disabled = !fsBack.length;
+    $("fs-fwd").disabled = !fsFwd.length;
+    $("fs-up").disabled = $("fs-home").disabled = !fsPath.length;
+    $("fs-crumbs").replaceChildren(h("ol", { class: "crumbs" },
+      h("li", null, h("button", { type: "button", class: "crumb root" + (fsPath.length ? "" : " cur"), onclick: () => fsGo([]) }, fsRoot())),
+      ...fsPath.map((part, i) => h("li", null, h("button", { type: "button", class: "crumb" + (i === fsPath.length - 1 ? " cur" : ""),
+        onclick: () => fsGo(fsPath.slice(0, i + 1)) }, part)))));
+    const ol = $("fs-crumbs").firstChild;
+    ol.scrollLeft = ol.scrollWidth;
+    const q = $("fs-q");
+    if (q.value !== fsQuery) q.value = fsQuery;
+    document.querySelectorAll("#fs-bar [data-layout]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.layout === fsLayout ? "true" : "false"));
+    updateMeta();
   }
   function startNewFolder() { fsAdding = true; renderRows(); const i = $("nf-name"); if (i) i.focus(); }
   function updateMeta() {
     const meta = $("fs-meta");
     if (!meta) return;
+    if (!fsList || $("fs-panel").classList.contains("fx-loading")) { meta.textContent = "Yükleniyor…"; return; }
     const shown = fsShown();
     meta.textContent = fsQuery.trim()
       ? `${shown.length} sonuç`
       : `${shown.length} öge · ${bytes(shown.reduce((tot, e) => tot + (e.size || 0), 0))}`;
+  }
+
+  /* DD-236: keyboard like a file manager, while the contents have the focus: arrows move the selection
+     (Shift extends it), Enter or Ctrl/⌘+↓ opens, Backspace or Ctrl/⌘+↑ goes up, Alt+←/→ back and forward,
+     Ctrl/⌘+A selects everything that may be selected. */
+  function fsKeys(e) {
+    if (e.target.closest("input, textarea, select") || !fsList || $("fs-panel").classList.contains("fx-loading")) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { e.preventDefault(); fsHistory(e.key === "ArrowLeft" ? -1 : 1); return; }
+    if (e.key === "Backspace" || (mod && e.key === "ArrowUp")) { if (fsPath.length) { e.preventDefault(); fsGo(fsPath.slice(0, -1)); } return; }
+    if (mod && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      fsSel = new Set(fsShown().map((x) => x.name).filter((n) => !inTemp(pathText(fsPath.concat(n)))));
+      renderRows(); renderDetail();
+      return;
+    }
+    if (e.key === "Enter" || (mod && e.key === "ArrowDown")) {
+      const one = selItems();
+      if (one.length === 1) { e.preventDefault(); openItem(one[0]); }
+      return;
+    }
+    const grid = fsLayout === "grid", table = $("fs-table");
+    const cols = grid && table ? getComputedStyle(table).gridTemplateColumns.split(" ").length : 1;
+    const step = { ArrowLeft: grid ? -1 : 0, ArrowRight: grid ? 1 : 0, ArrowUp: -cols, ArrowDown: cols }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const names = fsShown().map((x) => x.name);
+    if (!names.length) return;
+    const at = fsSel.has(fsLast) ? names.indexOf(fsLast) : -1;
+    const next = names[at < 0 ? 0 : Math.max(0, Math.min(names.length - 1, at + step))];
+    if (e.shiftKey && at >= 0) fsSel.add(next); else fsSel = new Set([next]);
+    fsLast = next;
+    renderRows(); renderDetail();
+    const el = document.querySelector(`#fs-rows [data-item="${CSS.escape(next)}"]`);
+    if (el) { (el.matches("button") ? el : el.querySelector("button.fname") || el).focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); }
   }
 
   function renderRows() {
@@ -864,7 +989,7 @@
     const on = fsSel.has(item.name);
     // Bir paketin yazdığı klasör seçilmez, paylaşılmaz: süren indirme bozulmasın.
     const locked = inTemp(here) || inTemp(pathText(fsPath));
-    return h("div", { class: "tr" + (on ? " on" : "") + (on && fsSel.size === 1 ? " focused" : "") },
+    return h("div", { class: "tr" + (on ? " on" : "") + (on && fsSel.size === 1 ? " focused" : ""), "data-item": item.name },
       h("span", { class: "c-sel" },
         locked ? null : h("button", { type: "button", class: "chk" + (on ? " on" : ""), role: "checkbox", "aria-checked": on ? "true" : "false",
           "aria-label": `${item.name} seç`, onclick: (e) => toggleSel(item.name, e.shiftKey) }, on ? svg("check") : null)),
@@ -2139,7 +2264,7 @@
     genel: { title: "Ana Menü", eyebrow: "", actions: () => [],
       render: () => { renderOverview(); loadLayout(); loadNetwork(); if (!(MODS || []).some((m) => m.busy)) loadModules(); } },
     dosyalar: { title: "Dosyalar", eyebrow: "Sunucu alanı", actions: () => [],
-      render: () => { renderFs(); loadSysState(); if (fsView === "trash") loadTrash(); else if (fsView === "shares") loadShares(); else if (fsView === "files") { loadShares(); if (!fsList) loadFs(); } } },
+      render: () => { renderFs(); loadSysState(); if (fsView === "trash") loadTrash(); else if (fsView === "shares") loadShares(); else if (fsView === "files") { loadShares(); if (!fsList && !fsBusy) loadFs(); } } },
     moduller: { title: "App Store", eyebrow: "", actions: () => [h("span", {class:"hm", id:"mod-sum"}, "Okunuyor…")], render: () => { renderModules(); loadModules(); } },
     // #/konteynerler[/AD]: liste ya da bir konteynerin ayrıntısı (ad URL'de kodlu).
     konteynerler: { title: (sub) => containers.title(sub), eyebrow: (sub) => containers.eyebrow(sub), actions: (sub) => containers.actions(sub),
@@ -2244,6 +2369,21 @@
     $("eyebrow").hidden = !hd.eyebrow;
     $("top-actions").replaceChildren(...hd.actions);
   }
+  /* DD-236: on a desktop-width screen Files is a window of the viewport's height: the page itself does not
+     scroll, only the contents, the places/detail column and the trash or share lists inside it. Phones keep
+     the page scroll. Below ~460 px of room the window keeps that height and the page scrolls again. */
+  function fitFs() {
+    const panel = $("fs-panel"), on = current === "dosyalar" && FX_WIDE.matches;
+    document.documentElement.classList.toggle("fx-fixed", on);
+    if (!panel || !on) { panel?.style.removeProperty("--fx-h"); return; }
+    const top = panel.getBoundingClientRect().top + window.scrollY;
+    const pad = parseFloat(getComputedStyle($("main-content")).paddingBottom) || 0;
+    panel.style.setProperty("--fx-h", `${Math.max(460, Math.floor(window.innerHeight - top - pad))}px`);
+  }
+  let fitQueued = false;
+  const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitFs(); }); };
+  window.addEventListener("resize", queueFit);
+  FX_WIDE.addEventListener("change", queueFit);
   function route() {
     let raw = location.hash.replace(/^#\/?/, "").split("/");
     // Eski Ayarlar → Konteynerler bağlantıları (#/ayarlar/konteynerler[/AD]) yeni sayfaya yönlenir.
@@ -2265,7 +2405,7 @@
       fsView = raw[1] === "cop" ? "trash" : raw[1] === "paylasim" ? "shares" : "files";
       // DD-235: #/dosyalar/sistem is the system view; switching views starts at its root.
       if (fsView === "files" && (raw[1] === "sistem") !== fsSys) {
-        fsSys = raw[1] === "sistem"; fsPath = []; fsList = null; fsRootDirs = null; fsSel.clear(); fsQuery = "";
+        fsSys = raw[1] === "sistem"; fsPath = []; fsList = null; fsShownPath = null; fsBack = []; fsFwd = []; fsRootDirs = null; fsSel.clear(); fsQuery = "";
       }
     }
     if (key === "ayarlar") settingsTab = ["fw","web","dns","log"].includes(raw[1]) ? raw[1] : "system";
@@ -2285,6 +2425,7 @@
     const r = ROUTES[key] || (PAGES[key] && PAGES[key].page);
     if (r && r.render) r.render(raw[1]);
     window.scrollTo({ top: 0 });
+    fitFs();
   }
   window.addEventListener("hashchange", route);
   document.addEventListener("click", (e) => {

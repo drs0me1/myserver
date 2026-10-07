@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files behaves like a file manager (v2-218)
+
+- Opening a folder changes only the folder's contents. The toolbar, search box, places column and
+  menus stay as they are; nothing on the page is rebuilt or moves.
+- On a computer the Files window fills the screen's height and only its parts scroll: the contents,
+  the right column, the trash and share lists. Phones keep scrolling the page.
+- While a folder loads, the previous one stays on screen, dimmed, with a thin bar under the toolbar.
+  A folder that cannot be opened keeps you where you were instead of jumping to the top folder.
+- New back/forward buttons; going back returns to the same scroll position. Recently opened folders
+  show at once and are refreshed behind the scenes.
+- Keyboard: arrows select, Enter opens, Backspace goes up, Alt+←/→ back and forward, Ctrl/⌘+A
+  selects all (DD-236).
+
 ### 2026-10-06 — Konsol: the page no longer moves sideways (v2-217)
 
 - Fixed: in Files, double-clicking a folder could still shake the page. The first click selects

@@ -634,23 +634,28 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     const downloads = await page.evaluate(()=>window.requestedDownloads.length);
     await tile("vmlinuz").dblclick();
     assert.equal(await page.evaluate(()=>window.requestedDownloads.length), downloads + 1, "a double-click downloads once");
-    // While a folder loads the window keeps its height: it used to shrink, drop the page's scroll bar and
-    // shake sideways. A double-click on the selected folder opens it once.
-    await page.setViewportSize({width:1440,height:500});  // the content, not the CSS minimum, sizes the window
+    // DD-236: while a folder loads, the listing on screen stays (dimmed, inert) and the window's frame is the
+    // same DOM: nothing shrinks, nothing is rebuilt. A double-click on the selected folder opens it once.
     await select("etc");
     const panelHeight = () => page.locator("#fs-panel").evaluate((p) => p.getBoundingClientRect().height);
     const tall = await panelHeight();
+    await page.evaluate(() => { window.__frame = [document.querySelector("#fs-bar .pathfield"), document.querySelector("#fs-q"), document.querySelector("#fs-rail")]; });
     await select("vmlinuz");  // the double-click below selects etc and then opens it, as a person's does
     let releaseSys; holdSys = new Promise((resolve) => { releaseSys = resolve; });
     await tile("etc").dblclick();
-    await page.locator("#fs-body .hint-s").getByText("Yükleniyor…", {exact:true}).waitFor();
-    assert.equal(await panelHeight(), tall, "the window shrank while the folder loaded");
+    await page.waitForFunction(() => document.querySelector("#fs-panel").classList.contains("fx-loading"));
+    assert.equal(await tile("vmlinuz").count(), 1, "the old listing stays on screen while the folder loads");
+    assert(await page.locator("#fs-rows").evaluate((b) => b.inert), "the old listing is inert while loading");
+    assert.equal(await page.locator("#fs-bar .crumb.cur").innerText(), "etc", "the path changes at once");
+    assert.equal(await page.locator("#fs-meta").innerText(), "Yükleniyor…");
+    assert.equal(await panelHeight(), tall, "the window changed height while the folder loaded");
     holdSys = null; releaseSys();
     await page.waitForFunction(()=>document.querySelector('#fs-table [data-item="hosts"]') || /bulunamadı/.test(document.querySelector("#toast").textContent));
     assert(!sysReads.some(r=>/path=etc(%2F|\/)etc/.test(r)), "a double-click opened the folder twice");
     await tile("hosts").waitFor();
-    assert.equal(await page.locator("#fs-panel").evaluate((p) => p.style.minHeight), "", "the held height outlived the load");
-    await page.setViewportSize({width:1440,height:1000});
+    assert(await page.evaluate(() => window.__frame.every((el, i) => el === [document.querySelector("#fs-bar .pathfield"), document.querySelector("#fs-q"), document.querySelector("#fs-rail")][i])),
+      "opening a folder rebuilt the toolbar, the search box or the places column");
+    assert(!(await page.locator("#fs-panel").evaluate((p) => p.classList.contains("fx-loading"))));
     // The scroll bar's room is always kept, so selecting or opening never moves the page sideways (v2-217).
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter), "stable");
     await select("hosts");
@@ -666,17 +671,15 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.waitForFunction(()=>!document.querySelector('#fs-table [data-item="hosts"]'));
     assert.deepEqual(sysWrites, [{path:"etc", names:["hosts"], confirm:"hosts"}]);
     assert(sysReads.every(r=>r.startsWith("/api/sistem/")) && sysReads.some(r=>r.startsWith("/api/sistem/list?path=etc")));
-    // An opened folder shows from its top although the window keeps its height while it loads (v2-217).
-    await page.setViewportSize({width:1440,height:500});
+    // DD-236: on a desktop-width screen the page itself does not scroll; opening a folder never moves it.
     await select("ssh");
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    assert(await page.evaluate(() => scrollY) > 0, "the page does not scroll at 1440x500");
     holdSys = new Promise((resolve) => { releaseSys = resolve; });
     await page.evaluate(() => document.querySelector('#fs-table [data-item="ssh"]').click());
-    await page.locator("#fs-body .hint-s").getByText("Yükleniyor…", {exact:true}).waitFor();
-    assert.equal(await page.evaluate(() => scrollY), 0, "the folder did not open at its top");
+    await page.waitForFunction(() => document.querySelector("#fs-panel").classList.contains("fx-loading"));
+    assert.equal(await page.evaluate(() => scrollY), 0, "the page moved while the folder loaded");
     holdSys = null; releaseSys();
     await page.locator("#fs-bar .crumb.cur").getByText("ssh", {exact:true}).waitFor();
+    assert.equal(await page.evaluate(() => scrollY), 0);
     await page.setViewportSize({width:1440,height:1000});
     await rail("Sunucu").click();
     await page.locator(".offbar.sysbar").waitFor({state:"detached"});

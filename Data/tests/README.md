@@ -930,7 +930,7 @@ PLAYWRIGHT_MODULE="$(npm root -g)/playwright" node Data/tests/panel-ui.cjs
 ```
 
 The fixture suites (`panel-ui`, `files-ui`, `settings-ui`, `settings-https-ui`, `wireguard-ui`,
-`torrent-ui`, `giris-ui`, `app-install-ui`, `update-ui`) share the same `http.server` on port 8766. `settings-ui.cjs` also covers the
+`torrent-ui`, `giris-ui`, `app-install-ui`, `update-ui`, `files-nav-ui`) share the same `http.server` on port 8766. `settings-ui.cjs` also covers the
 health card and the stuck-rollback discard (DD-182); `panel-ui.cjs` the archive
 bar that replaced the jobs page (DD-183).
 
@@ -1015,3 +1015,11 @@ back-off, forced-check gap, malformed answers), the job state/stage, the start r
 (pinned commit, refused version mismatch, no terminal) and `master-guncelle` with local fixtures.
 `update-ui.cjs` checks the button beside the clock, confirmation, payload, stage, failure, reload,
 internet lock and phone widths with fixtured APIs.
+
+## Files navigation (v2-218, DD-236)
+
+`files-nav-ui.cjs` drives a 60-folder fixture: the fixed window (no page scroll at 1440×900), the
+frame's DOM nodes surviving every open, no layout shift, the contents' scroll reset on open and
+restored on back, the cache shown at once and read again, the dimmed inert old listing while a held
+folder loads, a stale answer dropped, a failed open staying put, a poll that keeps tile nodes, the
+keyboard, the search box, and the page scroll at 1024 and 390 px.

@@ -3920,7 +3920,7 @@ EOF
 
 @test "console includes per-folder accounts as a Files capability" {
     local js="$V2_ROOT/console/konsol.js" dav="$V2_ROOT/console/dosyalar.js"
-    grep -qF 'if (fsView === "shares") { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); renderDetail(); return; }' "$js"
+    grep -qF 'else { body.append(h("h2", { class: "fx-title" }, "Paylaşımlar")); renderShareList(body); }' "$js"
     # DD-183: no archive jobs page; a running job shows as a bar in Files, results go to Günlük.
     run ! grep -qF '"Arşiv işleri"' "$js"
     run ! grep -qF 'location.hash = "#/dosyalar/arsiv"' "$V2_ROOT/console/arsiv.js"
