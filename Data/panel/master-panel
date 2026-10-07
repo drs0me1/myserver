@@ -783,6 +783,24 @@ class Panel:
                     self.health_cache = (0.0, None)  # show the health after the repair, not before it
         return {"calisiyor": running, "rapor": report, "kurulu": bool(env.get("ONARIM_UNIT"))}
 
+    REPAIR_LOG_SPANS = {"72s": "-72h", "7g": "-7d"}
+
+    def repair_log(self, span):
+        """DD-241: master-onar's journal lines (Konsol, SSH, the hourly firewall check's findings) and the
+        address refresh's (boot, nightly, Caddy failures), newest last; bounded lines and bytes."""
+        since = self.REPAIR_LOG_SPANS.get(span)
+        if not since:
+            raise master_update.UpdateError(400, "süre 72s ya da 7g olmalı")
+        try:
+            proc = subprocess.run(["journalctl", "--since", since, "-t", "master-onar", "-t", "refresh-tailnet-config",
+                                   "-o", "short-iso", "--no-pager", "-q", "-n", "3000"],
+                                  capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired) as err:
+            raise master_update.UpdateError(502, "Günlük okunamadı (%s)." % err.__class__.__name__)
+        if proc.returncode != 0:
+            raise master_update.UpdateError(502, "Günlük okunamadı.")
+        return proc.stdout[-524288:].decode("utf-8", "replace")
+
     def repair_start(self, kip):
         env = read_env(self.args.state)
         unit = env.get("ONARIM_UNIT", "")
@@ -800,7 +818,7 @@ class Panel:
                     "--description=Konsol: " + ("denetle ve onar" if kip == "onar" else "denetle")]
             if self.args.state_env:
                 argv.append("--setenv=STATE_FILE=%s" % self.args.state)
-            argv += [tool] + (["--denetle"] if kip == "denetle" else [])
+            argv += [tool, "--kaynak", "konsol"] + (["--denetle"] if kip == "denetle" else [])
             try:
                 proc = subprocess.run(argv, capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
             except (OSError, subprocess.TimeoutExpired) as err:
@@ -2130,6 +2148,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if path == "/api/konsol/duzen":
             self.json(200, {"duzen": self.panel.layout()})
+            return
+        if path == "/api/konsol/onarim/gunluk":
+            try:
+                text = self.panel.repair_log(query.get("sure", ["72s"])[0])
+            except master_update.UpdateError as err:
+                self.error(err.status, str(err))
+                return
+            self.send(200, text.encode("utf-8"), "text/plain; charset=utf-8")
             return
         if path == "/api/konsol/onarim":
             info = self.panel.repair_info()

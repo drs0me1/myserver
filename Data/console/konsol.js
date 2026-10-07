@@ -108,6 +108,10 @@
         if (!res.ok) return res.json().catch(() => ({})).then((j) => { throw new Error(j.error || `HTTP ${res.status}`); });
         return res.blob();
       }
+      if (opts.text) {
+        if (!res.ok) return res.json().catch(() => ({})).then((j) => { throw new Error(j.error || `HTTP ${res.status}`); });
+        return res.text();
+      }
       return res.json().catch(() => ({})).then((j) => {
         if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
         return j;
@@ -1818,6 +1822,19 @@
       h("p", {class:"hint-s"}, hs ? `Son denetim ${hhmm(hs.read_at)} · en çok 30 sn'de bir yenilenir.` : ""),
       repairBox());
   }
+  /* DD-241: the repair log: master-onar's lines (Konsol, SSH, the hourly firewall check's findings) and the
+     address refresh's (boot, nightly 03–04, Caddy failures) for the last 72 hours or the last week. */
+  function openRepairLog(span) {
+    const out = h("pre", { class: "repair-log", id: "repair-log", tabindex: "0" }, "Okunuyor…");
+    const pick = (id, label) => h("button", { type: "button", class: "fchip", "aria-pressed": span === id ? "true" : "false", onclick: () => openRepairLog(id) }, label);
+    shShow("Denetim ve onarım günlüğü", span === "7g" ? "Son 1 hafta" : "Son 72 saat", "text",
+      h("div", { class: "repair-log-tools", role: "group", "aria-label": "Süre" }, pick("72s", "72 saat"), pick("7g", "1 hafta")), out);
+    api("/api/konsol/onarim/gunluk?sure=" + span, { text: true }).then((text) => {
+      if (!out.isConnected) return;
+      out.textContent = text.trim() || "Bu sürede kayıt yok.";
+      out.scrollTop = out.scrollHeight;
+    }).catch((e) => { if (out.isConnected) out.textContent = e.message || String(e); });
+  }
   /* DD-239: "Denetle ve onar" runs master-onar as its own unit; there is no 5-minute background loop.
      Over SSH the same run is: sudo master-onar (only checking: --denetle). */
   const REPAIR_MARK = { ok: ["ok", "✓"], onarildi: ["warn", "↻"], sorun: ["warn", "!"], hata: ["bad", "✗"], atlandi: ["", "–"], calisiyor: ["", "…"] };
@@ -1825,10 +1842,13 @@
     const rp = S.repair, rep = rp && rp.rapor, running = !!(rp && rp.calisiyor);
     const locked = rp && rp.baslatilabilir === false, off = !rp || !rp.kurulu || running || locked;
     const title = locked ? "Onarım yalnız Tailscale adresinden başlatılır" : rp && !rp.kurulu ? "Kurulumu bir kez yeniden çalıştırın" : null;
-    const head = running ? "Denetim sürüyor…" : rep ? `Son ${rep.kip === "denetle" ? "denetim" : "onarım"} · ${hhmm(rep.bitis || rep.baslangic)} · ${rep.durum === "tamam" ? "tamam" : rep.yarida ? "yarıda kaldı" : "sorun var"}` : "Henüz denetim yapılmadı";
+    const when = (sec) => new Date(sec * 1000).toLocaleString("tr-TR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+    const via = rep && rep.kaynak === "terminal" ? " · SSH" : "";
+    const head = running ? "Denetim sürüyor…" : rep ? `Son ${rep.kip === "denetle" ? "denetim" : "onarım"}: ${when(rep.bitis || rep.baslangic)}${via} · ${rep.durum === "tamam" ? "tamam" : rep.yarida ? "yarıda kaldı" : "sorun var"}` : "Henüz denetim yapılmadı";
     return h("section", { class: "repair", "aria-live": "polite", "aria-busy": running ? "true" : "false" },
       h("div", { class: "repair-head" }, h("div", null, h("h3", null, "Denetle ve onar"), h("small", null, head)),
         h("div", { class: "repair-acts" },
+          h("button", { type: "button", class: "btn btn-sm btn-quiet", onclick: () => openRepairLog("72s") }, svg("text"), "Günlük"),
           h("button", { type: "button", class: "btn btn-sm btn-quiet", disabled: off, title, onclick: () => startRepair("denetle") }, svg("search"), "Denetle"),
           h("button", { type: "button", class: "btn btn-sm btn-primary", disabled: off, title, onclick: () => startRepair("onar") }, svg("refresh"), "Onar"))),
       rep && rep.adimlar.length ? h("ol", { class: "repair-steps" }, ...rep.adimlar.map((st) => {

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — "Onar" covers more; last check and a log on the Sağlık card (v2-223)
+
+- Onar now also puts back exit-node forwarding, Tailscale's exit-node and SSH settings, the
+  installer's timers, SSH, the clock sync and the record permissions; restarts only the part of
+  Konsol (backend or Caddy) or Files that does not answer; frees disk space (apt cache, old journal;
+  never your files or the trash) and finishes half-installed packages.
+- It also reports what it does not change: a new WAN address, Caddy configuration errors, Podman,
+  WireGuard peers that never connected, read-only disks, out-of-memory kills, a pending reboot, an
+  expiring Tailscale key, a half-finished update or settings change.
+- The Sağlık card shows the date and time of the last check (and whether it came over SSH) and a
+  "Günlük" button with the checks and repairs of the last 72 hours or the last week (DD-241).
+
 ### 2026-10-07 — Nightly address refresh (v2-222)
 
 - The Tailscale address and Caddy check now also runs once every night between 03:00 and 04:00,

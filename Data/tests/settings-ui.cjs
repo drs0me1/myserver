@@ -36,7 +36,7 @@ const health = { status: "bad", read_at: 1790750000, checks: [
   { id: "settings", name: "Ayar işlemi", status: "bad", detail: "Geri alma takıldı; Ayarlar'da yeniden deneyin ya da bırakın" }] };
 // DD-239: "Denetle ve onar" fixture: the unit runs while repair.calisiyor, its report is repair.rapor.
 let repair = { calisiyor: false, kurulu: true, baslatilabilir: true, rapor: null };
-const repairStarts = [];
+const repairStarts = [], logReads = [];
 const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {}) });
@@ -92,6 +92,12 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
         result = { kip: body.kip };
       }
       else if (endpoint === "/api/konsol/onarim") result = repair;
+      else if (endpoint === "/api/konsol/onarim/gunluk") {
+        logReads.push(url.searchParams.get("sure"));
+        return route.fulfill({ status: 200, contentType: "text/plain; charset=utf-8",
+          body: url.searchParams.get("sure") === "7g" ? "2026-10-01T03:20:00+0000 nrm refresh-tailnet-config[9]: refresh-tailnet: değişiklik yok (100.64.0.2)\n<b>x</b>\n"
+            : "2026-10-07T06:35:00+0000 nrm master-onar[1]: denetim ve onarım başladı (konsol)\n2026-10-07T06:36:00+0000 nrm master-onar[1]: ↻ Güvenlik duvarı: kurallar yeniden kuruldu\n" });
+      }
       else if (endpoint === "/api/konsol/oturum") result = accountOverride || (sessionState === "acik" ? {durum:"acik",kullanici:"fixture",oturum_gun:7,kanal:"internet"} : {durum:"giris",kanal:"internet"});
       else if (endpoint === "/api/konsol/oturum/kur") { createWrites.push(route.request().postDataJSON()); result = {durum:"kuruldu"}; }
       else if (endpoint === "/api/konsol/hesap/parola") {
@@ -137,9 +143,21 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
       step("servisler", "Servisler", "hata", "Başlatılamadı: master-paylasim.service"),
       step("dns", "DNS", "atlandi", "dig kurulu değil")] } };
     await box.locator('[data-step="servisler"].rs-hata').waitFor({ timeout: 8000 });
-    assert.match(await box.locator(".repair-head small").innerText(), /^Son onarım · \d\d:\d\d · sorun var$/);
+    assert.match(await box.locator(".repair-head small").innerText(), /^Son onarım: \d{1,2} [^ ]+ \d\d:\d\d · sorun var$/);
     assert.deepEqual(await box.locator(".rs-mark").allInnerTexts(), ["↻", "✓", "✗", "–"]);
     await page.screenshot({ path: path.join(screenshots, "repair-report.png"), fullPage: true });
+    // DD-241: Günlük shows the last 72 hours, or the last week; text only, newest at the bottom.
+    await box.getByRole("button", { name: "Günlük", exact: true }).click();
+    await page.locator("#repair-log").getByText(/Güvenlik duvarı: kurallar yeniden kuruldu/).waitFor();
+    assert.equal(await page.locator("#sh h3").innerText(), "Denetim ve onarım günlüğü");
+    assert.equal(await page.locator('.repair-log-tools [aria-pressed="true"]').innerText(), "72 saat");
+    await page.screenshot({ path: path.join(screenshots, "repair-log.png"), fullPage: false });
+    await page.locator(".repair-log-tools").getByRole("button", { name: "1 hafta", exact: true }).click();
+    await page.locator("#repair-log").getByText(/değişiklik yok/).waitFor();
+    assert.match(await page.locator("#repair-log").innerText(), /<b>x<\/b>/, "log text is shown as text");
+    assert.equal(await page.locator("#repair-log b").count(), 0);
+    assert.deepEqual(logReads, ["72s", "7g"]);
+    await page.locator("#sh").getByRole("button", { name: "Kapat" }).click();
     await box.getByRole("button", { name: "Onar", exact: true }).click();
     assert.equal(await page.locator("#cf-title").innerText(), "Denetim ve onarım başlasın mı?");
     await page.locator("#cf-cancel").click();

@@ -357,3 +357,7 @@ section[data-view="genel"] { padding-bottom:72px; }
 .rs-mark.ok { background:var(--ok-soft); color:var(--ok); } .rs-mark.warn { background:var(--warn-soft); color:var(--warn); } .rs-mark.bad { background:var(--danger-soft); color:var(--danger); }
 .rs-calisiyor .rs-mark { animation:upd-spin 1.2s linear infinite; }
 @media(max-width:480px) { .repair-steps li { grid-template-columns:22px minmax(0,1fr); } .repair-steps li > span:last-child { grid-column:2; } }
+/* DD-241: the repair log dialog. */
+.repair-log-tools { display:flex; gap:6px; margin:4px 0 10px; }
+.repair-log { margin:0; max-height:min(60vh,520px); overflow:auto; padding:12px; border-radius:10px; background:var(--surface-2, var(--tint));
+  color:var(--ink); font:12px/1.55 var(--f-mono); white-space:pre-wrap; overflow-wrap:anywhere; }

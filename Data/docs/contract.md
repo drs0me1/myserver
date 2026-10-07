@@ -1210,6 +1210,16 @@ The installer deliberately does not provide these:
     a network switched off in Konsol are left alone), DNS (`panel.<domain>`, dnsmasq), Konsol through
     Caddy; other failed units are only listed. It never rewrites configuration. The only schedule is
     `master-duvar-denetim.timer` (hourly, `--duvar`: the firewall step).
+  - **Wider scope (DD-241).** It also re-applies the installer's own sysctl files when forwarding or
+    the network buffers are overridden, restores `--advertise-exit-node --ssh=true`, re-enables the
+    installer's timers, restarts SSH (`ssh.service`/`ssh.socket`), the clock sync, `tailscale-udp-gro`,
+    and Konsol, Caddy or the Files backend only on the side that does not answer, narrows the modes of
+    its private records, cleans apt's cache and shrinks the journal to 200 MB when a disk is below the
+    upload reserve (never Konsol's trash or user files) and runs `dpkg --configure -a` when apt is idle.
+    It only reports a changed WAN address, an invalid Caddyfile, Podman or its nft table, WireGuard
+    peers that never connected, a read-only root, OOM kills, a pending reboot, the node key's expiry,
+    a half-finished update and a pending settings change. Its lines go to the journal as `master-onar`;
+    Konsol's "Günlük" shows them with `refresh-tailnet-config`'s for 72 hours or a week.
 - **No canonical copies or automatic restore.** There is no generation
   directory, `SHA256SUMS` manifest or timer that reverts a managed file. An
   operator edit is the operator's decision; a drifted file is repaired by a

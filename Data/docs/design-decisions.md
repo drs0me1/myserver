@@ -13,6 +13,34 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-241: `master-onar` covers what the installer sets up; Sağlık shows the last run and a log (v2-223)
+
+- **Request (user, 2026-10-07):** after a scope study, "A ve B yi kabul ediyorum"; the disk clean-up and
+  `dpkg --configure -a` run inside Onar as proposed; instead of a nightly report the card shows the last
+  check's time and a "Günlük" for the last 72 hours or the last week.
+- **Repairs (A), each limited to what the installer itself set:** forwarding and buffers (`sysctl -p` of
+  the installer's three files; still overridden → error naming the cause), Tailscale's exit-node and SSH
+  flags (`tailscale set`, never a login), the installer's timers (`enable --now`), SSH (`ssh.socket` when
+  that is how the host starts it), the clock (`systemd-timesyncd`), `tailscale-udp-gro`, Konsol split
+  into its backend socket and the Caddy path (restart only the silent one), the Files backend's
+  loopback port, the modes of `config.env`, `state.env`, the Konsol account folder and the repair and
+  update logs (owner = the running root), disk (below `min(5 GiB, 10 %)`: `apt-get clean`,
+  `journalctl --vacuum-size=200M`; never trash or user data; still low → reported), and half-configured
+  packages (`dpkg --configure -a`; a held lock → "apt meşgul", not an error).
+- **Reports only (B):** WAN IPv4 change (the fix is an installer re-run), `caddy validate` with the
+  state values, `podman info` and the container guard's nft table, WireGuard peers without a
+  handshake, a read-only `/` or user area, OOM kills in 24 h, `/run/reboot-required`, the node key
+  under 14 days, an update left "calisiyor" by a vanished unit, a pending settings change. Report-only
+  findings do not make a repair run fail.
+- **Log:** every step line also goes to the journal (`SYSLOG_IDENTIFIER=master-onar`), plus a start and
+  an end line; the hourly firewall check writes only findings. Units print to stdout only for a
+  terminal so the journal has each line once. `GET /api/konsol/onarim/gunluk?sure=72s|7g` returns
+  `journalctl -t master-onar -t refresh-tailnet-config` (3000 lines, 512 KiB at most) as text; the
+  card's "Günlük" shows it in a dialog with 72 saat / 1 hafta. The card's head shows the last run's
+  date and time and whether it came from SSH.
+- `state.env` gains `CONFIG_FILE`, `SYSCTL_FORWARD_FILE`, `SYSCTL_NETBUF_FILE`, `SYSCTL_TCP_FILE` and
+  `NET_BUF_FLOOR_BYTES` for these steps.
+
 ### DD-240: The address refresh also runs nightly between 03:00 and 04:00 (v2-222)
 
 - **Request (user, 2026-10-07):** limit the former 5-minute service to once a day and after boots;
