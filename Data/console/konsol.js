@@ -1004,7 +1004,8 @@
   }
 
   // DD-247: a folder says its item count and, when the backend could walk it, its total size; an empty
-  // folder, an unwalked one (walk budget, "Sistem (/)") or an unreadable one says only its count.
+  // folder, an unwalked one (walk budget, a non-local file system in "Sistem (/)", DD-248) or an
+  // unreadable one says only its count.
   const dirFacts = (item) => [`${item.count == null ? "?" : item.count} öge`, ...(item.count && item.size != null ? [bytes(item.size)] : [])];
   function fsTile(item) {
     const dir = item.type === "dir", here = pathText(fsPath.concat(item.name)), on = fsSel.has(item.name), sh = shareOf(here);

@@ -147,7 +147,8 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           if (at && holdSys) await holdSys;
           if (!sysEntries[at]) return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "bulunamadı (taşınmış ya da silinmiş olabilir)" }) });
           result = { path: at, skipped: 0, entries: (sysEntries[at] || []).filter(([, type]) => !url.searchParams.get("dirs") || type === "dir")
-            .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? null : 512, mtime: Date.now() / 1000 })) };
+            // DD-248: "etc" is on a local disk and was walked; "proc" is not, so it has no size.
+            .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? (name === "etc" ? 3072 : null) : 512, mtime: Date.now() / 1000 })) };
         } else if (p === "/api/sistem/delete") {
           const data = req.postDataJSON(); sysWrites.push(data);
           sysEntries[data.path] = sysEntries[data.path].filter(([name]) => !data.names.includes(name));
@@ -653,6 +654,8 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await page.locator(".offbar.sysbar").count(), 0, "DD-238: no 'Root olarak çalışıyorsunuz' strip");
     assert(!/Root olarak çalışıyorsunuz|salt okunur/.test(await page.locator("#fs-panel").innerText()));
     assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/");
+    assert.equal(await tile("etc").locator(".fx-sub").innerText(), "1 öge · 3 KB", "DD-248: a walked system folder shows its size");
+    assert.equal(await tile("proc").locator(".fx-sub").innerText(), "1 öge", "DD-248: a pseudo file system shows only its count");
     await select("vmlinuz");
     assert.equal(await act("sil").count(), 1);
     for (const key of ["cop","paylas","arsiv","ac-arsiv"]) assert.equal(await act(key).count(), 0, "system view offers " + key);

@@ -19,6 +19,8 @@
 # altındadır. Çöp ve arşiv yoktur: silme kalıcıdır, onay ister ve bağlama noktasını aşmaz.
 # DD-238: /proc, /sys, /dev ve /run de diğer klasörler gibi yönetilir (yöneticinin isteği); var olan
 # bir dosyanın üzerine yine hiçbir işlem yazmaz.
+# DD-248: klasör boyutu burada da hesaplanır, ama yalnız yerel disk dosya sistemlerinde ve bir tarama
+# başka bir dosya sistemine geçmez (du -x): /proc, /sys, overlay ya da ağ diskleri boyutsuz kalır.
 #
 # Güvenlik: kökten çıkılamaz (her yol adımı bir dizin tanıtıcısından O_NOFOLLOW ile
 # açılır, sembolik bağlantı izlenmez); hiçbir işlem üzerine yazmaz (renameat2
@@ -72,6 +74,9 @@ TEXT_LIMIT = 1024 * 1024
 SNIFF_BYTES = 8192
 # Bir listelemede klasör boyutları için en çok bu kadar girdiye bakılır; aşılırsa boyut "—".
 WALK_BUDGET = 200000
+# DD-248: sistem kipinde boyutu taranan dosya sistemi türleri (mountinfo); sanal ve ağ türleri dışarıda.
+LOCAL_FS = frozenset(("ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "jfs", "reiserfs", "zfs",
+                      "vfat", "exfat", "ntfs", "ntfs3", "tmpfs"))
 CONFIRM_WORD = "onayla"
 API_HEADER = "X-Konsol"
 # Günlükte işlemi yapan: hesap yok, istek Konsol'dan gelir (adres ayrıca yazılır).
@@ -190,7 +195,8 @@ def numbered(name, i):
     return "%s (%d)" % (name, i)
 
 
-def dir_size(parent_fd, name, budget):
+def dir_size(parent_fd, name, budget, dev=None):
+    """dev verilirse (DD-248, sistem kipi) başka bir aygıttaki öge sayılmaz ve içine inilmez."""
     fd = os.open(name, O_DIR, dir_fd=parent_fd)
     total = 0
     try:
@@ -203,9 +209,11 @@ def dir_size(parent_fd, name, budget):
                     st = entry.stat(follow_symlinks=False)
                 except OSError:
                     continue
+                if dev is not None and st.st_dev != dev:
+                    continue
                 if stat.S_ISDIR(st.st_mode):
                     try:
-                        total += dir_size(fd, entry.name, budget)
+                        total += dir_size(fd, entry.name, budget, dev)
                     except (OSError, RecursionError):
                         continue
                 elif stat.S_ISREG(st.st_mode):
@@ -338,6 +346,25 @@ def guess_encoding(data, name, truncated):
     return "cp437" if nfo else "cp1254"
 
 
+def local_devices(mountinfo="/proc/self/mountinfo"):
+    """DD-248: yerel disk dosya sistemlerinin st_dev değerleri (mountinfo'nun maj:min alanı ve "-"
+    ayıracından sonraki tür). Okunamazsa boş küme: hiçbir boyut taranmaz."""
+    devices = set()
+    try:
+        with open(mountinfo, encoding="utf-8", errors="surrogateescape") as fh:
+            for line in fh:
+                fields = line.split()
+                if "-" not in fields[6:]:
+                    continue
+                sep = fields.index("-", 6)
+                major, _, minor = fields[2].partition(":")
+                if sep + 1 < len(fields) and fields[sep + 1] in LOCAL_FS and major.isdigit() and minor.isdigit():
+                    devices.add(os.makedev(int(major), int(minor)))
+    except OSError:
+        pass
+    return devices
+
+
 class Files:
     """Kök altındaki bütün işlemler. Yollar parça listesidir; kök []."""
 
@@ -406,7 +433,9 @@ class Files:
             return os.open(self.trash, O_DIR, dir_fd=root)
 
     # -- okuma
-    def info(self, dir_fd, name, budget, sizes=True):
+    def info(self, dir_fd, name, budget, sizes=True, local=None):
+        """local verilirse (DD-248, sistem kipi) boyut yalnız o aygıtlardaki klasör için, kendi
+        aygıtından çıkmadan taranır."""
         st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
         item = {"name": name, "mtime": int(st.st_mtime), "size": None}
         if stat.S_ISDIR(st.st_mode):
@@ -417,9 +446,9 @@ class Files:
                         item["count"] = sum(1 for _ in it)
             except OSError:
                 item["count"] = None
-            if sizes:
+            if sizes and (local is None or st.st_dev in local):
                 try:
-                    item["size"] = dir_size(dir_fd, name, budget)
+                    item["size"] = dir_size(dir_fd, name, budget, None if local is None else st.st_dev)
                 except (OSError, OverflowError, RecursionError):
                     item["size"] = None
         elif stat.S_ISREG(st.st_mode):
@@ -431,6 +460,7 @@ class Files:
 
     def listing(self, parts, dirs_only):
         entries, skipped, budget = [], 0, [WALK_BUDGET]
+        local = local_devices() if self.system and not dirs_only else None
         with DirFd(self.open_dir(parts)) as fd:
             with os.scandir(fd) as it:
                 names = [e.name for e in it]
@@ -441,7 +471,7 @@ class Files:
                     skipped += 1
                     continue
                 try:
-                    item = self.info(fd, name, budget, sizes=not dirs_only and not self.system)
+                    item = self.info(fd, name, budget, sizes=not dirs_only, local=local)
                 except OSError:
                     continue
                 if not dirs_only or item["type"] == "dir":

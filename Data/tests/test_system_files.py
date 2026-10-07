@@ -53,14 +53,52 @@ class SystemFilesTests(unittest.TestCase):
         self.files.rename([], "run2", "run")
         self.assertEqual(self.files.listing(["proc"], False)["entries"], [])
 
-    def test_new_items_are_root_style_and_dir_sizes_are_not_walked(self):
+    def test_new_items_are_root_style(self):
         self.files.mkdir(["etc"], "yeni")
         self.assertEqual((self.root / "etc/yeni").stat().st_mode & 0o777, 0o755)
         with patch.object(fp, "disk_room"):
             self.files.upload(["etc"], "a.conf", io.BytesIO(b"x=1\n"), 4)
         self.assertEqual((self.root / "etc/a.conf").stat().st_mode & 0o777, 0o644)
-        entry = {e["name"]: e for e in self.files.listing([], False)["entries"]}["etc"]
-        self.assertIsNone(entry["size"])
+
+    def test_dir_sizes_are_walked_only_on_local_file_systems(self):
+        # DD-248: a folder on a local disk type gets its walked size; one on any other device (/proc,
+        # overlay, a network share) keeps only its count. A folder listing asks mountinfo once.
+        (self.root / "etc/sub").mkdir()
+        (self.root / "etc/sub/big").write_bytes(b"x" * 1000)
+        dev = os.stat(self.root).st_dev
+        with patch.object(fp, "local_devices", return_value={dev}) as local:
+            etc = {e["name"]: e for e in self.files.listing([], False)["entries"]}["etc"]
+        local.assert_called_once_with()
+        self.assertEqual(etc["size"], len("127.0.0.1 localhost\n") + 1000)
+        with patch.object(fp, "local_devices", return_value=set()):
+            etc = {e["name"]: e for e in self.files.listing([], False)["entries"]}["etc"]
+        self.assertIsNone(etc["size"])
+        self.assertEqual(etc["count"], 2)
+        with patch.object(fp, "local_devices") as local:
+            self.files.listing([], True)
+        local.assert_not_called()
+
+    def test_size_walk_stays_on_one_device(self):
+        # DD-248: like du -x; an entry on another device is neither counted nor entered.
+        (self.root / "etc/sub").mkdir()
+        (self.root / "etc/sub/big").write_bytes(b"x" * 1000)
+        dev = os.stat(self.root).st_dev
+        with fp.DirFd(os.open(self.root, fp.O_DIR)) as fd:
+            self.assertEqual(fp.dir_size(fd, "etc", [100], dev), 1020)
+            self.assertEqual(fp.dir_size(fd, "etc", [100], dev + 1), 0)
+            self.assertEqual(fp.dir_size(fd, "etc", [100]), 1020)
+
+    def test_local_devices_reads_the_type_after_the_separator(self):
+        info = self.root / "mountinfo"
+        info.write_text("22 1 254:3 / / rw,relatime shared:1 - ext4 /dev/vda3 rw\n"
+                        "23 22 0:23 / /proc rw shared:12 - proc proc rw\n"
+                        "24 22 0:25 / /run rw shared:5 - tmpfs tmpfs rw\n"
+                        "25 22 0:54 / /var/lib/containers/storage/overlay/x/merged rw - overlay overlay rw\n"
+                        "26 22 0:60 / /mnt/nas rw - nfs4 nas:/data rw\n"
+                        "27 22 8:17 / /mnt/usb rw - vfat /dev/sdb1 rw\n"
+                        "broken line\n")
+        self.assertEqual(fp.local_devices(str(info)), {os.makedev(254, 3), os.makedev(0, 25), os.makedev(8, 17)})
+        self.assertEqual(fp.local_devices(str(self.root / "yok")), set())
 
     def test_no_reserved_names_and_no_trash(self):
         # /srv's reserved workspace names mean nothing here.

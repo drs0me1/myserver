@@ -13,6 +13,27 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-248: "Sistem (/)" walks folder sizes on local disks, one device at a time (v2-230)
+
+- **Request (user, 2026-10-07):** "dosya görünümünü sunucu kök dosyalarda da görelim": the DD-247
+  "N öge · size" line in the root view as well.
+- **Amends DD-235**, which listed "folder sizes are not walked" without its own rationale. The risks
+  behind it are real: `/proc` alone is ~51,000 entries on `nrm` with `kcore` reporting terabytes,
+  `/sys` another ~23,000, mounts inside a folder would be counted again, and a network mount can stall
+  a listing. Measured on `nrm`: the whole root file system is ~57,000 entries and walks in about
+  0.1 s, well inside the per-listing `WALK_BUDGET` of 200,000.
+- **Rule:** `listing()` in `--sistem` mode reads `/proc/self/mountinfo` once (`local_devices()`) and
+  keeps the devices whose type is in `LOCAL_FS` (ext2/3/4, xfs, btrfs, f2fs, jfs, reiserfs, zfs, vfat,
+  exfat, ntfs, ntfs3, tmpfs). A folder whose own device is not in that set gets `size: null`; one that
+  is gets `dir_size(..., dev)`, which skips every entry on another device (neither counted nor
+  entered). So `/boot` excludes `/boot/efi`, `/var` excludes container overlays, `/run` excludes
+  nested tmpfs and nsfs mounts. An unreadable mountinfo gives an empty set: no sizes, as before.
+- **Unchanged:** the `/srv` view (`local` stays `None`, the walk is not limited to one device), the
+  budget, the folder-only listing used by Taşı (no walk, no mountinfo read), the delete path.
+- **Trade-off:** a few hundred milliseconds more per root-view listing on a busy host, as root, in
+  exchange for the sizes; the per-listing budget still bounds it, and a folder past it shows only
+  its count.
+
 ### DD-247: Folder tiles give the item count and the total size (v2-229)
 
 - **Request (user, 2026-10-07):** "dosyalar menüsünde klasör görünümlerinin altında öğe sayısı yazıyor.
@@ -23,6 +44,7 @@ with its status and the file that holds it.
 - **Data:** no backend change. `/api/list` already walks each folder (`dir_size`, one `WALK_BUDGET` of
   200,000 entries per listing) and the list view's Boyut column shows it. A folder past the budget, an
   unreadable one and every folder in "Sistem (/)" (DD-235: sizes not walked) arrive with `size: null`.
+  *(Amended by DD-248: "Sistem (/)" walks folders on local disk file systems.)*
 - **Rendering:** `dirFacts` gives the tile's `.fx-sub`, its `aria-label` and the details' info line the
   same parts. The size is left out when it is `null` or the folder is empty: no "—" and no "0 B". Each
   part is a `nowrap` span, so a narrow tile wraps only at the "·".
@@ -283,7 +305,8 @@ with its status and the file that holds it.
     and the recursive delete stops at a device change; a bind mount of the same disk would otherwise
     lose its source's files.
   - `/proc`, `/sys`, `/dev` and `/run` are listed but read-only; folder sizes are not walked.
-    *(Amended by DD-238: no read-only roots, no warning strip.)*
+    *(Amended by DD-238: no read-only roots, no warning strip. Amended by DD-248: sizes are walked on
+    local disk file systems, one device at a time.)*
   - New folders are `0755`, uploads `0644` (root's), not the downloads tree's `0775/0664`.
   - No archives, shares or package-folder warnings (those belong to `/srv`).
 - **Tailnet only, twice.** The unit listens on `SYSTEM_FILES_SOCKET` (0660 root:caddy, peer

@@ -923,7 +923,7 @@ Contract in §5–§7 and `folder-shares.md`.
   folder's count and size.
 - **Folder count and size (DD-247).** A folder's icon-view tile and its info line give "N öge · size"; the
   size is the backend's walked total and is left out when the folder is empty or was not walked (walk
-  budget, "Sistem (/)", unreadable), leaving the count alone.
+  budget, a non-local file system in "Sistem (/)" per DD-248, unreadable), leaving the count alone.
 - **Seç (DD-244).** A toggle beside Yükle: each item shows a check and a click adds or removes it without
   opening it; "Tümünü seç" is a detail action. Seç again, Esc, an empty-space click, "Seçimi bırak" or
   another folder ends it.
@@ -942,8 +942,10 @@ Contract in §5–§7 and `folder-shares.md`.
     or whose client (`X-Forwarded-For`) is not another Tailscale device; a wrong `Host` is refused too.
   - Same traversal and no-overwrite rules as above. No trash, archives, shares or package-folder
     marks. Since DD-238 no root folder is read-only (`/proc`, `/sys`, `/dev`, `/run` included; the
-    kernel's own refusals still apply) and no warning strip is shown; folder sizes are not walked; new
-    folders are `0755`, uploads `0644`.
+    kernel's own refusals still apply) and no warning strip is shown; new folders are `0755`, uploads
+    `0644`. Since DD-248 folder sizes are walked only for a folder on a local disk file system
+    (`LOCAL_FS`, by its device in `/proc/self/mountinfo`) and never across into another device
+    (`du -x`); `/proc`, `/sys`, `/dev`, overlay and network mounts give a count without a size.
   - Delete (`/api/sistem/delete`) is permanent: `confirm` must be the item's name, or `onayla` for
     several. An item that is a mount point or has a mount below it is refused (409), and the
     recursive delete stops at a device change.

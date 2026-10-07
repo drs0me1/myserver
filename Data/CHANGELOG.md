@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: folder sizes in the "Sistem (/)" view too (v2-230)
+
+- In "Sistem (/)" folders now show their total size beside the item count, as in /srv ("N öge ·
+  size"). The size counts only the folder's own disk: a disk mounted inside it is not added.
+  `/proc`, `/sys`, `/dev`, container layers and network shares show only their count (DD-248).
+
 ### 2026-10-07 — Files: folder tiles show their total size (v2-229)
 
 - Under a folder in the icon view, and in its details line, the item count is followed by the folder's
