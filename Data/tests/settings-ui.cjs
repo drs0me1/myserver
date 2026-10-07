@@ -127,8 +127,14 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
     assert.equal(await healthCard.locator(".health-facts .hm.warn").count(), 1);
     assert.equal(await healthCard.locator(".health-facts > div").count(), 3);
     await page.screenshot({ path: path.join(screenshots, "health-card.png"), fullPage: true });
+    // DD-245: three cards: Panel ve sunucu (with the account), Sağlık in one row, Denetle ve onar; no "Yerleşik altyapı".
+    assert.deepEqual(await page.locator(".as-stack > article").evaluateAll((a) => a.map((c) => c.className)), ["card server-card", "card health-strip", "card repair-card"]);
+    assert.equal(await page.getByText("Yerleşik altyapı").count(), 0);
+    assert.equal(await page.locator(".server-card #konsol-account").count(), 1, "the account is the server card's last line");
+    const strip = await healthCard.evaluate((c) => { const r = c.getBoundingClientRect(), facts = [...c.querySelectorAll(".health-facts > div")].map((d) => Math.round(d.getBoundingClientRect().top)); return { h: r.height, rows: new Set(facts).size }; });
+    assert(strip.rows === 1 && strip.h < 120, `Sağlık is one row: ${JSON.stringify(strip)}`);
     // DD-239: no background loop; the card starts master-onar. "Denetle" needs no confirmation, "Onar" does.
-    const box = healthCard.locator(".repair");
+    const box = page.locator(".repair-card .repair");
     await box.getByText("Henüz denetim yapılmadı", { exact: true }).waitFor();
     assert.match(await box.innerText(), /sudo master-onar/);
     await box.getByRole("button", { name: "Denetle", exact: true }).click();

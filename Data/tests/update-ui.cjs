@@ -57,7 +57,11 @@ let afterCheck = null, startFails = "", documents = 0;
 
     await page.goto(base + "/");
     await button.waitFor();
-    assert.equal(await button.innerText(), "Güncel");
+    // DD-245: outside an update the button is a round icon with no words; its sentence is the accessible name.
+    const label = () => button.getAttribute("aria-label");
+    assert.equal(await button.innerText(), "");
+    assert.equal(await label(), "Sürüm güncel (v2-211); yeniden denetle");
+    assert.equal(await button.getAttribute("title"), null, "no tooltip");
     // The button sits on the clock's line, after the date.
     const line = await page.evaluate(() => ["home-clock", "home-date", "home-update"].map((id) => document.getElementById(id).getBoundingClientRect()));
     assert(line[2].left > line[1].right && Math.abs((line[2].top + line[2].bottom) / 2 - (line[0].top + line[0].bottom) / 2) < 14, "button beside the clock and date");
@@ -67,8 +71,9 @@ let afterCheck = null, startFails = "", documents = 0;
     await button.click();
     await page.locator("#toast").getByText("Yeni sürüm var: v2-212", { exact: true }).waitFor();
     assert(checks.includes("?yenile=1"));
-    assert.equal(await button.innerText(), "Güncelle\nv2-212");
-    assert(await button.evaluate((b) => b.classList.contains("new")));
+    assert.equal(await button.innerText(), "");
+    assert.equal(await label(), "Yeni sürüm v2-212: güncelle");
+    assert(await button.evaluate((b) => b.classList.contains("new") && getComputedStyle(b, "::after").content !== "none"), "a new version adds the dot");
     await page.screenshot({ path: path.join(shots, "new-1440.png") });
 
     // Cancel sends nothing; the confirmation names both versions and the pinned commit.
@@ -85,7 +90,7 @@ let afterCheck = null, startFails = "", documents = 0;
     startFails = refusal;
     await button.click(); await page.locator("#cf-go").click();
     await page.locator("#toast").getByText(refusal, { exact: true }).waitFor();
-    assert.equal(await button.innerText(), "Güncelle\nv2-212");
+    assert.equal(await label(), "Yeni sürüm v2-212: güncelle");
 
     // Start: exactly the shown version and commit; the stage follows the unit every tick.
     await button.click(); await page.locator("#cf-go").click();
@@ -109,7 +114,8 @@ let afterCheck = null, startFails = "", documents = 0;
     upd.is = { durum: "hata", hedef: NEW, mesaj: "Tailscale oturumu açık değil", bitis: 2, asama: "" };
     await tick();
     await page.locator("#toast").getByText("Güncelleme başarısız: Tailscale oturumu açık değil", { exact: true }).waitFor();
-    assert.equal(await button.innerText(), "Güncelle\nv2-212");
+    assert.equal(await label(), "Yeni sürüm v2-212: güncelle · son deneme başarısız: Tailscale oturumu açık değil");
+    assert.equal(await button.innerText(), "");
     await button.click();
     assert.match(await page.locator("#cf-list").innerText(), /Son deneme başarısız: Tailscale oturumu açık değil/);
     await page.locator("#cf-go").click();
@@ -124,19 +130,20 @@ let afterCheck = null, startFails = "", documents = 0;
     for (let n = 0; n < 50 && documents === before; n++) await page.waitForTimeout(50);
     assert.equal(documents, before + 1, "page reloaded");
     await button.waitFor();
-    assert.equal(await button.innerText(), "Güncel");
+    assert.match(await label(), /^Sürüm güncel \(v2-212\)/);
 
     // Unreachable GitHub: a quiet "Denetlenemedi" with the reason as its title.
     upd = { ...upd, hata: "GitHub'a ulaşılamadı ya da sürüm okunamadı; daha sonra yeniden denenir." };
     await tick(61000);
-    assert.equal(await button.innerText(), "Denetlenemedi");
-    assert.equal(await button.getAttribute("title"), upd.hata);
+    await page.waitForFunction(() => /^Sürüm denetlenemedi/.test(document.querySelector("#home-update .upd")?.getAttribute("aria-label")));
+    assert.equal(await label(), "Sürüm denetlenemedi: " + upd.hata);
+    assert.equal(await button.innerText(), "");
 
     // The internet channel sees the offer but cannot start it.
     upd = { ...upd, hata: "", son: "2026.08.06-v2-213", yeni: true, baslatilabilir: false };
     await tick(61000);
     assert(await button.isDisabled());
-    assert.equal(await button.getAttribute("title"), "Güncelleme yalnız Tailscale adresinden başlatılır");
+    assert.equal(await label(), "Yeni sürüm v2-213; güncelleme yalnız Tailscale adresinden başlatılır");
 
     // Phone and dark: the line wraps without page overflow; the button stays whole.
     upd.baslatilabilir = true;

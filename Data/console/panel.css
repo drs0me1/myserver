@@ -97,6 +97,11 @@ dialog { background:var(--glass-2); }
 .upd.new { background:var(--accent); border-color:transparent; color:var(--accent-ink); box-shadow:0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent); }
 .upd.new:disabled { opacity:.55; cursor:not-allowed; }
 .upd.busy { color:var(--ink); cursor:progress; }
+/* DD-245: outside an update the button is a round icon; a new version adds a red dot. */
+.upd.icon { position:relative; width:34px; height:34px; padding:0; justify-content:center; }
+.upd.icon svg { width:16px; height:16px; }
+.upd.icon.new::after { content:""; position:absolute; top:2px; right:2px; width:9px; height:9px; box-sizing:border-box; border-radius:50%; background:#E5484D; border:2px solid var(--surface); }
+.upd.icon.err { color:var(--warn); }
 .upd.busy svg { animation:upd-spin 1.2s linear infinite; }
 @keyframes upd-spin { to { transform:rotate(360deg); } }
 .resources { padding:16px 18px; display:grid; gap:12px; flex:none; }
@@ -366,6 +371,41 @@ section[data-view="genel"] { padding-bottom:72px; }
 .rs-mark.ok { background:var(--ok-soft); color:var(--ok); } .rs-mark.warn { background:var(--warn-soft); color:var(--warn); } .rs-mark.bad { background:var(--danger-soft); color:var(--danger); }
 .rs-calisiyor .rs-mark { animation:upd-spin 1.2s linear infinite; }
 @media(max-width:480px) { .repair-steps li { grid-template-columns:22px minmax(0,1fr); } .repair-steps li > span:last-child { grid-column:2; } }
+/* DD-245: Ayarlar → Sistem in three cards. Panel ve sunucu: facts in four columns, the account as its last line. */
+.server-card .system-facts { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.server-card .system-facts > div { padding:10px 4px; }
+.srv-account { display:flex; align-items:center; gap:8px 18px; flex-wrap:wrap; padding-top:12px; border-top:1px solid var(--glass-line); }
+.srv-account strong { font-size:13px; }
+.srv-account .page-note { flex:1 1 280px; margin:0; }
+.srv-account .top-actions { margin:0; }
+/* Sağlık in one row: a dot, the name and the detail per check. */
+.health-strip { display:flex; align-items:center; gap:12px 18px; padding:12px 18px; }
+.health-strip .card-head { flex:none; width:150px; }
+.health-strip .hs-title { display:flex; align-items:center; gap:8px; }
+.health-strip .card-head h2 { margin:0; font-size:15px; }
+.health-strip .card-head small { display:block; margin-top:3px; font-size:11px; }
+.health-strip .health-facts { flex:1; min-width:0; margin:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px 0; }
+.health-strip .health-facts > div { min-width:0; display:grid; gap:3px; padding:2px 12px; border-left:1px solid var(--glass-line); }
+.health-strip .health-facts dt { gap:6px; font-size:12.5px; }
+.health-strip .health-facts dt .hm { width:8px; height:8px; padding:0; border:0; border-radius:50%; font-size:0; flex:none; }
+.health-strip .health-facts .hm.ok { background:var(--ok); } .health-strip .health-facts .hm.warn { background:var(--warn); } .health-strip .health-facts .hm.bad { background:var(--danger); }
+.health-strip .health-facts dd { margin:0; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Denetle ve onar: the steps in three columns, the detail under each name. */
+.repair-card .repair { margin:0; padding:0; border:0; }
+.repair-card .repair-steps { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px 20px; }
+.repair-card .repair-steps li { grid-template-columns:22px minmax(0,1fr); row-gap:1px; }
+.repair-card .repair-steps li > span:last-child { grid-column:2; font-size:11.5px; }
+@media(max-width:1100px) {
+  .server-card .system-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .health-strip { flex-wrap:wrap; }
+  .health-strip .card-head { width:100%; }
+  .repair-card .repair-steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:600px) {
+  .server-card .system-facts, .repair-card .repair-steps { grid-template-columns:minmax(0,1fr); }
+  .health-strip .health-facts { grid-template-columns:minmax(0,1fr); }
+  .health-strip .health-facts > div { border-left:0; padding-inline:0; }
+}
 /* DD-241: the repair log dialog. */
 .repair-log-tools { display:flex; gap:6px; margin:4px 0 10px; }
 .repair-log { margin:0; max-height:min(60vh,520px); overflow:auto; padding:12px; border-radius:10px; background:var(--surface-2, var(--tint));

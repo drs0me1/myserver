@@ -13,6 +13,23 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-245: Update control as an icon; Ayarlar → Sistem in three cards (v2-227)
+
+- **Request (user, 2026-10-07):** "güncelle yazısını güncelleme simgesine dönüştürelim", then after
+  mock-ups: no words when up to date or when a new version exists, "güncelleme yapılırken aşamayı
+  görebilelim"; the health card and "Denetle ve onar" side by side were rejected because the step list
+  is long: "panel ve sunucu bilgilerini tek kart ... üstte", Sağlık in one row, "uyumlu bir 3 kart";
+  "yerleşik altyapı" removed.
+- **Update control:** a 34 px round button with the update icon. Up to date or check failed (warn
+  colour): plain; new version: accent with a red dot (`::after`); running: the spinning icon with
+  "Güncelleniyor" and the stage. Outside a run there is no visible text and no tooltip; each state's
+  sentence is the `aria-label` (version, failure reason, "yalnız Tailscale adresinden").
+- **Sistem:** `.server-card` (eight facts in four columns; "Son okuma" is already in the page header)
+  ending with the Konsol account (`#konsol-account`, no separate card); `.health-strip` (title, state and
+  last check on the left, each check as a coloured dot, name and one-line detail, `auto-fit` columns
+  that wrap on narrow screens); `.repair-card` (DD-239's box, steps in three columns, two below
+  1100 px, one on phones). The "Yerleşik altyapı" text card is removed.
+
 ### DD-244: Files details as one info line with word actions; a "Seç" picking mode (v2-226)
 
 - **Request (user, 2026-10-07):** in the bottom details, the item's description and address "klasör ya da

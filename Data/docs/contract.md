@@ -117,7 +117,8 @@ the ones agreed on 2026-08-05:
     asks, repeating the question until the answer is a valid label. It prints the values without passwords and asks for
     one confirmation before `config.env` is written. An interactive TTY stays required,
     except for Konsol's update below.
-  - **Konsol update (DD-233).** Ana Menü offers "Güncelle" when the tip of `GUNCELLEME_DAL` on
+  - **Konsol update (DD-233).** Ana Menü offers the update (a round update icon with a red dot,
+    **DD-245**; words appear only while an update runs, showing its stage) when the tip of `GUNCELLEME_DAL` on
     `GUNCELLEME_REPO` carries a higher `v2-<n>` than the installed version. The backend checks
     GitHub at most every six hours (a failed check after 15 minutes, a manual check once a minute)
     and pins the offer to that commit. The start is accepted only from a Tailscale device (or root
@@ -671,7 +672,8 @@ Contract in §5–§7 and `folder-shares.md`.
     /api/konsol/ayarlar` retains the same gates and 5 s cache (`?yenile=1`
     bypasses it); `/durum` reads transaction state and `/klasorler` lists
     allowed existing download folders. No password/hash is returned.
-    - Sistem shows server facts and the read-only health card (`GET
+    - Sistem shows three cards (**DD-245**): "Panel ve sunucu" (facts and the Konsol account), the
+      one-row health card and "Denetle ve onar". The health card (`GET
       /api/konsol/saglik`, cached 30 s, **DD-182**): failed units, Tailscale
       state and key expiry, `master-firewall --check`, a pending reboot, NTP
       sync, free space and inodes against the upload reserve, a pending or

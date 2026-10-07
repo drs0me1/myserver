@@ -300,22 +300,26 @@
     const box = $("home-update");
     if (!box) return;
     if (!UPD) { box.replaceChildren(); return; }
+    // DD-245: one round update icon; words only while an update runs (its stage). Every state keeps its
+    // sentence as the accessible name; there is no tooltip.
     const job = UPD.is, running = job.durum === "calisiyor";
     let btn;
     if (running) {
-      btn = h("button", { type: "button", class: "upd busy", disabled: true, title: job.asama || "Güncelleniyor" },
+      btn = h("button", { type: "button", class: "upd busy", disabled: true, "aria-label": "Güncelleniyor: " + (job.asama || ""), title: job.asama || "Güncelleniyor" },
         svg("refresh"), h("span", null, "Güncelleniyor"), h("small", null, (job.asama || "").replace(/ — .*$/, "")));
     } else if (UPD.yeni) {
       const locked = !UPD.baslatilabilir;
-      btn = h("button", { type: "button", class: "upd new", disabled: locked,
-        title: locked ? "Güncelleme yalnız Tailscale adresinden başlatılır" : `Yeni sürüm: ${UPD.son}` + (job.durum === "hata" && job.mesaj ? ` · son deneme başarısız: ${job.mesaj}` : ""),
-        onclick: askUpdate }, svg("download"), h("span", null, "Güncelle"), h("small", null, shortV(UPD.son)));
+      btn = h("button", { type: "button", class: "upd icon new", disabled: locked,
+        "aria-label": locked ? `Yeni sürüm ${shortV(UPD.son)}; güncelleme yalnız Tailscale adresinden başlatılır` : `Yeni sürüm ${shortV(UPD.son)}: güncelle`
+          + (job.durum === "hata" && job.mesaj ? ` · son deneme başarısız: ${job.mesaj}` : ""),
+        onclick: askUpdate }, svg("refresh"));
     } else {
-      btn = h("button", { type: "button", class: "upd", title: UPD.hata || `Kurulu sürüm güncel (${UPD.kurulu}). Denetlemek için tıklayın.`,
+      btn = h("button", { type: "button", class: "upd icon" + (UPD.hata ? " err" : ""),
+        "aria-label": UPD.hata ? `Sürüm denetlenemedi: ${UPD.hata}` : `Sürüm güncel (${shortV(UPD.kurulu)}); yeniden denetle`,
         onclick: () => loadUpdate(true).then((r) => { if (r) toast(r.yeni ? `Yeni sürüm var: ${shortV(r.son)}` : r.hata || `Sürüm güncel: ${shortV(r.kurulu)}`); }) },
-        svg(UPD.hata ? "info" : "check"), h("span", null, UPD.hata ? "Denetlenemedi" : "Güncel"));
+        svg("refresh"));
     }
-    const key = btn.className + btn.textContent + btn.title + btn.disabled;
+    const key = btn.className + btn.textContent + btn.getAttribute("aria-label") + btn.disabled;
     if (key === updSeen && box.firstChild) return;
     updSeen = key;
     box.replaceChildren(btn);
@@ -1826,16 +1830,17 @@
         + (w.entries.some(e => e.access === "wan" && e.scheme !== "https") ? " İnternet üzerinden HTTP parola ve dosyaları şifrelemez." : ""))));
   }
   const HEALTH = { ok: ["ok", "Sağlıklı"], warn: ["warn", "Dikkat"], bad: ["bad", "Sorun var"] };
+  // DD-245: Sağlık is one row: the overall state and the last check on the left, each check as a dot, its
+  // name and its detail beside it (rows wrap on narrow screens).
   function healthCard() {
     const hs = S.health;
     const pill = (status) => h("span", {class:"hm " + HEALTH[status][0]}, HEALTH[status][1]);
-    return h("article", {class:"card"},
-      h("div", {class:"card-head"}, h("h2", null, "Sağlık"), h("div", {class:"head-right"}, hs ? pill(hs.status) : null)),
-      hs ? h("dl", {class:"system-facts health-facts"}, ...hs.checks.map((c) =>
-        h("div", {class:"hc-" + c.status}, h("dt", null, pill(c.status), c.name), h("dd", null, c.detail))))
-        : h("p", {class:"hint-s"}, healthFailed ? "Sağlık bilgisi okunamadı; bağlantıyı kontrol edin." : "Sağlık denetleniyor…"),
-      h("p", {class:"hint-s"}, hs ? `Son denetim ${hhmm(hs.read_at)} · en çok 30 sn'de bir yenilenir.` : ""),
-      repairBox());
+    return h("article", {class:"card health-strip"},
+      h("div", {class:"card-head"}, h("div", null, h("div", {class:"hs-title"}, h("h2", null, "Sağlık"), hs ? pill(hs.status) : null),
+        h("small", {class:"hint-s"}, hs ? `Son denetim ${hhmm(hs.read_at)}` : healthFailed ? "Okunamadı" : "Denetleniyor…"))),
+      hs ? h("dl", {class:"health-facts"}, ...hs.checks.map((c) =>
+        h("div", {class:"hc-" + c.status, title: c.detail}, h("dt", null, pill(c.status), c.name), h("dd", null, c.detail))))
+        : h("p", {class:"hint-s"}, healthFailed ? "Sağlık bilgisi okunamadı; bağlantıyı kontrol edin." : "Sağlık denetleniyor…"));
   }
   /* DD-241: the repair log: master-onar's lines (Konsol, SSH, the hourly firewall check's findings) and the
      address refresh's (boot, nightly 03–04, Caddy failures) for the last 72 hours or the last week. */
@@ -1950,25 +1955,23 @@
       note = `İnternet hesabı: ${user}. Tailscale'den giriş parolasızdır; internet adresi bu hesapla açılır.`;
       actions = [action("Parolayı değiştir", () => accountDialog("degistir"))];
     }
-    return h("article", { class: "card", id: "konsol-account" }, h("h2", null, "Konsol hesabı"),
+    // DD-245: the account is the last line of the "Panel ve sunucu" card.
+    return h("div", { class: "srv-account", id: "konsol-account" }, h("strong", null, "Konsol hesabı"),
       h("p", { class: "page-note" }, note), h("div", { class: "top-actions" }, ...actions));
   }
+  // DD-245: three cards: Panel ve sunucu (with the Konsol account), Sağlık in one row, Denetle ve onar.
   function systemContent() {
     const s = S.sys;
     const row = (label, value) => h("div", null, h("dt", null, label), h("dd", null, value || "—"));
     return h("div", {class:"as-stack"},
-      healthCard(),
-      accountCard(),
-      h("article", {class:"card"}, h("h2", null, "Panel ve sunucu"),
-        h("p", {class:"page-note"}, "Debian üzerinde yönetim konsolu. Kaynak kullanımı sol menüde; servis ayrıntıları kendi sekmelerinde."),
+      h("article", {class:"card server-card"}, h("h2", null, "Panel ve sunucu"),
         s ? h("dl", {class:"system-facts"},
           row("Sunucu", s.host), row("Sistem", s.os), row("Çekirdek", s.kernel), row("Panel sürümü", s.version),
           row("Çalışma süresi", duration(s.uptime)), row("Tailscale", s.net.tailscale),
-          row("Panel adresi", "panel." + s.domain), row("Kullanıcı alanı", s.root),
-          row("Son okuma", hhmm(s.read_at))) : h("p", {class:"hint-s"}, "Sunucu bilgisi bekleniyor…")),
-      h("article", {class:"card"}, h("h2", null, "Yerleşik altyapı"),
-        h("p", {class:"page-note"}, "Dosyalar, WebDAV ve ZIP/RAR açma panelle birlikte hazırdır. Tailscale, Caddy, Dnsmasq, güvenlik duvarı ve Podman (App Store’un konteyner ortamı) temel bağımlılıklardır; App Store’dan kaldırılmaz."),
-        h("p", {class:"hint-s"}, "Uygulamalar App Store’dan kurulur. Kaldırma sırasında profil/veri silme ayrıca onaylanır; kullanıcı dosyaları korunur.")));
+          row("Panel adresi", "panel." + s.domain), row("Kullanıcı alanı", s.root)) : h("p", {class:"hint-s"}, "Sunucu bilgisi bekleniyor…"),
+        accountCard()),
+      healthCard(),
+      h("article", {class:"card repair-card"}, repairBox()));
   }
   const logContent = () => h("div", {class:"logwrap"},
     h("p", {class:"page-note"}, "Konsol’dan yapılan son işlemler. Servis günlükleri App Store → Ayrıntı bölümünde bulunur."),

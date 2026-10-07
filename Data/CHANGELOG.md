@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Update icon; Ayarlar → Sistem in three cards (v2-227)
+
+- The update control beside the clock is a round update icon: plain when up to date, coloured with a
+  red dot when a new version exists. Words appear only while an update runs, showing its stage.
+- Ayarlar → Sistem: "Panel ve sunucu" on top (with the Konsol account as its last line), Sağlık in one
+  row, and "Denetle ve onar" across the width with its steps in three columns. The "Yerleşik altyapı"
+  card is gone (DD-245).
+
 ### 2026-10-07 — Files: one-line details with word buttons; "Seç" for picking several items (v2-226)
 
 - Under the item's name the details panel shows one line: type, size, location, last change and, for a
