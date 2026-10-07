@@ -216,18 +216,21 @@
 }
 /* DD-235: "Sistem (/)": the root view's sidebar entry (DD-238: no warning strip). */
 .fx-nav .rl-ico.t-sys { color:var(--danger); }
-/* DD-250: favourites. In the details a star sits on the folder's picture (hollow: add, filled: remove), in the
+/* DD-250: favourites. In the details a star follows the folder's name (hollow: add, filled: remove), in the
    theme's accent colour; in the places column the favourites come first, each with a × on hover or focus. */
-.fx-preview { position:relative; }
-.fx-star { position:absolute; top:-6px; right:-12px; width:26px; height:26px; display:grid; place-items:center; padding:0; border-radius:50%;
-  border:1px solid var(--line); background:var(--surface); color:var(--accent); cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.fx-head h2.fx-titled { display:flex; align-items:center; justify-content:center; gap:4px; min-width:0; max-width:100%; }
+.fx-title-nm { min-width:0; overflow-wrap:anywhere; }
+.fx-star { flex:none; width:24px; height:24px; display:inline-grid; place-items:center; padding:0; border:0; border-radius:6px;
+  background:none; color:var(--accent); cursor:pointer; }
 .fx-star svg { width:15px; height:15px; }
 .fx-star.on svg path { fill:currentColor; }
 .fx-star:hover { background:var(--accent-soft); }
 .fx-star:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 @media(min-width:1101px) {
-  .fx-main > .fx-detail .fx-star { top:-9px; right:-5px; width:19px; height:19px; }
-  .fx-main > .fx-detail .fx-star svg { width:12px; height:12px; }
+  .fx-main > .fx-detail .fx-head h2.fx-titled { justify-content:flex-start; overflow:visible; }
+  .fx-main > .fx-detail .fx-title-nm { overflow-wrap:normal; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fx-main > .fx-detail .fx-star { width:20px; height:20px; }
+  .fx-main > .fx-detail .fx-star svg { width:13px; height:13px; }
 }
 .fx-nav .rl-ico.t-fav svg path { fill:currentColor; }
 .fx-nav .rl-fav { position:relative; display:grid; min-width:0; }

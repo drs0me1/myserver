@@ -940,8 +940,8 @@ Contract in §5–§7 and `folder-shares.md`.
 - **Folder count and size (DD-247).** A folder's icon-view tile and its info line give "N öge · size"; the
   size is the backend's walked total and is left out when the folder is empty or was not walked (walk
   budget, a non-local file system in "Sistem (/)" per DD-248, unreadable), leaving the count alone.
-- **Favourites (DD-250).** The details' folder picture carries a star (hollow: add, filled: remove) for a
-  selected folder or the open one (not a tree's root), in both views. `GET /api/konsol/favoriler` →
+- **Favourites (DD-250).** In the details a star follows the folder's name (hollow: add, filled: remove;
+  a long name is cut, the star stays) for a selected folder or the open one (not a tree's root), in both views. `GET /api/konsol/favoriler` →
   `{favoriler: [{yol, sistem}]}`, `POST` `{ekle: {yol, sistem}}` (appended last, once) or `{cikar: …}`;
   the root backend keeps them in order in `KONSOL_AUTH_DIR/favoriler.json` (0600, atomic, removed when
   empty; an account reset keeps it), at most 20, `yol` relative to its tree without empty, `.`/`..` or

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: the favourite star follows the folder's name (v2-233)
+
+- In the details under the contents, the favourite star now sits right after the folder's name instead
+  of on its picture. A long name is shortened with "…"; the star always stays visible (DD-250).
+
 ### 2026-10-07 — Files: favourite folders (v2-232)
 
 - A selected folder (or the open one) has a star on its picture in the details: a hollow star adds it

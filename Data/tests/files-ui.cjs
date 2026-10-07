@@ -241,10 +241,12 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.match(await tile("media").getAttribute("aria-label"), /^media, klasör, 2 öge · 1 KB$/);
     await select("media");
     assert.match(await page.locator("#fs-detail").innerText(), /media/);
-    // DD-250: the star on the selected folder's picture adds it to Favoriler, above the tree's own rows; a
+    // DD-250: the star after the selected folder's name adds it to Favoriler, above the tree's own rows; a
     // favourite opens its folder; the filled star or the row's × takes it out.
-    const star = () => page.locator('#fs-detail .fx-preview [data-act="favori"]');
+    const star = () => page.locator('#fs-detail-title [data-act="favori"]');
     assert.deepEqual([await star().getAttribute("aria-pressed"), await star().getAttribute("aria-label")], ["false", "Favorilere ekle"]);
+    assert(await page.locator("#fs-detail-title").evaluate((t) => t.lastElementChild.dataset.act === "favori"
+      && t.firstElementChild.textContent === "media" && t.textContent === "media"), "the star follows the name and adds no text");
     await star().click();
     await page.locator('#fs-rail [data-fav="/srv/media"]').waitFor();
     assert.deepEqual(favWrites.at(-1), { ekle: { yol: "media", sistem: false } });

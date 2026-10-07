@@ -35,6 +35,9 @@ with its status and the file that holds it.
   to nor changed from the internet channel; a save from there keeps them.
 - **Not done:** no check that the folder still exists (a missing one answers "bulunamadı" and keeps its
   ×), no renaming of a favourite when its folder is renamed or moved, no reordering.
+- **Amended (v2-233):** "favori simgesini klasör adının bitişine taşıyalım alt menüde": the star left the
+  picture and follows the name inside the title (`h2.fx-titled`: the name in `.fx-title-nm`, cut with an
+  ellipsis on a desktop-width screen, then the star), a plain accent-coloured icon button without a badge.
 
 ### DD-249: Files text editor (CodeMirror 6); saves as root in "Sistem (/)" (v2-231)
 

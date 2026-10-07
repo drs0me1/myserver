@@ -1370,13 +1370,15 @@
     // folder's open connections); the whole line is the tooltip when it is cut.
     const head = (art, title, parts, star) => {
       const line = parts.filter(Boolean);
-      return h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art, star || null), h("h2", { id: "fs-detail-title" }, title),
+      // DD-250: the favourite star follows the name; a long name is cut, the star stays.
+      return h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art),
+        star ? h("h2", { id: "fs-detail-title", class: "fx-titled" }, h("span", { class: "fx-title-nm" }, title), star) : h("h2", { id: "fs-detail-title" }, title),
         h("small", { class: "fx-line", title: line.map((p) => (typeof p === "string" ? p : p.textContent)).join(" · ") },
           ...line.flatMap((p, i) => (i ? [" · ", p] : [p]))));
     };
     const all = fsPicking ? action("Tümünü seç", "check", selectAll, { act: "tumu" }) : null;
-    // DD-250: a folder's star sits on its picture: hollow adds it to Favoriler, filled takes it out. The tree's
-    // own root is already in the places column.
+    // DD-250: a folder's star after its name: hollow adds it to Favoriler, filled takes it out. The tree's own
+    // root is already in the places column.
     const favStar = (parts) => {
       if (!parts.length) return null;
       const yol = parts.join("/"), sistem = fsSys, on = isFav(yol, sistem), label = on ? "Favorilerden çıkar" : "Favorilere ekle";
