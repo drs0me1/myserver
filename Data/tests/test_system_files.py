@@ -196,6 +196,22 @@ class SystemGateTests(unittest.TestCase):
         code, listing = self.call("GET", "/api/sistem/list?path=etc")
         self.assertEqual((code, [e["name"] for e in listing["entries"]]), (200, ["hosts"]))
 
+    def test_text_save_through_the_handler(self):
+        # DD-249: the editor's round trip on the root view: read with a version, save, a stale version is refused,
+        # a body above MAX_BODY (up to TEXT_BODY_MAX) is accepted, and the gate still applies.
+        code, text = self.call("GET", "/api/sistem/text?path=etc/hosts&enc=auto")
+        self.assertEqual((code, text["editable"]), (200, True))
+        body = {"path": "etc/hosts", "text": "127.0.0.1 localhost nrm\n" + "#" * (fp.MAX_BODY + 10) + "\n",
+                "encoding": "utf-8", "version": text["version"]}
+        with patch("sys.stdout", new_callable=io.StringIO) as out:
+            code, saved = self.call("POST", "/api/sistem/text/save", body)
+        self.assertEqual(code, 200)
+        self.assertTrue((self.root / "etc/hosts").read_text().startswith("127.0.0.1 localhost nrm\n"))
+        self.assertIn('duzenle "etc/hosts" -> ok', out.getvalue())
+        self.assertEqual(self.call("POST", "/api/sistem/text/save", body)[0], 409)
+        # The gate answers before reading the body, so the refused request stays small.
+        self.assertEqual(self.call("POST", "/api/sistem/text/save", dict(body, text="x", version=saved["version"]), channel="internet")[0], 403)
+
     def test_delete_needs_the_name_or_onayla(self):
         (self.root / "etc/b").write_text("")
         code, err = self.call("POST", "/api/sistem/delete", {"path": "etc", "names": ["hosts"], "confirm": "onayla"})

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: a text editor with syntax colours, also as root in "Sistem (/)" (v2-231)
+
+- A double click on a text file (yml, json, conf, sh, py, log, …) opens it in an editor with line
+  numbers, syntax colours, search (Ctrl+F) and undo. "Düzenle" in the details opens any file up to
+  1 MiB, files without an extension such as sshd_config or hosts included. Kaydet or Ctrl+S saves.
+- A save keeps the file's encoding (UTF-8 with or without BOM, Windows-1254, DOS), its line endings,
+  owner and permissions. If the file changed after it was opened, nothing is written. Closing with
+  unsaved changes asks first.
+- In "Sistem (/)" the editor saves as root: files that are read-only by their permissions (for
+  example 0440) can be changed too, and their permissions stay as they were. A strip in the editor
+  says so; there is no trash in this view, so the previous content cannot be brought back.
+- Files over 1 MiB, files that cannot be read without loss in the chosen encoding, files with several
+  hard links and setuid/setgid files open read-only with the reason.
+- The text view no longer shows a stray "null" line (DD-249).
+
 ### 2026-10-07 — Files: folder sizes in the "Sistem (/)" view too (v2-230)
 
 - In "Sistem (/)" folders now show their total size beside the item count, as in /srv ("N öge ·

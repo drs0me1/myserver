@@ -37,6 +37,9 @@ const sysWrites = [], sysReads = [];
 let holdSys = null;  // a pending promise holds the system view's next folder listing
 const sysEntries = { "": [["etc","dir"],["proc","dir"],["srv","dir"],["vmlinuz","file"]], etc: [["hosts","file"],["ssh","dir"]], "etc/ssh": [] };
 let submitted, failShare = false, holdShare = false, releaseShare;
+// DD-249: the editor's fixtures; every save is recorded and answered with the next version.
+const textStart = "ad: nrm\nport: 22\n", textSaves = [], sysSaves = [];
+let textNow = textStart, textVersion = "a".repeat(64), sysText = "127.0.0.1 localhost\n";
 const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {}) });
@@ -137,7 +140,18 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         // DD-247: "movies" was not walked (size null), "series" is empty.
         ...(url.searchParams.get("path") ? [["movies", 2, null], ["series", 0, 0]] : [["media", 2, 1024], ["downloads", 2, 1024], ["Belgeler ve uzun klasör adı", 2, 1024]])
           .map(([name, count, size]) => ({ name, type: "dir", count, size, mtime: Date.now() / 1000 })),
-        ...(!url.searchParams.get("path") && !url.searchParams.get("dirs") ? [longFile,"sample.part02.rar"].map(name=>({name,type:"file",size:840*1024**2,mtime:Date.now()/1000})) : [])] };
+        ...(!url.searchParams.get("path") && !url.searchParams.get("dirs") ? [longFile,"sample.part02.rar"].map(name=>({name,type:"file",size:840*1024**2,mtime:Date.now()/1000})) : []),
+        ...(url.searchParams.get("path") === "media" && !url.searchParams.get("dirs") ? [["ayar.yml", 17], ["buyuk.log", 3 * 1024 ** 2]].map(([name, size]) => ({ name, type: "file", size, mtime: Date.now() / 1000 })) : [])] };
+      else if (p === "/api/text") {
+        const at = url.searchParams.get("path"), big = at.endsWith("buyuk.log");
+        result = { path: at, size: big ? 3 * 1024 ** 2 : textNow.length, mtime: Date.now() / 1000, truncated: big, detected: "utf-8", encoding: "utf-8",
+          bom: false, eol: "lf", editable: !big, reason: big ? "dosya 1 MiB'tan büyük; yalnız ilk bölümü okunur" : "",
+          version: big ? null : textVersion, text: big ? "satır\n".repeat(40) : textNow };
+      } else if (p === "/api/text/save") {
+        const data = req.postDataJSON(); textSaves.push(data);
+        textNow = data.text; textVersion = "abcdef"[textSaves.length].repeat(64);
+        result = { path: data.path, version: textVersion, size: data.text.length, mtime: Date.now() / 1000 };
+      }
       else if (p.startsWith("/api/sistem/")) {
         sysReads.push(p + url.search);
         if (p === "/api/sistem/state") result = { root: "/", sistem: true, writable: true,
@@ -149,6 +163,12 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
           result = { path: at, skipped: 0, entries: (sysEntries[at] || []).filter(([, type]) => !url.searchParams.get("dirs") || type === "dir")
             // DD-248: "etc" is on a local disk and was walked; "proc" is not, so it has no size.
             .map(([name, type]) => ({ name, type, count: type === "dir" ? 1 : undefined, size: type === "dir" ? (name === "etc" ? 3072 : null) : 512, mtime: Date.now() / 1000 })) };
+        } else if (p === "/api/sistem/text") {
+          result = { path: url.searchParams.get("path"), size: sysText.length, mtime: Date.now() / 1000, truncated: false, detected: "utf-8",
+            encoding: "utf-8", bom: false, eol: "lf", editable: true, reason: "", version: "c".repeat(64), text: sysText };
+        } else if (p === "/api/sistem/text/save") {
+          const data = req.postDataJSON(); sysSaves.push(data); sysText = data.text;
+          result = { path: data.path, version: "d".repeat(64), size: data.text.length, mtime: Date.now() / 1000 };
         } else if (p === "/api/sistem/delete") {
           const data = req.postDataJSON(); sysWrites.push(data);
           sysEntries[data.path] = sysEntries[data.path].filter(([name]) => !data.names.includes(name));
@@ -583,6 +603,53 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.deepEqual(await page.locator("#fs-bar .crumb").allInnerTexts(), ["/srv","media"]);
     assert.equal(await tile("movies").locator(".fx-sub").innerText(), "2 öge", "an unwalked folder shows only its count");
     assert.equal(await tile("series").locator(".fx-sub").innerText(), "0 öge", "an empty folder shows no 0 B");
+    // DD-249: a text file opens in the editor (CodeMirror under the production CSP). A save sends the version the
+    // server gave (Ctrl+S too); unsaved changes ask before Kapat or Esc closes the window.
+    await tile("ayar.yml").dblclick();
+    await page.locator("#sh .ed-box .cm-content").waitFor();
+    assert(await page.locator("#sh").evaluate((d) => d.open && d.classList.contains("ed-wide")));
+    assert(!(await page.locator("#sh-body").evaluate((b) => [...b.childNodes].some((n) => n.nodeType === 3))), "the window shows a stray text node (null)");
+    assert.equal(await page.locator("#sh .ed-lang").innerText(), "YAML");
+    assert.equal(await page.locator("#sh .ed-warn").count(), 0, "the /srv view has no root warning");
+    assert.match(await page.locator("#sh .okhead p").innerText(), /^\/srv\/media · 1 KB · UTF-8 · LF$/);
+    const saveBtn = page.locator('#sh [data-act="kaydet"]');
+    assert(await saveBtn.isDisabled());
+    assert(await page.locator("#sh .ed-dirty").isHidden());
+    await page.locator("#sh .cm-content").click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("debug: true");
+    assert(await saveBtn.isEnabled());
+    assert(await page.locator("#sh .ed-dirty").isVisible());
+    assert.equal(await page.locator("#sh .ed-pos").innerText(), "Satır 3, Sütun 12");
+    await page.keyboard.press("Control+s");
+    await page.waitForFunction(() => document.querySelector('#sh [data-act="kaydet"]').disabled && document.querySelector("#sh .ed-dirty").hidden);
+    assert.deepEqual(textSaves.at(-1), { path: "media/ayar.yml", text: textStart + "debug: true", encoding: "utf-8", version: "a".repeat(64) });
+    await page.keyboard.type("\n# iki");
+    await saveBtn.click();
+    await page.waitForFunction(() => document.querySelector("#sh .ed-dirty").hidden);
+    assert.equal(textSaves.at(-1).version, "b".repeat(64), "the next save sends the version the last one returned");
+    assert(await page.locator("#sh .cm-content").evaluate((c) => c.contains(document.activeElement) || c === document.activeElement),
+      "after Kaydet the caret is back in the text");
+    await page.keyboard.type("x");
+    await page.locator("#sh .ed-foot").getByRole("button", { name: "Kapat", exact: true }).click();
+    await page.locator("#cf[open]").waitFor();
+    assert.equal(await page.locator("#cf-title").innerText(), "Kaydedilmemiş değişiklikler atılsın mı?");
+    assert(await page.locator("#sh").evaluate((d) => d.open), "the editor stays open behind the question");
+    await page.locator("#cf-cancel").click();
+    await page.locator("#sh .dlg-x").focus();
+    await page.keyboard.press("Escape");
+    await page.locator("#cf[open]").waitFor();
+    assert(await page.locator("#sh").evaluate((d) => d.open), "Esc asks too");
+    await page.locator("#cf-go").click();
+    await page.waitForFunction(() => !document.querySelector("#sh").open && !document.querySelector("#sh").classList.contains("ed-wide"));
+    assert.equal(textSaves.length, 2, "discarding saves nothing");
+    // A file the server will not have edited opens read-only, with the reason.
+    await tile("buyuk.log").dblclick();
+    await page.locator("#sh pre.textview").waitFor();
+    assert.match(await page.locator("#sh .infoline-s").innerText(), /Dosya büyük/);
+    assert.equal(await page.locator("#sh .ed-box").count(), 0);
+    await page.locator("#sh .dlg-foot").getByRole("button", { name: "Kapat", exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector("#sh").open);
     await page.getByRole("searchbox", { name: "Bu klasörde ara" }).fill("series");
     assert.equal(await tile("movies").count(), 0);
     assert.equal(await tile("series").count(), 1);
@@ -690,6 +757,20 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter), "stable");
     await select("hosts");
     assert(!/null/.test(await page.locator("#fs-detail").innerText()), "detail column prints null");
+    // DD-249: the root view's editor says it saves as root and posts under /api/sistem/.
+    await act("duzenle").click();
+    await page.locator("#sh .ed-box .cm-content").waitFor();
+    assert.match(await page.locator("#sh .ed-warn").innerText(), /Root olarak kaydedilir/);
+    assert.equal(await page.locator("#sh .ed-lang").innerText(), "Yapılandırma");
+    await page.locator("#sh .cm-content").click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("10.0.0.1 nas");
+    await page.keyboard.press("Control+s");
+    await page.waitForFunction(() => document.querySelector("#sh .ed-dirty").hidden);
+    assert.deepEqual(sysSaves, [{ path: "etc/hosts", text: "127.0.0.1 localhost\n10.0.0.1 nas", encoding: "utf-8", version: "c".repeat(64) }]);
+    await page.screenshot({ path: path.join(shots, "system-editor.png") });
+    await page.locator("#sh .dlg-x").click();
+    await page.waitForFunction(() => !document.querySelector("#sh").open);
     await page.screenshot({path:path.join(shots,"system-view.png"),fullPage:true});
     await act("sil").click();
     assert(await page.locator("#cf-go").isDisabled());

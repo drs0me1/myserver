@@ -3494,7 +3494,7 @@ PY
     [ "$(cat "$V2_ROOT/install.sh" "$V2_ROOT/scripts/master-modul" | grep -vE '^[[:space:]]*#' | grep -cE 'podman\.socket|podman-auto-update|systemctl (enable|start)[^#]*podman')" -eq 0 ]
     # The base read mapper stays read-only; manager writes have one gated route and an external worker.
     grep -qF 'atomic_write "$SBIN_DIR/master_containers.py" 0755 <"$V2_ROOT/panel/master_containers.py"' "$V2_ROOT/install.sh"
-    grep -qF 'konteynerler.css konteynerler.js giris.html giris.js giris.css; do' "$V2_ROOT/install.sh"
+    grep -qF 'konteynerler.css konteynerler.js giris.html giris.js giris.css duzenleyici.js; do' "$V2_ROOT/install.sh"
     grep -qF 'm = re.match(r"^/api/konsol/konteynerler/(liste|ayrinti|gunluk|islem|guncellemeler)$", path)' "$V2_ROOT/panel/master-panel"
     [ "$(grep -c '/api/konsol/konteynerler/' "$V2_ROOT/panel/master-panel")" -eq 2 ]
     grep -qF 'if path == "/api/konsol/konteynerler/islem":' "$V2_ROOT/panel/master-panel"
@@ -5709,4 +5709,29 @@ PY
     run ! grep -q 'health.__LOCAL_DOMAIN__' "$V2_ROOT/templates/Caddyfile" "$V2_ROOT/templates/dnsmasq.conf"
     grep -q 'state.lock' "$V2_ROOT/scripts/refresh-tailnet-config"
     grep -q 'flock -n 8' "$V2_ROOT/scripts/refresh-tailnet-config"
+}
+
+@test "the text editor bundle is installed, matches its pinned build and stays inside the CSP" {
+    # DD-249: console/duzenleyici.js is built from tools/duzenleyici; its banner names every pinned package.
+    local bundle="$V2_ROOT/console/duzenleyici.js" tools="$V2_ROOT/tools/duzenleyici" name version
+    [ -f "$bundle" ]
+    head -1 "$bundle" | grep -q '^/\*! Konsol text editor (DD-249)'
+    while read -r name version; do
+        [ "$name" = esbuild ] && continue
+        head -60 "$bundle" | grep -qF " *   $name $version — Copyright"
+    done < <(python3 -c 'import json,sys; [print(k, v) for k, v in json.load(open(sys.argv[1]))["devDependencies"].items()]' "$tools/package.json")
+    grep -q '"lockfileVersion"' "$tools/package-lock.json"
+    run ! grep -q '"resolved": "http' <(grep '"resolved"' "$tools/package-lock.json" | grep -v 'https://registry.npmjs.org/')
+    # The build sources never reach the server: kur.sh copies a fixed list without tools.
+    run ! grep -qE '^    local items="[^"]*(^| )tools( |")' "$V2_ROOT/../kur.sh"
+    grep -qx 'node_modules/' "$V2_ROOT/../.gitignore"
+    # Loaded on first use from Konsol's own origin; styles go through a constructed sheet, not <style>.
+    grep -qF 'src: "/duzenleyici.js"' "$V2_ROOT/console/konsol.js"
+    grep -qF 'StyleModule.mount = ' "$tools/giris.js"
+    grep -qF 'adoptedStyleSheets' "$bundle"
+    # The only address in the code is the SVG namespace; nothing is fetched from elsewhere.
+    [ "$(grep -oE 'https?://[a-zA-Z0-9./_-]+' "$bundle" | sort -u)" = "http://www.w3.org/2000/svg" ]
+    # Both views offer the save route; the system view keeps its narrower list otherwise.
+    grep -qF '"/api/text/save": ("duzenle", save_text),' "$V2_ROOT/files-panel/master-files-panel"
+    [ "$(grep -cF '"/api/text/save": ("duzenle", save_text),' "$V2_ROOT/files-panel/master-files-panel")" -eq 2 ]
 }

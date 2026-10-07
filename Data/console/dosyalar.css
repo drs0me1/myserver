@@ -289,3 +289,55 @@
 .fx-nav .rl-more { justify-self:start; margin:0 0 4px; padding:4px 8px; border:0; border-radius:8px; background:none; color:var(--accent); font:inherit; font-size:12.5px; cursor:pointer; }
 .fx-nav .rl-more:hover { background:var(--glass-2); }
 @media(max-width:1100px) { .fx-nav .rl-more { flex:none; margin:0; background:var(--glass-2); } }
+
+/* DD-249: text editor (CodeMirror, duzenleyici.js) in the shared window. Its base rules come from the
+   bundle through a constructed sheet; these win by one more class. Token colours follow the theme. */
+dialog#sh.ed-wide { width:min(1180px, calc(100vw - 32px)); }
+.ed-warn { display:flex; gap:9px; align-items:flex-start; margin-bottom:10px; padding:9px 11px; border-radius:8px; font-size:13px; color:var(--ink);
+  background:color-mix(in srgb, #d97706 12%, transparent); border:1px solid color-mix(in srgb, #d97706 35%, transparent); }
+.ed-warn svg { width:16px; height:16px; margin-top:2px; flex:none; color:#d97706; }
+.ed-bar { display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap; margin:2px 0 10px; font-size:12.5px; color:var(--muted); }
+.ed-lang { padding:3px 9px; border-radius:99px; background:var(--surface-2); color:var(--ink); font-weight:600; font-size:11.5px; }
+.ed-pos { margin-left:auto; font-variant-numeric:tabular-nums; }
+.ed-hint { color:var(--muted); font-size:12px; }
+.ed-foot { align-items:center; }
+.ed-foot .ed-hint { margin-right:auto; }
+.ed-foot .btn-primary:disabled { opacity:.45; cursor:default; }
+.ed-dirty { display:inline-block; width:8px; height:8px; margin-left:8px; border-radius:50%; background:#d97706; vertical-align:middle; }
+.ed-dirty[hidden] { display:none; }
+.ed-box { --tok-kw:#7c3aed; --tok-str:#15803d; --tok-num:#c2410c; --tok-prop:#1d6fb8; --tok-meta:#b45309; --tok-com:#6b7785; --tok-op:#64748b;
+  height:min(58vh, 560px); min-height:240px; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:var(--surface); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ed-box { --tok-kw:#c4b5fd; --tok-str:#86efac; --tok-num:#fdba74; --tok-prop:#7dd3fc; --tok-meta:#fcd34d; --tok-com:#8b98a8; --tok-op:#94a3b8; }
+}
+:root[data-theme="dark"] .ed-box { --tok-kw:#c4b5fd; --tok-str:#86efac; --tok-num:#fdba74; --tok-prop:#7dd3fc; --tok-meta:#fcd34d; --tok-com:#8b98a8; --tok-op:#94a3b8; }
+.ed-box .cm-editor { height:100%; font-size:13px; color:var(--ink); }
+.ed-box .cm-editor.cm-focused { outline:none; }
+.ed-box .cm-editor .cm-scroller { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height:1.55; }
+.ed-box .cm-editor .cm-gutters { background:transparent; color:var(--muted); border-right:1px solid var(--line); }
+.ed-box .cm-editor .cm-activeLine { background:color-mix(in srgb, var(--accent) 8%, transparent); }
+.ed-box .cm-editor .cm-activeLineGutter { background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--ink); }
+.ed-box .cm-editor .cm-content { caret-color:var(--accent); }
+.ed-box .cm-editor .cm-cursor { border-left-color:var(--accent); }
+.ed-box .cm-editor .cm-selectionBackground, .ed-box .cm-editor.cm-focused .cm-selectionBackground { background:color-mix(in srgb, var(--accent) 28%, transparent); }
+.ed-box .cm-editor .cm-selectionMatch { background:color-mix(in srgb, var(--accent) 14%, transparent); }
+.ed-box .cm-editor .cm-searchMatch { background:color-mix(in srgb, #f59e0b 30%, transparent); outline:1px solid color-mix(in srgb, #f59e0b 60%, transparent); }
+.ed-box .cm-editor .cm-matchingBracket { background:color-mix(in srgb, var(--accent) 20%, transparent); outline:1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.ed-box .cm-editor .cm-panels { background:var(--surface-2); color:var(--ink); border-color:var(--line); }
+.ed-box .cm-editor .cm-panel.cm-search { font-size:12.5px; padding:6px 8px; }
+.ed-box .cm-editor .cm-textfield { font:inherit; padding:4px 7px; border-radius:6px; border:1px solid var(--line); background:var(--surface); color:var(--ink); }
+.ed-box .cm-editor .cm-button { font:inherit; padding:3px 9px; border-radius:6px; border:1px solid var(--line); background:var(--surface); background-image:none; color:var(--ink); }
+.ed-box .cm-editor .cm-foldPlaceholder { background:var(--surface-2); border-color:var(--line); color:var(--muted); }
+.ed-box .tok-comment { color:var(--tok-com); font-style:italic; }
+.ed-box .tok-keyword, .ed-box .tok-atom, .ed-box .tok-bool { color:var(--tok-kw); }
+.ed-box .tok-string, .ed-box .tok-string2, .ed-box .tok-url { color:var(--tok-str); }
+.ed-box .tok-number { color:var(--tok-num); }
+.ed-box .tok-propertyName, .ed-box .tok-definition, .ed-box .tok-typeName, .ed-box .tok-className, .ed-box .tok-labelName { color:var(--tok-prop); }
+.ed-box .tok-meta, .ed-box .tok-heading, .ed-box .tok-namespace { color:var(--tok-meta); }
+.ed-box .tok-heading { font-weight:700; }
+.ed-box .tok-operator, .ed-box .tok-punctuation { color:var(--tok-op); }
+.ed-box .tok-invalid { color:var(--danger); }
+@media (max-width: 640px) {
+  .ed-bar .ed-hint, .ed-foot .ed-hint { display:none; }
+  .ed-box { height:55vh; }
+}

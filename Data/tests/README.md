@@ -40,6 +40,19 @@ that named route, not the shared Caddy listener.
 Portable validation should compare the complete embedded file set with runtime
 sources, excluding Python caches, metadata, tests, docs and private input.
 
+## Files text editor (v2-231, DD-249)
+
+`test_text_edit.py` covers the backend in temporary directories: the version and the reasons the text
+view gives, an atomic replace that keeps mode, owner (as root) and extended attributes, CRLF and the
+UTF-8 BOM kept, Windows-1254 written back, unencodable text refused, a changed file or a swap before the
+rename refused (409), oversized text, symlinks and folders refused, and no `.konsol-kayit-*` left behind.
+`test_system_files.py` saves through the real handler on the root view (a body above `MAX_BODY`, a stale
+version, the gate). `files-ui.cjs` opens the editor under the production CSP: language label, cursor
+position, Ctrl+S and Kaydet with the returned version, the unsaved-changes question on Kapat and Esc,
+the read-only view of a large file, and the root view's warning and `/api/sistem/text/save`.
+`common.bats` checks the bundle's banner against `tools/duzenleyici/package.json`. To rebuild the bundle:
+`cd Data/tools/duzenleyici && npm ci && npm run derle` (the output is byte-identical for the same lockfile).
+
 ## Files "Sistem (/)" root view (v2-214, DD-235)
 
 `test_system_files.py` runs the backend's `--sistem` mode in temporary directories and on a temporary

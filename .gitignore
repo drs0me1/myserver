@@ -7,3 +7,6 @@
 
 # Python bytecode left by local test runs; the exporter already excludes it.
 __pycache__/
+
+# The editor bundle's build dependencies (Data/tools/duzenleyici, DD-249); npm ci restores them.
+node_modules/

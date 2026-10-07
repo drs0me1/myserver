@@ -13,6 +13,45 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-249: Files text editor (CodeMirror 6); saves as root in "Sistem (/)" (v2-231)
+
+- **Request (user, 2026-10-07):** "dosyalar menüsünde sunucu erişimi tam erişim olarak ayarlayalım.
+  salt okunur dosyalar da tam erişime sahip olsun" (clarified: the "Sistem (/)" view) and "dosyalarda
+  tıklanan bir dosya text editör ile açabilir miyiz … filebrowser gibi". Of a plain built-in editor,
+  a CodeMirror editor with syntax colours and the filebrowser application, the CodeMirror editor was
+  chosen; mock-ups were shown first.
+- **What "read-only" was:** the root view already runs with every capability (DD-235, DD-238); what
+  made every existing file read-only was the backend rule that nothing overwrites. The editor's save
+  is the one deliberate exception, narrowed to an existing regular text file of at most 1 MiB that has
+  not changed since it was opened.
+- **Bundle:** `console/duzenleyici.js` (~640 KB, ~230 KB compressed by Caddy) is built with esbuild
+  from exact versions in `tools/duzenleyici` (`package.json`, `package-lock.json`, entry `giris.js`,
+  `derle.mjs`; `npm ci && npm run derle` reproduces it byte for byte). `kur.sh` never copies `tools/`.
+  The banner names every bundled package (all MIT; a non-MIT package stops the build) and carries the
+  licence text; `common.bats` checks it against `package.json`. Konsol loads the bundle only when an
+  editor opens. Not a CDN: the CSP allows `script-src 'self'` only, and the tailnet site must work
+  without the internet.
+- **CSP:** style-mod adds a `<style>` element to documents, which `style-src 'self'` refuses. The
+  entry replaces `StyleModule.mount` with one constructed `CSSStyleSheet` kept in style-mod's module
+  order (constructed sheets are CSSOM, not inline style). Konsol's colours come from `dosyalar.css`
+  through the `classHighlighter` token classes; the search panel's words are Turkish phrases.
+- **Save:** `version` is the SHA-256 of the bytes the editor got; the save re-reads the file and
+  refuses another version (409). The temporary file `.konsol-kayit-<hex>` (short, so a 255-byte name
+  still fits) is created `O_EXCL|O_NOFOLLOW` in the same folder, gets owner, group, mode and every
+  extended attribute of the old file (a failure aborts: no silent loss of ACLs), is synced, the old
+  file is compared once more (device, inode, size, mtime_ns) and the temporary file is renamed over
+  it; the folder is synced. Line endings: CRLF if the old file had any, else LF; a UTF-8 BOM is kept.
+- **Refused for editing (shown read-only with the reason):** over 1 MiB, not lossless in the chosen
+  encoding, more than one hard link (a rename would split them), setuid/setgid (the root unit has
+  `RestrictSUIDSGID`; such files are not text to edit anyway), and in `/srv` a file the downloads
+  account does not own (it could not keep the owner). The root view may edit any of the rest.
+- **Not chosen:** filebrowser as a package (its own login and root bind mounts beside Konsol's
+  checks); writing in place (a crash mid-write would leave half a config file); a backup copy next
+  to the file (it would litter `/etc`); a typed confirmation per save (the strip says root and no
+  undo; Günlük records `duzenle`).
+- **Also fixed:** the text view passed `null` to `replaceChildren` when the file was small, which
+  printed a "null" line.
+
 ### DD-248: "Sistem (/)" walks folder sizes on local disks, one device at a time (v2-230)
 
 - **Request (user, 2026-10-07):** "dosya görünümünü sunucu kök dosyalarda da görelim": the DD-247
@@ -325,6 +364,7 @@ with its status and the file that holds it.
   `ProtectSystem`/`ProtectHome`/`PrivateTmp`/`PrivateDevices` by design; it keeps
   `NoNewPrivileges`, `RestrictSUIDSGID`, `IPAddressDeny=any` and no listening port.
 - **Not done:** no text editor, no copy, no chmod/chown, no archive jobs in the root view.
+  *(Amended by DD-249: a text editor in both views.)*
 
 ### DD-233: Konsol update button, pinned to a GitHub commit (v2-212)
 

@@ -21,6 +21,8 @@
 # bir dosyanın üzerine yine hiçbir işlem yazmaz.
 # DD-248: klasör boyutu burada da hesaplanır, ama yalnız yerel disk dosya sistemlerinde ve bir tarama
 # başka bir dosya sistemine geçmez (du -x): /proc, /sys, overlay ya da ağ diskleri boyutsuz kalır.
+# DD-249: metin düzenleyicinin kaydı (/api/text/save) iki görünümde de "üzerine yazmaz" kuralının tek
+# istisnasıdır: yalnız var olan, açıldığından beri değişmemiş, en çok 1 MiB'lık düz bir metin dosyası.
 #
 # Güvenlik: kökten çıkılamaz (her yol adımı bir dizin tanıtıcısından O_NOFOLLOW ile
 # açılır, sembolik bağlantı izlenmez); hiçbir işlem üzerine yazmaz (renameat2
@@ -28,9 +30,11 @@
 # çöpü boşaltmak "onayla" ister. CSRF (X-Konsol + aynı köken), Host denetimi, sıkı CSP ve
 # no-store öbür arka uçla aynıdır; parola olmadığı için asıl korumalar bunlardır.
 import argparse
+import codecs
 import ctypes
 import errno
 import grp
+import hashlib
 import http.server
 import ipaddress
 import json
@@ -71,6 +75,9 @@ UPLOAD_DRAIN_MAX = 256 * 1024 * 1024
 MAX_NAMES = 1000
 MAX_DEPTH = 64
 TEXT_LIMIT = 1024 * 1024
+# DD-249: kaydedilen metnin JSON gövdesi; denetim karakterleri \uXXXX olarak altı kat büyür.
+TEXT_BODY_MAX = 7 * TEXT_LIMIT
+VERSION_RE = re.compile(r"^[0-9a-f]{64}$")
 SNIFF_BYTES = 8192
 # Bir listelemede klasör boyutları için en çok bu kadar girdiye bakılır; aşılırsa boyut "—".
 WALK_BUDGET = 200000
@@ -555,9 +562,101 @@ class Files:
             raise PanelError(415, "metin dosyası değil")
         detected = guess_encoding(data, parts[-1], truncated)
         chosen = detected if enc in ("auto", "") else enc
+        # DD-249: düzenlenebilirse sürümü (baytların SHA-256'sı) kayıtta geri gelir; değilse nedeni yazılır.
+        reason = "" if truncated else self.edit_refusal(st)
+        if not reason and not truncated:
+            try:
+                data.decode(ENCODINGS[chosen])
+            except UnicodeDecodeError:
+                reason = "bu kodlamayla kayıpsız okunamıyor; başka bir kodlama seçin"
+        elif truncated:
+            reason = "dosya 1 MiB'tan büyük; yalnız ilk bölümü okunur"
         return {"path": "/".join(parts), "size": st.st_size, "mtime": int(st.st_mtime),
                 "truncated": truncated, "detected": detected, "encoding": chosen,
+                "bom": data.startswith(codecs.BOM_UTF8), "eol": "crlf" if b"\r\n" in data else "lf",
+                "editable": not reason, "reason": reason,
+                "version": None if reason else hashlib.sha256(data).hexdigest(),
                 "text": data.decode(ENCODINGS[chosen], errors="replace")}
+
+    def edit_refusal(self, st):
+        """DD-249: bu dosya düzenleyiciyle kaydedilemezse nedeni; kaydedilebilirse boş."""
+        if st.st_nlink > 1:
+            return "dosyanın birden çok sabit bağlantısı var; düzenlenmez"
+        if st.st_mode & (stat.S_ISUID | stat.S_ISGID):
+            return "setuid/setgid dosya düzenlenmez"
+        # /srv görünümü indirme hesabıdır: başkasının dosyasını sahibini koruyarak yeniden yazamaz.
+        if not self.system and st.st_uid != os.geteuid():
+            return "dosyanın sahibi başka bir hesap; düzenlenemez"
+        return ""
+
+    def save_text(self, parts, text, enc, version):
+        """DD-249: düzenleyicinin kaydı (çağıran self.lock'u tutar). Dosyanın sürümü açıldığındakiyle
+        aynı olmalıdır. Metin aynı kodlamayla (UTF-8 BOM'u korunur) ve aynı satır sonlarıyla yazılır:
+        önce aynı klasörde geçici bir dosyaya, eskisinin sahibi, grubu, izinleri ve ek öznitelikleriyle,
+        diske işlenir, sonra eskisinin yerine konur. Yarıda kalan bir kayıt dosyayı bozmaz."""
+        if enc not in ENCODINGS:
+            raise PanelError(400, "geçersiz kodlama")
+        if not isinstance(text, str) or not isinstance(version, str) or not VERSION_RE.match(version):
+            raise PanelError(400, "geçersiz kayıt")
+        if not parts:
+            raise PanelError(400, "dosya değil")
+        name = parts[-1]
+        with DirFd(self.open_dir(parts[:-1])) as dfd, DirFd(os.open(name, O_FILE, dir_fd=dfd)) as fd:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode):
+                raise PanelError(400, "dosya değil")
+            data = os.pread(fd, TEXT_LIMIT + 1, 0)
+            if len(data) > TEXT_LIMIT or st.st_size > TEXT_LIMIT:
+                raise PanelError(413, "dosya 1 MiB'tan büyük; düzenlenmez")
+            reason = self.edit_refusal(st)
+            if reason:
+                raise PanelError(403, reason)
+            if hashlib.sha256(data).hexdigest() != version:
+                raise PanelError(409, "dosya siz açtıktan sonra değişti; kaydedilmedi (yeniden açın)")
+            codec = "utf-8-sig" if enc == "utf-8" and data.startswith(codecs.BOM_UTF8) else "utf-8" if enc == "utf-8" else ENCODINGS[enc]
+            try:
+                raw = text.replace("\r\n", "\n").replace("\r", "\n").encode(codec)
+            except UnicodeEncodeError as err:
+                raise PanelError(400, "“%s” bu kodlamada yok; kaydedilmedi" % err.object[err.start:err.end][:8])
+            if b"\r\n" in data:
+                raw = raw.replace(b"\n", b"\r\n")
+            if len(raw) > TEXT_LIMIT:
+                raise PanelError(413, "metin 1 MiB'tan büyük; kaydedilmedi")
+            tmp = ".konsol-kayit-%s" % secrets.token_hex(8)
+            tfd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=dfd)
+            try:
+                try:
+                    os.fchown(tfd, st.st_uid, st.st_gid)
+                    os.fchmod(tfd, stat.S_IMODE(st.st_mode))
+                    try:
+                        attrs = os.listxattr(fd)
+                    except OSError as err:
+                        if err.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                            raise
+                        attrs = []
+                    for attr in attrs:
+                        os.setxattr(tfd, attr, os.getxattr(fd, attr))
+                    view = memoryview(raw)
+                    while view:
+                        view = view[os.write(tfd, view):]
+                    os.fsync(tfd)
+                finally:
+                    os.close(tfd)
+                # Arada dosya değiştirildiyse ya da yerine başka bir şey konduysa kayıt yapılmaz.
+                now = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                if (now.st_dev, now.st_ino, now.st_mtime_ns, now.st_size) != (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size):
+                    raise PanelError(409, "dosya siz açtıktan sonra değişti; kaydedilmedi (yeniden açın)")
+                os.rename(tmp, name, src_dir_fd=dfd, dst_dir_fd=dfd)
+            except BaseException:
+                try:
+                    os.unlink(tmp, dir_fd=dfd)
+                except OSError:
+                    pass
+                raise
+            os.fsync(dfd)
+            new = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+        return {"path": "/".join(parts), "version": hashlib.sha256(raw).hexdigest(), "size": len(raw),
+                "mtime": int(new.st_mtime)}
 
     # -- değişiklik (çağıran self.lock'u tutar)
     def mkdir(self, parts, name):
@@ -957,14 +1056,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return "/"
         return "/api" + route[len(SYSTEM_PREFIX):]
 
-    def body_json(self):
+    def body_json(self, limit=MAX_BODY):
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
             return None
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             return None
-        if length <= 0 or length > MAX_BODY:
+        if length <= 0 or length > limit:
             return None
         try:
             data = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -1131,7 +1230,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if route == "/api/upload":
             self.upload(user)
             return
-        data = self.body_json()
+        data = self.body_json(TEXT_BODY_MAX if route == "/api/text/save" else MAX_BODY)
         if data is None:
             self.error(400, "istek gövdesi JSON olmalı")
             return
@@ -1187,6 +1286,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             count = files.empty()
             return 200, {"purged": count}, count
 
+        def save_text():
+            parts = files.split(data.get("path"))
+            return 200, files.save_text(parts, data.get("text"), data.get("encoding"), data.get("version")), "/".join(parts)
+
         def delete():
             # DD-235: tek öge adını, birden çok öge "onayla"yı yazarak onaylanır.
             parts, names = files.split(data.get("path")), self.names(data)
@@ -1203,6 +1306,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "/api/rename": ("ad", rename),
                 "/api/move": ("tasi", move),
                 "/api/delete": ("sil", delete),
+                "/api/text/save": ("duzenle", save_text),
             }
         else:
             routes = {
@@ -1213,6 +1317,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "/api/trash/restore": ("geri-yukle", restore),
                 "/api/trash/purge": ("kalici-sil", purge),
                 "/api/trash/empty": ("cop-bosalt", empty),
+                "/api/text/save": ("duzenle", save_text),
             }
         if route not in routes:
             self.error(404, "bulunamadı")

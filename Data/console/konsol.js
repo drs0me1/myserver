@@ -358,6 +358,7 @@
     tasi: (e) => `Taşındı: ${e.detail}`, cope: (e) => `Çöpe taşındı: ${e.detail}`,
     "geri-yukle": (e) => `Çöpten geri yüklendi: ${e.detail}`, "kalici-sil": (e) => `Kalıcı silindi: ${e.detail}`,
     "cop-bosalt": (e) => `Çöp boşaltıldı (${e.detail} öge)`, indir: (e) => `İndirildi: ${e.detail}`,
+    duzenle: (e) => `Düzenlendi: ${e.detail}`,
     "modul-kur": (e) => `${modName(e.detail)} kurulumu başlatıldı`, "modul-baslat": (e) => `${modName(e.detail)} başlatıldı`,
     "modul-durdur": (e) => `${modName(e.detail)} durduruldu`,
     "modul-kaldir": (e) => `${modName(e.detail)} kaldırıldı${e.detail.endsWith("+veri") ? " · verisiyle" : ""}`,
@@ -403,7 +404,10 @@
   }
   /* ---------- ortak pencere (#sh): uygulama sayfaları, paylaşım ve arşiv formları, dosya görüntüleyici ---------- */
   const xIcon = (btn) => { btn.append(svg("plus")); btn.firstChild.style.transform = "rotate(45deg)"; };
-  const shClose = () => $("sh").close();
+  // DD-249: an open editor with unsaved changes asks before the window closes (X, Kapat, Esc);
+  // edDone releases the editor whenever the window closes or shows something else.
+  let shLeave = null, edDone = null;
+  const shClose = () => { if (!(shLeave && shLeave())) $("sh").close(); };
   function shHead(title, sub, icon) {
     const x = h("button", { type: "button", class: "dlg-x", "aria-label": "Kapat", onclick: shClose });
     xIcon(x);
@@ -492,7 +496,8 @@
   const protectedList = () => (!fsSys && S.fs && Array.isArray(S.fs.protected) ? S.fs.protected : []);
   const protectedOwner = (rel) => { const hit = protectedList().find((p) => rel === p.path || rel.startsWith(p.path + "/")); return hit ? hit.owner : ""; };
   const inTemp = (rel) => !!protectedOwner(rel);
-  const kindOf = (item) => (item.type === "dir" ? "dir" : /\.(txt|log|nfo|srt|sub|md|json|conf|ini|csv|yml|yaml)$/i.test(item.name) ? "text"
+  // DD-249: these open in the editor on a double click; any other file has "Düzenle" among its actions.
+  const kindOf = (item) => (item.type === "dir" ? "dir" : /\.(txt|log|nfo|srt|sub|md|json|conf|ini|csv|yml|yaml|toml|cfg|cnf|env|sh|py|js|css|html?|xml|service|timer|rules|caddy)$/i.test(item.name) ? "text"
     : /\.(mkv|mp4|avi|mov|m4v|ts|webm)$/i.test(item.name) ? "video" : "file");
   const isText = (item) => kindOf(item) === "text";
   // Büyük simgeler: klasör ve uzantı etiketli belge; etiketin rengi dosya türünden gelir.
@@ -1183,23 +1188,89 @@
       .catch(fail);
   }
 
-  /* metin görüntüleyici */
+  /* metin düzenleyici (DD-249): CodeMirror paketi (duzenleyici.js) ilk açılışta yüklenir. Sunucu
+     düzenlenebilir dediği dosyayı sürümüyle verir; kayıt o sürümü geri gönderir, arada değişen dosya
+     yazılmaz. Düzenlenemeyen (büyük, kayıpsız okunamayan…) dosya nedeniyle birlikte salt okunur görünür. */
+  let edLoad = null;
+  const loadEditor = () => edLoad || (edLoad = new Promise((ok, no) => {
+    if (window.KonsolEditor) { ok(window.KonsolEditor); return; }
+    document.head.append(h("script", { src: "/duzenleyici.js",
+      onload: () => (window.KonsolEditor ? ok(window.KonsolEditor) : no(new Error("Düzenleyici yüklenemedi."))),
+      onerror: () => { edLoad = null; no(new Error("Düzenleyici yüklenemedi.")); } }));
+  }));
+  const ENC_LABEL = { "utf-8": "UTF-8", cp1254: "Türkçe (Windows-1254)", cp437: "DOS (CP437)" };
   function openText(item, encName) {
-    api(fsApi(`/api/text?path=${enc(pathText(fsPath.concat(item.name)))}&enc=${enc(encName || "auto")}`)).then((r) => {
-      const pre = h("pre", { class: "textview", tabindex: "0" }, r.text);
-      $("sh-body").replaceChildren(
-        shHead(item.name, `${fsHere()} · ${bytes(item.size)} · ${r.encoding}`, "text"),
-        r.truncated ? h("div", { class: "infoline-s" }, svg("info"), h("span", null, "Dosya büyük: yalnız ilk bölümü gösteriliyor.")) : null,
-        h("div", { class: "field" },
-          h("label", { for: "tv-enc" }, "Kodlama"),
-          h("select", { id: "tv-enc", onchange: (e) => openText(item, e.target.value) },
-            ...[["auto", "Otomatik"], ["utf-8", "UTF-8"], ["cp1254", "Türkçe (Windows-1254)"], ["cp437", "DOS (CP437)"]].map(([v, label]) =>
-              h("option", { value: v, selected: (encName || "auto") === v }, label)))),
-        pre,
-        h("div", { class: "dlg-foot" },
+    const path = pathText(fsPath.concat(item.name)), sys = fsSys, where = fsHere();
+    Promise.all([api(fsApi(`/api/text?path=${enc(path)}&enc=${enc(encName || "auto")}`)), loadEditor().catch(() => null)]).then(([r, KE]) => {
+      const facts = () => [where, bytes(r.size), (ENC_LABEL[r.encoding] || r.encoding) + (r.bom ? " (BOM)" : ""), r.eol === "crlf" ? "CRLF" : "LF"].join(" · ");
+      const encSelect = h("select", { id: "tv-enc", "aria-label": "Kodlama" },
+        ...[["auto", "Otomatik"], ["utf-8", "UTF-8"], ["cp1254", "Türkçe (Windows-1254)"], ["cp437", "DOS (CP437)"]].map(([v, label]) =>
+          h("option", { value: v, selected: (encName || "auto") === v }, label)));
+      const head = shHead(item.name, facts(), "text");
+      if (edDone) edDone();
+      if (!r.editable || !KE) {
+        encSelect.onchange = (e) => openText(item, e.target.value);
+        $("sh-body").replaceChildren(...[head,
+          h("div", { class: "infoline-s" }, svg("info"), h("span", null, !KE ? "Düzenleyici yüklenemedi; dosya salt okunur gösteriliyor."
+            : r.truncated ? "Dosya büyük: yalnız ilk bölümü gösteriliyor." : `Salt okunur: ${r.reason}.`)),
+          h("div", { class: "field" }, h("label", { for: "tv-enc" }, "Kodlama"), encSelect),
+          h("pre", { class: "textview", tabindex: "0" }, r.text),
+          h("div", { class: "dlg-foot" },
+            h("button", { type: "button", class: "btn btn-quiet", onclick: () => download(item) }, svg("download"), "İndir"),
+            h("button", { type: "button", class: "btn btn-primary", onclick: shClose }, "Kapat"))]);
+        if (!$("sh").open) $("sh").showModal();
+        return;
+      }
+      let version = r.version, saving = false;
+      const dot = h("span", { class: "ed-dirty", title: "Kaydedilmemiş değişiklik", hidden: true });
+      head.querySelector("#sh-title").append(dot);
+      const pos = h("span", { class: "ed-pos" }, "Satır 1, Sütun 1");
+      const saveBtn = h("button", { type: "button", class: "btn btn-primary", disabled: true, "data-act": "kaydet", onclick: () => save() }, "Kaydet");
+      const box = h("div", { class: "ed-box" });
+      const ed = KE.create(box, { doc: r.text, name: item.name, label: `${item.name} içeriği`,
+        onChange: (dirty) => { dot.hidden = !dirty; saveBtn.disabled = !dirty || saving; },
+        onCursor: (line, col) => { pos.textContent = `Satır ${line}, Sütun ${col}`; },
+        onSave: () => save() });
+      const discard = (then) => ask({ title: "Kaydedilmemiş değişiklikler atılsın mı?", sub: item.name, go: "Değişiklikleri at", danger: true,
+        items: [["info", "Kaydetmeden devam ederseniz yaptığınız değişiklikler kaybolur."]], onOk: then });
+      function save() {
+        if (saving || !ed.dirty()) return;
+        saving = true; saveBtn.disabled = true; saveBtn.textContent = "Kaydediliyor…";
+        post(fsApi("/api/text/save"), { path, text: ed.text(), encoding: r.encoding, version }).then((res) => {
+          version = res.version; r.size = res.size;
+          head.querySelector(".okhead p").textContent = facts();
+          ed.markSaved();
+          toast("Kaydedildi.");
+          if (current === "dosyalar" && fsView === "files" && fsSys === sys) loadFs();
+        }).catch(fail).finally(() => {
+          saving = false; saveBtn.textContent = "Kaydet"; saveBtn.disabled = !ed.dirty();
+          if ($("sh").open && edDone) ed.focus();  // a click on Kaydet leaves the caret where it was
+        });
+      }
+      encSelect.onchange = (e) => {
+        const want = e.target.value;
+        if (!ed.dirty()) { openText(item, want); return; }
+        e.target.value = encName || "auto";
+        discard(() => openText(item, want));
+      };
+      shLeave = () => {
+        if (!ed.dirty()) return false;
+        discard(() => { shLeave = null; $("sh").close(); });
+        return true;
+      };
+      edDone = () => { edDone = null; shLeave = null; ed.destroy(); $("sh").classList.remove("ed-wide"); };
+      $("sh").classList.add("ed-wide");
+      $("sh-body").replaceChildren(...[head,
+        sys ? h("div", { class: "ed-warn" }, svg("info"), h("span", null, h("strong", null, "Root olarak kaydedilir. "),
+          "Dosyanın sahibi ve izinleri korunur; önceki içerik geri alınamaz.")) : null,
+        h("div", { class: "ed-bar" }, h("label", { for: "tv-enc" }, "Kodlama"), encSelect,
+          h("span", { class: "ed-lang" }, KE.language(item.name)), h("span", { class: "ed-hint" }, "Ara: Ctrl+F"), pos),
+        box,
+        h("div", { class: "dlg-foot ed-foot" }, h("span", { class: "ed-hint" }, "Ctrl+S kaydeder"),
           h("button", { type: "button", class: "btn btn-quiet", onclick: () => download(item) }, svg("download"), "İndir"),
-          h("button", { type: "button", class: "btn btn-primary", onclick: shClose }, "Kapat")));
+          h("button", { type: "button", class: "btn btn-quiet", onclick: shClose }, "Kapat"), saveBtn)].filter(Boolean));
       if (!$("sh").open) $("sh").showModal();
+      ed.focus();
     }).catch(fail);
   }
 
@@ -1239,7 +1310,8 @@
     showDialog: (title, content) => { $("sh-body").replaceChildren(shHead(title, "Ortak klasör ve hesap · bağımsız Tailscale / WAN bağlantıları", "share"), content); if (!$("sh").open) $("sh").showModal(); },
     closeDialog: shClose, ask,
   });
-  $("sh").addEventListener("close", () => { const pw = $("dav-password"); if (pw) pw.value = ""; });
+  $("sh").addEventListener("close", () => { const pw = $("dav-password"); if (pw) pw.value = ""; if (edDone) edDone(); });
+  $("sh").addEventListener("cancel", (e) => { if (shLeave && shLeave()) e.preventDefault(); });
   const archiveTools = window.createArchiveTools({h, api, post, toast, fail, root:fsRoot, downloads:() => S.fs?.downloads,
     refresh:() => { loadFsState(); if (current === "dosyalar" && fsView === "files") loadFs(); },
     showDialog:(title, content) => { $("sh-body").replaceChildren(shHead(title, "", "box"), content); if (!$("sh").open) $("sh").showModal(); },
@@ -1306,6 +1378,8 @@
       h("div", { class: "fx-acts" }, all,
         directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name)), { act: "ac" })
           : action("İndir", "download", () => download(item), { act: "indir" }),
+        // DD-249: a text type, or any file the editor could hold (the backend's textLimit); a large binary has none.
+        !directory && (isText(item) || item.size <= (fsState()?.textLimit || 0)) ? action("Düzenle", "text", () => openText(item), { act: "duzenle" }) : null,
         action("Yeniden adlandır", "pencil", () => { fsRename = item.name; renderRows(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }, { act: "adlandir" }),
         action("Taşı", "move", () => openMove(item), { act: "tasi" }),
         locked || fsSys ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item]), { act: "arsiv" }),

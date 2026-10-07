@@ -905,6 +905,22 @@ Contract in §5–§7 and `folder-shares.md`.
   - The encoding is guessed (UTF-8, else Windows-1254; `.nfo` in CP437) or chosen
     by the operator, and decoded on the server.
   - The page inserts the text as text nodes only.
+- **Text editor (DD-249).** In both views a file the backend calls editable opens in the editor
+  (CodeMirror 6, `console/duzenleyici.js`, loaded on first use from Konsol's origin; its rules go
+  through a constructed style sheet, so the CSP stays `style-src 'self'`). Editable means: the whole
+  file was read (at most `TEXT_LIMIT`, 1 MiB), it decodes without loss in the chosen encoding, it has
+  one hard link, no setuid/setgid bit and, in the `/srv` view, the service account owns it.
+  - `GET …/text` returns the bytes' SHA-256 as `version`; `POST …/text/save` (`path`, `text`,
+    `encoding`, `version`; body up to `TEXT_BODY_MAX`) writes only while the file still has that
+    version (409 otherwise) and the encoded text fits in `TEXT_LIMIT` (413).
+  - The text is written in the same encoding (a UTF-8 BOM is kept) and with the file's line endings
+    (CRLF if it had any); a character the encoding lacks is refused (400), never replaced.
+  - The save is the one exception to "nothing overwrites": a temporary file in the same folder gets
+    the old file's owner, group, mode and extended attributes, is synced, the old file is checked
+    again (same device, inode, size and mtime) and the temporary file is renamed over it; any failure
+    removes the temporary file. Audit: `duzenle <path>`.
+  - In "Sistem (/)" the save runs as root: read-only modes (e.g. `0440`) are no obstacle and are kept.
+    The editor says the previous content cannot be brought back (this view has no trash).
 - The page refuses to select, share or trash the folders packages declare they
   write into (`PAKET_KLASORLER`, delivered root-relative with the owner's name in
   `/api/state.protected`, **DD-203**) and says which application writes there.
