@@ -519,7 +519,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await tile("media").click({modifiers:["Control"]});
     assert.equal(await title(),"2 öge seçili");
     assert.equal(await page.locator("#fs-detail .fx-stack text").textContent(),"2","One two-document icon with a count");
-    assert.deepEqual(await acts(),[["indir",false],["tasi",false],["arsiv",false],["ac-arsiv",true],["paylas",true],["cop",false]]);
+    assert.deepEqual(await acts(),[["indir",false],["tasi",false],["arsiv",false],["ac-arsiv",true],["paylas",true],["cop",false],["birak",false]],"DD-243: Seçimi bırak is the last action");
     await act("indir").click();
     assert.deepEqual(await page.evaluate(()=>window.requestedDownloads.map(url=>{
       const u=new URL(url); return {path:u.pathname,file:u.searchParams.get("path")};
@@ -662,7 +662,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await tile("vmlinuz").count(), 1, "the old listing stays on screen while the folder loads");
     assert(await page.locator("#fs-rows").evaluate((b) => b.inert), "the old listing is inert while loading");
     assert.equal(await page.locator("#fs-bar .crumb.cur").innerText(), "etc", "the path changes at once");
-    assert.equal(await page.locator("#fs-meta").innerText(), "Yükleniyor…");
+    assert.equal(await page.locator("#fs-meta, .pf-meta").count(), 0, "DD-243: no count or size in the path bar");
     assert.equal(await panelHeight(), tall, "the window changed height while the folder loaded");
     holdSys = null; releaseSys();
     await page.waitForFunction(()=>document.querySelector('#fs-table [data-item="hosts"]') || /bulunamadı/.test(document.querySelector("#toast").textContent));

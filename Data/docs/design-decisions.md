@@ -13,6 +13,26 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-243: Files as three separate panels; a one-line details panel; no count in the path bar (v2-225)
+
+- **Request (user, 2026-10-07):** "sağda bulunan favoriler ve root panelini yandaki tablodan ayıralım
+  arada ufak bir boşluk olsun ve tablo tamamen bağımsız hale gelsin", the fixed details panel "%50
+  oranında" lower, separated from the contents by a small gap as its own fixed area, and the item count
+  and total size beside the path removed because they resized the screen; a mock-up was approved.
+- **Panels (≥ 1101 px):** `.fx` is no longer a glass window but a grid with a 12 px gap; the contents
+  (`#fs-body`), the details (`#fs-detail`, 10 px under them) and the places column (`.fx-side`) each
+  have their own glass border, radius and shadow. Narrower screens keep the single stacked window.
+- **Details (≥ 1101 px):** 82 px, half of DD-237's 164 px, never scrolling: a small icon with the name
+  and type/size, a middle column (`.fx-mid`) with the facts on one line or, for a shared folder, the
+  location/date and the one-line share, and the actions as 36 px round icon buttons. Each action keeps
+  its name as `aria-label` and tooltip (the word is a `.fx-act-label` span, visible on narrow screens).
+  "Seçimi bırak" became the last action (it was a link under the buttons). The share line's chips may
+  be cut at the panel's edge; Yönet and Kaldır sit outside the chips and are never cut. A shared
+  folder's "Paylaşım" fact is dropped; its share line says the same.
+- **Path bar:** `#fs-meta` ("N öge · size", "N sonuç", "Yükleniyor…") is gone; it changed the bar's
+  width at every folder and search. With nothing selected the details name the open folder's count and
+  size (filtered while searching); loading shows the existing progress line.
+
 ### DD-242: Home widgets in order — Sunucu and Hız side by side, Ağ a 2×1 row below; arrows reorder them (v2-224)
 
 - **Request (user, 2026-10-07):** after mock-ups of a 1×2 network card with direction-aware arrows and
@@ -123,6 +143,8 @@ with its status and the file that holds it.
   access, the separate root unit and the typed confirmation are unchanged.
 
 ### DD-237: Files details in a fixed panel under the contents; the folder in the address (v2-219)
+
+*(Amended by DD-243: three separate panels, an 82 px one-line details panel, no count in the path bar.)*
 
 - **Request (user, 2026-10-07):** "klasör yolunu ekleyelim" and move the area under Favoriler that opens
   the details and sharing "alta … uzun listelerde karmaşık görülmekte"; mock-up C (a fixed bottom panel,

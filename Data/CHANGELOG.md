@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files in three separate panels; a slimmer details line (v2-225)
+
+- The file list, the details under it and the Favoriler/Konumlar column are separate panels with a
+  small gap between them.
+- The details panel is half as tall: one line with the item, its location and date (or a shared
+  folder's connections) and the actions as icons; hover shows each action's name.
+- The item count and total size are gone from the path bar, so it no longer changes width from folder
+  to folder (with nothing selected, the details panel still shows them) (DD-243).
+
 ### 2026-10-07 — Ana Menü widgets in order; Ağ as a wide row (v2-224)
 
 - Sunucu and Hız sit side by side; the Ağ card is one row tall and two tiles wide below them, the same

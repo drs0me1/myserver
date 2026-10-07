@@ -106,6 +106,14 @@ let hold = {};   // path -> Promise to wait for before answering
     assert.deepEqual(filePanel, emptyPanel, "selecting resized the detail panel or the contents");
     assert(filePanel.top >= filePanel.rowsBottom - 1, "the detail panel is under the contents");
     assert(await page.evaluate(() => !document.querySelector(".fx-side #fs-detail")), "the right column no longer holds the details");
+    // DD-243: three independent panels with a small gap; the details are one fixed 82 px line.
+    const split = await page.evaluate(() => { const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const body = r("#fs-body"), detail = r("#fs-detail"), side = r(".fx-side");
+      return { gapBelow: Math.round(detail.top - body.bottom), gapSide: Math.round(side.left - Math.max(body.right, detail.right)), h: Math.round(detail.height),
+        frame: getComputedStyle(document.querySelector("#fs-panel")).borderTopWidth, card: getComputedStyle(document.querySelector("#fs-body")).borderTopWidth };
+    });
+    assert(split.gapBelow >= 8 && split.gapBelow <= 14 && split.gapSide >= 8 && split.gapSide <= 16 && split.h === 82 && split.frame === "0px" && split.card === "1px",
+      `separate panels: ${JSON.stringify(split)}`);
     await page.keyboard.press("Escape");
     // Back: at once from the cache, at the scroll position it was left at; read again behind the scenes.
     let release; hold[""] = new Promise((r) => { release = r; });

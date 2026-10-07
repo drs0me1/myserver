@@ -105,9 +105,13 @@ window.createSharesPage = function ({ h, svg, post, toast, fail, copyButton, get
       return h("span", { class: "fx-chip" + (c.active ? " on" : ""), "data-network": scope,
         title: c.reason || (c.expires != null ? "Bitiş: " + expiry(c) : "") || null }, text);
     };
+    // DD-243: the chips may be cut at the panel's edge; Yönet and Kaldır never are (icon only on a desktop-width
+    // screen, the word is the accessible name and tooltip).
+    const act = (text, icon, fn) => h("button", { type: "button", class: "btn btn-sm btn-quiet", disabled: busy, "aria-label": text, title: text, onclick: fn },
+      svg(icon), h("span", { class: "fx-act-label" }, text));
     return h("div", { class: "fx-share", "data-share-id": s.id },
-      ...scopes.map(chip), h("span", { class: "fx-chip" }, "Kullanıcı: ", s.username),
-      button("Yönet", "sliders", () => edit(s)), button("Kaldır", "trash", () => remove(s)));
+      h("span", { class: "fx-chips" }, ...scopes.map(chip), h("span", { class: "fx-chip" }, "Kullanıcı: ", s.username)),
+      act("Yönet", "sliders", () => edit(s)), act("Kaldır", "trash", () => remove(s)));
   }
   function info(s) {
     return h("article", { class: "dav-share-row", "data-share-id": s.id },

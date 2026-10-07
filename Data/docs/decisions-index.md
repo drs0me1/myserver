@@ -235,11 +235,12 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-243 | Files as three separate panels; an 82 px one-line details panel with icon actions; no count in the path bar (amends DD-237) | v2-225 | design-decisions.md |
 | DD-242 | Home widgets in order: Sunucu and Hız side by side, Ağ a 2×1 row below, ◀ ▶ reorder them (amends DD-231) | v2-224 | design-decisions.md |
 | DD-241 | `master-onar` covers the installer's own settings (sysctl, Tailscale flags, timers, SSH, clock, modes, disk, dpkg) and reports the rest; Sağlık shows the last run and a 72 h / 1 week log | v2-223 | design-decisions.md |
 | DD-240 | Address refresh after boot and nightly 03:00–04:00 (amends DD-239) | v2-222 | design-decisions.md |
 | DD-239 | Repair on request (Konsol "Denetle ve onar", `master-onar`, `onar.command`) instead of the 5-minute refresh loop; hourly firewall check | v2-221 | design-decisions.md |
 | DD-238 | "Sistem (/)": no read-only roots, no root warning strip (amends DD-235) | v2-220 | design-decisions.md |
-| DD-237 | Files details in a fixed bottom panel, one-line share, short Favoriler, folder path in the address | v2-219 | design-decisions.md |
+| DD-237 | Files details in a fixed bottom panel, one-line share, short Favoriler, folder path in the address | v2-219; panel amended by DD-243 | design-decisions.md |
 | DD-236 | Files navigates like a file manager: frame built once, fixed window, history/cache, inert loading, keyboard | v2-218 | design-decisions.md |
 | DD-235 | Files' "Sistem (/)" view: the whole server as root in a separate unit, tailnet only, permanent delete by name | v2-214 | design-decisions.md |

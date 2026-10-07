@@ -3179,7 +3179,11 @@ PY
     grep -q 'names: items.map((i) => i.name)' "$js"
     [ "$(grep -c 'names: items.map((i) => i.name)' "$js")" -ge 2 ]
     # Arama yalnız satırları yeniler; klasör değişince seçim ve arama sıfırlanır.
-    grep -q 'oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); updateMeta(); }' "$js"
+    grep -q 'oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); }' "$js"
+    # DD-243: the path bar shows no count or size (it resized the bar at every folder).
+    run ! grep -qE 'updateMeta|fs-meta|pf-meta' "$js" "$V2_ROOT/console/konsol.css"
+    grep -qF '.fx-main > .fx-detail { height:82px; overflow:hidden;' "$V2_ROOT/console/dosyalar.css"
+    grep -qF '.fx-main > .fs-body, .fx-side { border-radius:var(--radius); border:1px solid var(--glass-line);' "$V2_ROOT/console/dosyalar.css"
     grep -q 'fsSel.clear();' "$js"
     # qBittorrent'in yazdığı klasör seçilemez.
     grep -q 'const locked = inTemp(here) || inTemp(pathText(fsPath));' "$js"

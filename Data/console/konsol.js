@@ -755,8 +755,8 @@
       h("span", { class: "fs-search" }, svg("search"),
         h("input", { type: "search", id: "fs-q", placeholder: "Bu klasörde ara", "aria-label": "Bu klasörde ara",
           autocomplete: "off", spellcheck: "false",
-          oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); updateMeta(); },
-          onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDetail(); updateMeta(); } } })),
+          oninput: (e) => { fsQuery = e.target.value; renderRows(); renderDetail(); },
+          onkeydown: (e) => { if (e.key === "Escape") { fsQuery = ""; e.target.value = ""; renderRows(); renderDetail(); } } })),
       h("span", { class: "fx-views", role: "group", "aria-label": "Görünüm" }, ...[["grid", "Simgeler", "grid"], ["list", "Liste", "list"]].map(([id, label, icon]) =>
         h("button", { type: "button", class: "pf-btn", "data-layout": id, "aria-pressed": "false", "aria-label": label, title: label, onclick: () => {
           fsLayout = id; try { localStorage.setItem("konsol-files-view", id); } catch (e) { /* özel pencere */ }
@@ -765,10 +765,10 @@
       picker,
       h("button", { type: "button", class: "btn btn-sm", onclick: () => $("fs-file").click() }, svg("upload"), "Yükle"),
       h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör", onclick: startNewFolder }, svg("plus")),
-      h("span", { class: "pf-meta", id: "fs-meta" }),
       h("span", { class: "fx-progress", "aria-hidden": "true" })));
   }
-  // Repaints the bar in place: history and up buttons, the path, the search text, the view switch, the count.
+  // Repaints the bar in place: history and up buttons, the path, the search text, the view switch. DD-243: no
+  // count or size here; it changed the bar's width at every folder (the detail panel names them).
   function paintBar() {
     if (!$("fs-crumbs")) return;
     $("fs-back").disabled = !fsBack.length;
@@ -783,18 +783,8 @@
     const q = $("fs-q");
     if (q.value !== fsQuery) q.value = fsQuery;
     document.querySelectorAll("#fs-bar [data-layout]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.layout === fsLayout ? "true" : "false"));
-    updateMeta();
   }
   function startNewFolder() { fsAdding = true; renderRows(); const i = $("nf-name"); if (i) i.focus(); }
-  function updateMeta() {
-    const meta = $("fs-meta");
-    if (!meta) return;
-    if (!fsList || $("fs-panel").classList.contains("fx-loading")) { meta.textContent = "Yükleniyor…"; return; }
-    const shown = fsShown();
-    meta.textContent = fsQuery.trim()
-      ? `${shown.length} sonuç`
-      : `${shown.length} öge · ${bytes(shown.reduce((tot, e) => tot + (e.size || 0), 0))}`;
-  }
 
   /* DD-236: keyboard like a file manager, while the contents have the focus: arrows move the selection
      (Shift extends it), Enter or Ctrl/⌘+↓ opens, Backspace or Ctrl/⌘+↑ goes up, Alt+←/→ back and forward,
@@ -1239,14 +1229,17 @@
     box.hidden = fsView !== "files" || !fsList;
     if (box.hidden) { box.replaceChildren(); return; }
     const sel = selItems();
+    // DD-243: on a desktop-width screen the panel is one line and the actions show their icon only; the name is the
+    // button's accessible name and tooltip.
     const action = (label, icon, fn, attrs = {}) => h("button", { type: "button", class: "btn btn-sm btn-quiet" + (attrs.danger ? " fx-danger" : ""),
-      disabled: !!attrs.disabled, title: attrs.title || null, "data-act": attrs.act || null, onclick: fn }, svg(icon), label);
+      disabled: !!attrs.disabled, "aria-label": label, title: attrs.title || label, "data-act": attrs.act || null, onclick: fn },
+      svg(icon), h("span", { class: "fx-act-label" }, label));
     const head = (art, title, sub) => h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art),
       h("h2", { id: "fs-detail-title" }, title), h("small", null, sub));
     if (!sel.length) {
       const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : fsSys ? "Sistem" : "Sunucu";
       box.replaceChildren(head(folderArt(), name, `${fsHere()} · ${shown.length} öge · ${bytes(shown.reduce((t, e) => t + (e.size || 0), 0))}`),
-        h("p", { class: "hint-s fx-hint" }, "Bir öge seçin; işlemleri burada görünür."),
+        h("div", { class: "fx-mid" }, h("p", { class: "hint-s fx-hint" }, "Bir öge seçin; işlemleri burada görünür.")),
         h("div", { class: "fx-acts" },
           action("Yeni klasör", "plus", startNewFolder, { act: "yeni" }),
           action("Yükle", "upload", () => $("fs-file")?.click(), { act: "yukle" })));
@@ -1256,6 +1249,7 @@
       const dirs = sel.filter((i) => i.type === "dir").length, files = sel.length - dirs;
       const kinds = [dirs ? `${dirs} klasör` : "", files ? `${files} dosya` : ""].filter(Boolean).join(", ");
       box.replaceChildren(head(stackArt(sel.length), `${sel.length} öge seçili`, `${kinds} · ${bytes(sel.reduce((t, e) => t + (e.size || 0), 0))}`),
+        h("div", { class: "fx-mid" }),
         h("div", { class: "fx-acts" },
           action("İndir", "download", () => sel.forEach((i) => i.type !== "dir" && download(i)), { disabled: !files, act: "indir" }),
           action("Taşı", "move", () => openMove(sel), { act: "tasi" }),
@@ -1263,8 +1257,8 @@
           fsSys ? null : action("Arşivi aç", "boxOpen", () => {}, { disabled: true, title: "Tek bir arşiv seçin", act: "ac-arsiv" }),
           fsSys ? null : action("Paylaş", "share", () => {}, { disabled: true, title: "Paylaşım tek tek verilir", act: "paylas" }),
           fsSys ? action("Kalıcı sil", "trash", () => askDelete(sel), { danger: true, act: "sil" })
-            : action("Çöpe at", "trash", () => askTrash(sel), { danger: true, act: "cop" })),
-        h("button", { type: "button", class: "linkbtn fx-clear", onclick: clearSel }, "Seçimi bırak"));
+            : action("Çöpe at", "trash", () => askTrash(sel), { danger: true, act: "cop" }),
+          action("Seçimi bırak", "close", clearSel, { act: "birak" })));
       return;
     }
     const item = sel[0], path = pathText(fsPath.concat(item.name)), sh = shareOf(path), directory = item.type === "dir";
@@ -1273,11 +1267,16 @@
     const type = directory ? "Klasör" : isText(item) ? "Metin dosyası" : extOf(item.name) ? `${extOf(item.name)} dosyası` : "Dosya";
     box.replaceChildren(
       head(itemArt(item), item.name, `${type} · ${directory ? (item.count ?? "?") + " öge" : bytes(item.size)}`),
-      h("dl", { class: "fx-facts" },
-        h("div", null, h("dt", null, "Konum"), h("dd", { title: fsHere() }, fsHere())),
-        h("div", null, h("dt", null, "Değiştirme"), h("dd", null, since(item.mtime))),
-        directory ? h("div", null, h("dt", null, "Paylaşım"), h("dd", null, sh ? sharesPage.stateText(sh) : "—")) : null,
-        locked ? h("div", null, h("dt", null, "Yazan"), h("dd", null, protectedOwner(path))) : null),
+      // DD-243: the facts and, for a shared folder, its one-line share (or the reason it cannot be shared) share
+      // the middle column; a shared folder's state is in the share line, not repeated as a fact.
+      h("div", { class: "fx-mid" },
+        h("dl", { class: "fx-facts" },
+          h("div", null, h("dt", null, "Konum"), h("dd", { title: fsHere() }, fsHere())),
+          h("div", null, h("dt", null, "Değiştirme"), h("dd", null, since(item.mtime))),
+          directory && !sh ? h("div", null, h("dt", null, "Paylaşım"), h("dd", null, "—")) : null,
+          locked ? h("div", null, h("dt", null, "Yazan"), h("dd", null, protectedOwner(path))) : null),
+        // DD-237: a shared folder shows one line; the full cards and the access note live on Paylaşımlar.
+        sh ? sharesPage.summary(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s fx-note" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : null),
       h("div", { class: "fx-acts" },
         directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name)), { act: "ac" })
           : action("İndir", "download", () => download(item), { act: "indir" }),
@@ -1287,10 +1286,7 @@
         canExtract && !locked && !fsSys ? action("Arşivi aç", "boxOpen", () => archiveTools.open("unzip", pathText(fsPath), [item]), { act: "ac-arsiv" }) : null,
         eligible && !sh ? action("Paylaş", "share", () => openShareCreate(item, path), { act: "paylas" }) : null,
         fsSys ? action("Kalıcı sil", "trash", () => askDelete(item), { danger: true, act: "sil" })
-          : action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })),
-      // replaceChildren() writes a null argument as the text "null": absent parts are empty strings.
-      // DD-237: a shared folder shows one line; the full cards and the access note live on Paylaşımlar.
-      sh ? sharesPage.summary(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s fx-note" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : "");
+          : action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })));
   }
 
   /* çöp */

@@ -911,7 +911,12 @@ Contract in §5–§7 and `folder-shares.md`.
   Paylaşımlar. Favoriler shows 8 top folders and a "show all" switch. The open folder is in the address
   (`#/dosyalar/klasor/…`, `#/dosyalar/sistem/…`); a malformed address opens the tree's root and the
   backends keep checking every path.
-- **Navigation (DD-236).** Opening a folder repaints only the contents, the path, the count, the
+- **Separate panels (DD-243).** On screens of at least 1101 px the contents, the details and the places
+  column are three glass panels with a small gap. The details are one fixed 82 px line: the item, its
+  facts or a shared folder's one-line share, and the actions as icons (their names are the buttons'
+  accessible names and tooltips; "Seçimi bırak" is one of them). The path bar shows no item count or
+  size; with nothing selected the details name the open folder's count and size.
+- **Navigation (DD-236).** Opening a folder repaints only the contents, the path, the
   places mark and the detail; the window's frame is built once per tree. The listing on screen stays
   (inert) until the next arrives; a failed open stays in place; back/forward keep each folder's
   scroll; a one-minute cache of 20 listings is always re-read. On screens of at least 1101 px the
