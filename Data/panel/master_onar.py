@@ -32,6 +32,9 @@ BASE_UNITS = ("caddy.service", "dnsmasq.service", "master-panel.service", "maste
 # DD-241: the installer's timers; each must be enabled and waiting.
 TIMERS = ("refresh-tailnet-config.timer", "master-duvar-denetim.timer", "master-settings-guard.timer",
           "master-share-network.timer", "apt-daily.timer", "apt-daily-upgrade.timer")
+# DD-246: the settings rollback timer runs only while a Konsol settings change is pending (DD-181: an idle
+# guard stops it), so it must be enabled (for the boot run) but is never expected to be waiting.
+ON_DEMAND_TIMERS = ("master-settings-guard.timer",)
 FIREWALL_UNIT = "master-firewall.service"
 UNIT_RE = re.compile(r"^[A-Za-z0-9@._-]+\.service$")
 MARK = {"ok": "✓", "onarildi": "↻", "sorun": "!", "hata": "✗", "atlandi": "–", "calisiyor": "…"}
@@ -288,12 +291,14 @@ class Repair:
         """A4: the installer's timers are enabled and waiting."""
         props = unit_props(TIMERS)
         off = [t for t in TIMERS if props.get(t, {}).get("LoadState") == "loaded"
-               and (props[t].get("UnitFileState") not in ("enabled", "enabled-runtime", "static") or props[t].get("ActiveState") != "active")]
+               and (props[t].get("UnitFileState") not in ("enabled", "enabled-runtime", "static")
+                    or (t not in ON_DEMAND_TIMERS and props[t].get("ActiveState") != "active"))]
         if not off:
             return "ok", "Zamanlayıcılar etkin"
         if self.need("Kapalı: " + ", ".join(off)):
             return self.need("Kapalı: " + ", ".join(off))
-        broken = [t for t in off if run(["systemctl", "enable", "--now", t], timeout=30)[0] != 0]
+        # An on-demand timer is only enabled again; starting it is the settings change's job.
+        broken = [t for t in off if run(["systemctl", "enable", *([] if t in ON_DEMAND_TIMERS else ["--now"]), t], timeout=30)[0] != 0]
         if broken:
             return "hata", "Açılamadı: " + ", ".join(broken)
         return "onarildi", "Yeniden açıldı: " + ", ".join(off)

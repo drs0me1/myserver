@@ -13,6 +13,23 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-246: Reboot from Konsol; Sağlık in two rows; the settings guard timer is on demand (v2-228)
+
+- **Request (user, 2026-10-07):** the health card in two rows "açıklamalar alta sığabilsin"; a restart
+  trigger in Settings; "güncel denetimde zamanlayıcılar hata veriyor" (a screenshot showed
+  "Yeniden açıldı: master-settings-guard.timer").
+- **Timers:** DD-241 listed `master-settings-guard.timer` among the timers that must be enabled and
+  waiting, but DD-181 runs it only while a settings change is pending (an idle guard stops it). Every
+  Denetle reported it as stopped and every Onar started it again. `master-onar` now only requires it to be
+  enabled (`ON_DEMAND_TIMERS`) and re-enables it without `--now`.
+- **Reboot:** `POST /api/konsol/yeniden-baslat`, refused from the internet channel (403) and beside
+  the update unit, the repair unit or a package operation (409); it runs `systemd-run
+  --unit=master-yeniden-baslat --on-active=5 systemctl reboot`, so the answer reaches the page first,
+  and logs `yeniden-baslat`. The button is in the "Panel ve sunucu" card's head; the confirmation
+  needs the typed word "onayla".
+- **Sağlık:** the checks split over `ceil(n/2)` columns (two to six), each detail wrapping under its
+  name (at most three lines).
+
 ### DD-245: Update control as an icon; Ayarlar → Sistem in three cards (v2-227)
 
 - **Request (user, 2026-10-07):** "güncelle yazısını güncelleme simgesine dönüştürelim", then after

@@ -273,6 +273,17 @@ class RepairTests(Fixture):
         self.assertEqual(steps["saat"]["durum"], "onarildi")
         self.assertIn("systemd-timesyncd.service", self.restarts())
 
+    def test_idle_settings_guard_timer_is_not_a_fault(self):
+        # DD-246: the rollback timer is stopped while no settings change is pending (DD-181).
+        (self.fake / "state" / "master-settings-guard.timer").write_text("inactive")
+        _, steps, _ = self.run_repair(fix=False)
+        self.assertEqual(steps["zamanlayicilar"]["durum"], "ok")
+        (self.fake / "enabled" / "master-settings-guard.timer").write_text("disabled")
+        _, steps, _ = self.run_repair()
+        self.assertEqual(steps["zamanlayicilar"]["durum"], "onarildi")
+        self.assertIn("systemctl enable master-settings-guard.timer", self.calls())
+        self.assertNotIn("systemctl enable --now master-settings-guard.timer", self.calls())
+
     def test_konsol_restarts_only_the_broken_side(self):
         (self.fake / "http").write_text("000")  # Caddy path down, backend fine
         _, steps, _ = self.run_repair()
@@ -426,6 +437,21 @@ class PanelTests(unittest.TestCase):
             self.active.write_text(unit)
             with self.assertRaises(mu.UpdateError) as err:
                 self.p.repair_start("onar")
+            self.assertEqual(err.exception.status, 409)
+            self.assertIn(word, str(err.exception))
+        self.assertEqual(self.calls(), [])
+
+    def test_reboot_is_a_delayed_transient_unit(self):
+        # DD-246: the answer reaches the page first; systemctl reboot runs a few seconds later.
+        self.assertEqual(self.p.reboot_start(), panel.REBOOT_DELAY_SECONDS)
+        self.assertEqual(self.calls(), ["--unit=master-yeniden-baslat --collect --quiet --on-active=%d --description=Konsol: yeniden başlat systemctl reboot"
+                                        % panel.REBOOT_DELAY_SECONDS])
+
+    def test_reboot_refused_beside_an_update_a_repair_or_a_package_operation(self):
+        for unit, word in (("master-guncelle.service", "Güncelleme"), ("master-onar.service", "Onarım"), ("master-modul-torrent.service", "uygulama")):
+            self.active.write_text(unit)
+            with self.assertRaises(mu.UpdateError) as err:
+                self.p.reboot_start()
             self.assertEqual(err.exception.status, 409)
             self.assertIn(word, str(err.exception))
         self.assertEqual(self.calls(), [])

@@ -374,22 +374,30 @@ section[data-view="genel"] { padding-bottom:72px; }
 /* DD-245: Ayarlar → Sistem in three cards. Panel ve sunucu: facts in four columns, the account as its last line. */
 .server-card .system-facts { grid-template-columns:repeat(4,minmax(0,1fr)); }
 .server-card .system-facts > div { padding:10px 4px; }
+.server-card > .card-head .btn { flex:none; }
 .srv-account { display:flex; align-items:center; gap:8px 18px; flex-wrap:wrap; padding-top:12px; border-top:1px solid var(--glass-line); }
 .srv-account strong { font-size:13px; }
 .srv-account .page-note { flex:1 1 280px; margin:0; }
 .srv-account .top-actions { margin:0; }
 /* Sağlık in one row: a dot, the name and the detail per check. */
-.health-strip { display:flex; align-items:center; gap:12px 18px; padding:12px 18px; }
+.health-strip { display:flex; align-items:center; gap:12px 18px; padding:14px 18px; }
 .health-strip .card-head { flex:none; width:150px; }
 .health-strip .hs-title { display:flex; align-items:center; gap:8px; }
 .health-strip .card-head h2 { margin:0; font-size:15px; }
 .health-strip .card-head small { display:block; margin-top:3px; font-size:11px; }
-.health-strip .health-facts { flex:1; min-width:0; margin:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px 0; }
-.health-strip .health-facts > div { min-width:0; display:grid; gap:3px; padding:2px 12px; border-left:1px solid var(--glass-line); }
+.health-strip .health-facts { flex:1; min-width:0; margin:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px 0; }
+.health-strip .health-facts[data-cols="2"] { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.health-strip .health-facts[data-cols="3"] { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.health-strip .health-facts[data-cols="4"] { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.health-strip .health-facts[data-cols="5"] { grid-template-columns:repeat(5,minmax(0,1fr)); }
+.health-strip .health-facts[data-cols="6"] { grid-template-columns:repeat(6,minmax(0,1fr)); }
+.health-strip .health-facts > div { min-width:0; display:grid; align-content:start; gap:3px; padding:2px 12px; border-left:1px solid var(--glass-line); }
 .health-strip .health-facts dt { gap:6px; font-size:12.5px; }
 .health-strip .health-facts dt .hm { width:8px; height:8px; padding:0; border:0; border-radius:50%; font-size:0; flex:none; }
 .health-strip .health-facts .hm.ok { background:var(--ok); } .health-strip .health-facts .hm.warn { background:var(--warn); } .health-strip .health-facts .hm.bad { background:var(--danger); }
-.health-strip .health-facts dd { margin:0; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* DD-246: the detail wraps under the name (at most three lines). */
+.health-strip .health-facts dd { margin:0; font-size:11.5px; line-height:1.4; color:var(--muted); overflow-wrap:anywhere;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 /* Denetle ve onar: the steps in three columns, the detail under each name. */
 .repair-card .repair { margin:0; padding:0; border:0; }
 .repair-card .repair-steps { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px 20px; }
@@ -399,11 +407,12 @@ section[data-view="genel"] { padding-bottom:72px; }
   .server-card .system-facts { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .health-strip { flex-wrap:wrap; }
   .health-strip .card-head { width:100%; }
+  .health-strip .health-facts[data-cols] { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .repair-card .repair-steps { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 @media(max-width:600px) {
   .server-card .system-facts, .repair-card .repair-steps { grid-template-columns:minmax(0,1fr); }
-  .health-strip .health-facts { grid-template-columns:minmax(0,1fr); }
+  .health-strip .health-facts, .health-strip .health-facts[data-cols] { grid-template-columns:minmax(0,1fr); }
   .health-strip .health-facts > div { border-left:0; padding-inline:0; }
 }
 /* DD-241: the repair log dialog. */

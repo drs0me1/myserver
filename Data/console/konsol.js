@@ -1838,7 +1838,8 @@
     return h("article", {class:"card health-strip"},
       h("div", {class:"card-head"}, h("div", null, h("div", {class:"hs-title"}, h("h2", null, "Sağlık"), hs ? pill(hs.status) : null),
         h("small", {class:"hint-s"}, hs ? `Son denetim ${hhmm(hs.read_at)}` : healthFailed ? "Okunamadı" : "Denetleniyor…"))),
-      hs ? h("dl", {class:"health-facts"}, ...hs.checks.map((c) =>
+      // DD-246: two rows: the checks split over ceil(n/2) columns; each detail wraps under its name.
+      hs ? h("dl", {class:"health-facts", "data-cols": String(Math.min(6, Math.max(2, Math.ceil(hs.checks.length / 2))))}, ...hs.checks.map((c) =>
         h("div", {class:"hc-" + c.status, title: c.detail}, h("dt", null, pill(c.status), c.name), h("dd", null, c.detail))))
         : h("p", {class:"hint-s"}, healthFailed ? "Sağlık bilgisi okunamadı; bağlantıyı kontrol edin." : "Sağlık denetleniyor…"));
   }
@@ -1959,12 +1960,24 @@
     return h("div", { class: "srv-account", id: "konsol-account" }, h("strong", null, "Konsol hesabı"),
       h("p", { class: "page-note" }, note), h("div", { class: "top-actions" }, ...actions));
   }
+  // DD-246: reboot the server after a typed confirmation; the backend refuses it beside an update, a repair or a
+  // package operation and reboots a few seconds after answering.
+  function askReboot() {
+    ask({ title: "Sunucu yeniden başlatılsın mı?", sub: S.sys ? S.sys.host : "", danger: true, word: true, go: "Yeniden başlat",
+      items: [["refresh", "Tüm servisler ve uygulamalar durur; sunucu birkaç dakika içinde geri gelir."],
+        ["info", "Süren aktarımlar ve WebDAV bağlantıları kesilir."]],
+      onOk: () => post("/api/konsol/yeniden-baslat", {}).then((r) => {
+        toast(`Sunucu ${r && r.sure ? r.sure + " saniye içinde" : "birazdan"} yeniden başlıyor; Konsol birkaç dakika ulaşılamaz.`);
+      }).catch(fail) });
+  }
   // DD-245: three cards: Panel ve sunucu (with the Konsol account), Sağlık in one row, Denetle ve onar.
   function systemContent() {
     const s = S.sys;
     const row = (label, value) => h("div", null, h("dt", null, label), h("dd", null, value || "—"));
     return h("div", {class:"as-stack"},
-      h("article", {class:"card server-card"}, h("h2", null, "Panel ve sunucu"),
+      h("article", {class:"card server-card"}, h("div", {class:"card-head"}, h("h2", null, "Panel ve sunucu"),
+        h("button", {type:"button", class:"btn btn-sm btn-quiet", id:"reboot", disabled: publicChannel(),
+          title: publicChannel() ? "Yeniden başlatma yalnız Tailscale adresinden istenir" : null, onclick: askReboot}, svg("refresh"), "Yeniden başlat")),
         s ? h("dl", {class:"system-facts"},
           row("Sunucu", s.host), row("Sistem", s.os), row("Çekirdek", s.kernel), row("Panel sürümü", s.version),
           row("Çalışma süresi", duration(s.uptime)), row("Tailscale", s.net.tailscale),

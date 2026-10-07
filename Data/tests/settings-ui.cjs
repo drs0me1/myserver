@@ -36,7 +36,7 @@ const health = { status: "bad", read_at: 1790750000, checks: [
   { id: "settings", name: "Ayar işlemi", status: "bad", detail: "Geri alma takıldı; Ayarlar'da yeniden deneyin ya da bırakın" }] };
 // DD-239: "Denetle ve onar" fixture: the unit runs while repair.calisiyor, its report is repair.rapor.
 let repair = { calisiyor: false, kurulu: true, baslatilabilir: true, rapor: null };
-const repairStarts = [], logReads = [];
+const repairStarts = [], logReads = [], reboots = [];
 const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM } : {}) });
@@ -84,6 +84,7 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
           result = {pending:null, committed:true};
         }
       } else if (endpoint === "/api/konsol/saglik") result = health;
+      else if (endpoint === "/api/konsol/yeniden-baslat") { reboots.push(route.request().postDataJSON()); result = { sure: 5 }; }  // DD-246
       else if (endpoint === "/api/konsol/onarim" && route.request().method() === "POST") {
         const body = route.request().postDataJSON();
         repairStarts.push(body);
@@ -131,8 +132,12 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
     assert.deepEqual(await page.locator(".as-stack > article").evaluateAll((a) => a.map((c) => c.className)), ["card server-card", "card health-strip", "card repair-card"]);
     assert.equal(await page.getByText("Yerleşik altyapı").count(), 0);
     assert.equal(await page.locator(".server-card #konsol-account").count(), 1, "the account is the server card's last line");
-    const strip = await healthCard.evaluate((c) => { const r = c.getBoundingClientRect(), facts = [...c.querySelectorAll(".health-facts > div")].map((d) => Math.round(d.getBoundingClientRect().top)); return { h: r.height, rows: new Set(facts).size }; });
-    assert(strip.rows === 1 && strip.h < 120, `Sağlık is one row: ${JSON.stringify(strip)}`);
+    // DD-246: two rows; each detail wraps under its name instead of being cut.
+    const strip = await healthCard.evaluate((c) => { const facts = [...c.querySelectorAll(".health-facts > div")];
+      return { rows: new Set(facts.map((d) => Math.round(d.getBoundingClientRect().top))).size,
+        cut: [...c.querySelectorAll(".health-facts dd")].filter((d) => d.scrollHeight > d.clientHeight + 1).length };
+    });
+    assert(strip.rows === 2 && strip.cut === 0, `Sağlık in two rows, details whole: ${JSON.stringify(strip)}`);
     // DD-239: no background loop; the card starts master-onar. "Denetle" needs no confirmation, "Onar" does.
     const box = page.locator(".repair-card .repair");
     await box.getByText("Henüz denetim yapılmadı", { exact: true }).waitFor();
@@ -202,6 +207,7 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
     assert.equal(await page.locator("#sh").evaluate((d) => d.open), false);
     assert.deepEqual(passwordWrites, [{ eski: "old-password-1", yeni: "new-password-12" }, { eski: "old-password-1", yeni: "new-password-12" }]);
     assert(await page.locator("#logout").isVisible(), "the sidebar signs out on the internet address");
+    assert(await page.locator("#reboot").isDisabled(), "DD-246: the internet address cannot reboot the server");
     // DD-205: on the tailnet address there is no sign-in — the card shows the internet account, the
     // password dialog asks no current password, and the sidebar has no sign-out.
     accountOverride = { durum: "giris", kullanici: "fixture", kanal: "tailscale" };
@@ -209,6 +215,17 @@ const step = (id, ad, durum, detay) => ({ id, ad, durum, detay });
     await account.getByText("İnternet hesabı: fixture. Tailscale'den giriş parolasızdır; internet adresi bu hesapla açılır.", { exact: true }).waitFor();
     assert.equal(await account.getByRole("button", { name: "Çıkış yap", exact: true }).count(), 0);
     assert(await page.locator("#logout").isHidden(), "no sidebar sign-out on the tailnet");
+    // DD-246: "Yeniden başlat" asks for the typed word; cancel sends nothing.
+    await page.locator("#reboot").click();
+    assert.equal(await page.locator("#cf-title").textContent(), "Sunucu yeniden başlatılsın mı?");
+    assert(await page.locator("#cf-go").isDisabled(), "the word is required");
+    await page.locator("#cf-cancel").click();
+    assert.equal(reboots.length, 0);
+    await page.locator("#reboot").click();
+    await page.locator("#cf-word").fill("onayla");
+    await page.locator("#cf-go").click();
+    await page.getByText("Sunucu 5 saniye içinde yeniden başlıyor; Konsol birkaç dakika ulaşılamaz.", { exact: true }).first().waitFor();
+    assert.deepEqual(reboots, [{}]);
     await account.getByRole("button", { name: "Parolayı değiştir", exact: true }).click();
     await passwordForm.waitFor();
     assert.equal(await page.locator("#acc-old").count(), 0, "no current password on the tailnet");

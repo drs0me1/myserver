@@ -672,8 +672,10 @@ Contract in §5–§7 and `folder-shares.md`.
     /api/konsol/ayarlar` retains the same gates and 5 s cache (`?yenile=1`
     bypasses it); `/durum` reads transaction state and `/klasorler` lists
     allowed existing download folders. No password/hash is returned.
-    - Sistem shows three cards (**DD-245**): "Panel ve sunucu" (facts and the Konsol account), the
-      one-row health card and "Denetle ve onar". The health card (`GET
+    - Sistem shows three cards (**DD-245**): "Panel ve sunucu" (facts, the Konsol account and
+      "Yeniden başlat", **DD-246**: typed "onayla", tailnet only, refused beside an update, a repair or a
+      package operation, `systemctl reboot` 5 s later), the two-row health card and "Denetle ve onar".
+      The health card (`GET
       /api/konsol/saglik`, cached 30 s, **DD-182**): failed units, Tailscale
       state and key expiry, `master-firewall --check`, a pending reboot, NTP
       sync, free space and inodes against the upload reserve, a pending or

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Restart from Konsol; Sağlık in two rows; a false "Zamanlayıcılar" finding fixed (v2-228)
+
+- Ayarlar → Sistem → Panel ve sunucu has "Yeniden başlat": after typing "onayla" the server reboots a
+  few seconds later. Only from a Tailscale device; refused while an update, a repair or an app
+  operation runs.
+- The Sağlık card has two rows, so each check's explanation fits under its name.
+- "Denetle ve onar" no longer reports `master-settings-guard.timer` as stopped and "re-opens" it on
+  every run: that timer runs only while a Konsol settings change waits for confirmation (DD-246).
+
 ### 2026-10-07 — Update icon; Ayarlar → Sistem in three cards (v2-227)
 
 - The update control beside the clock is a round update icon: plain when up to date, coloured with a

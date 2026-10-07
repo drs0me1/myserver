@@ -137,6 +137,9 @@ IFACE_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,15}$")
 # DD-206: Genel bakış düzeni (kare sırası, widget genişliği ve görünürlüğü) KONSOL_AUTH_DIR/duzen.json.
 # Yalnız biçim denetlenir: anahtarlar Konsol'un ve paketlerin kare ve widget adlarıdır, tanımadığını
 # kabuk yok sayar. Dosya yoksa varsayılan düzen geçerlidir.
+# DD-246: Ayarlar → Sistem → "Yeniden başlat": a transient timer runs `systemctl reboot` a few seconds later.
+REBOOT_UNIT = "master-yeniden-baslat"
+REBOOT_DELAY_SECONDS = 5
 LAYOUT_FILE = "duzen.json"
 LAYOUT_KEY_RE = re.compile(r"^[a-z]{2,16}$")
 LAYOUT_MAX_TILES = 32
@@ -829,6 +832,30 @@ class Panel:
         with self.health_lock:
             self.health_cache = (0.0, None)  # the next health read shows the result
         return kip
+
+    def reboot_start(self):
+        """DD-246: reboot the server from Konsol. Refused beside an update, a repair or a package operation;
+        the reboot is a transient timer a few seconds out, so this answer still reaches the page."""
+        env = read_env(self.args.state)
+        with self.install_lock:
+            for unit, why in ((env.get("GUNCELLEME_UNIT", ""), "Güncelleme sürüyor"), (env.get("ONARIM_UNIT", ""), "Onarım sürüyor")):
+                if unit and self.unit_active(unit):
+                    raise master_update.UpdateError(409, why + "; bitince yeniden deneyin.")
+            if self.busy_units():
+                raise master_update.UpdateError(409, "Bir uygulama işlemi sürüyor; bitince yeniden deneyin.")
+            argv = ["systemd-run", "--unit=" + REBOOT_UNIT, "--collect", "--quiet", "--on-active=%d" % REBOOT_DELAY_SECONDS,
+                    "--description=Konsol: yeniden başlat", "systemctl", "reboot"]
+            try:
+                proc = subprocess.run(argv, capture_output=True, timeout=20, env=self.env(), stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.TimeoutExpired) as err:
+                raise master_update.UpdateError(502, "Yeniden başlatma istenemedi (%s)." % err.__class__.__name__)
+            if proc.returncode != 0:
+                # The unit name is taken while an earlier request still waits for its timer.
+                lines = [l for l in proc.stderr.decode("utf-8", "replace").splitlines() if l.strip()]
+                if self.unit_active(REBOOT_UNIT + ".timer"):
+                    raise master_update.UpdateError(409, "Yeniden başlatma zaten istendi.")
+                raise master_update.UpdateError(502, "Yeniden başlatma istenemedi: %s" % (lines[-1] if lines else "systemd-run %d" % proc.returncode))
+        return REBOOT_DELAY_SECONDS
 
     def module_busy(self, mid, busy=None):
         return self.module_unit(mid) in (self.busy_units() if busy is None else busy)
@@ -2335,6 +2362,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             self.audit(user, "onarim", kip, True)
             self.json(202, {"kip": kip})
+            return
+        if path == "/api/konsol/yeniden-baslat":
+            # DD-246: like the update and the repair, only from a Tailscale device (or root on the socket).
+            if self.channel() == "internet":
+                self.error(403, "Yeniden başlatma yalnız Tailscale adresinden istenir.")
+                return
+            try:
+                delay = self.panel.reboot_start()
+            except master_update.UpdateError as err:
+                self.audit(user, "yeniden-baslat", str(err), False)
+                self.error(err.status, str(err))
+                return
+            self.audit(user, "yeniden-baslat", "%d sn" % delay, True)
+            self.json(202, {"sure": delay})
             return
         if path == "/api/konsol/guncelleme":
             if self.channel() == "internet":
