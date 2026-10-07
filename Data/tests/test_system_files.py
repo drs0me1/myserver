@@ -35,19 +35,22 @@ class SystemFilesTests(unittest.TestCase):
         (self.root / "etc/hosts").write_text("127.0.0.1 localhost\n")
         self.files = fp.Files(str(self.root), "", system=True)
 
-    def test_pseudo_filesystems_are_read_only(self):
-        for top in fp.SYSTEM_READONLY:
+    def test_pseudo_filesystem_folders_are_managed_like_any_other(self):
+        # DD-238: no read-only roots (the administrator's request); on a real host the kernel's own
+        # answers (EPERM, EROFS) still apply. Nothing overwrites an existing item, as everywhere.
+        self.assertFalse(hasattr(fp, "SYSTEM_READONLY"))
+        for top in ("proc", "sys", "dev", "run"):
             with self.subTest(top=top):
-                for call in (lambda: self.files.mkdir([top], "x"),
-                             lambda: self.files.rename([], top, top + "2"),
-                             lambda: self.files.move([], [top], ["etc"]),
-                             lambda: self.files.delete([], [top], mounts=[]),
-                             lambda: self.files.upload_check([top], "x", 1),
-                             lambda: self.files.move(["etc"], ["hosts"], [top])):
-                    with self.assertRaises(fp.PanelError) as err:
-                        call()
-                    self.assertEqual(err.exception.code, 403)
-        # Reading them stays possible.
+                self.files.mkdir([top], "x")
+                self.files.upload_check([top], "y", 1)
+                self.files.rename([top], "x", "x2")
+                self.files.move([top], ["x2"], ["etc"])
+                self.assertTrue((self.root / "etc/x2").is_dir())
+                self.files.move(["etc"], ["x2"], [top])
+                self.assertEqual(self.files.delete([top], ["x2"], mounts=[]), ["x2"])
+                self.assertFalse((self.root / top / "x2").exists())
+        self.files.rename([], "run", "run2")
+        self.files.rename([], "run2", "run")
         self.assertEqual(self.files.listing(["proc"], False)["entries"], [])
 
     def test_new_items_are_root_style_and_dir_sizes_are_not_walked(self):
@@ -141,7 +144,7 @@ class SystemGateTests(unittest.TestCase):
         code, state = self.call("GET", "/api/sistem/state")
         self.assertEqual(code, 200)
         self.assertTrue(state["sistem"])
-        self.assertEqual(state["readonly"], list(fp.SYSTEM_READONLY))
+        self.assertNotIn("readonly", state)
         for kwargs in ({"channel": "internet"}, {"channel": None}, {"client": None},
                        {"client": "127.0.0.1"}, {"client": "203.0.113.9"}, {"host": "baska.ornek"}):
             with self.subTest(**kwargs):

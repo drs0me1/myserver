@@ -138,7 +138,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         ...(!url.searchParams.get("path") && !url.searchParams.get("dirs") ? [longFile,"sample.part02.rar"].map(name=>({name,type:"file",size:840*1024**2,mtime:Date.now()/1000})) : [])] };
       else if (p.startsWith("/api/sistem/")) {
         sysReads.push(p + url.search);
-        if (p === "/api/sistem/state") result = { root: "/", sistem: true, readonly: ["proc","sys","dev","run"], writable: true,
+        if (p === "/api/sistem/state") result = { root: "/", sistem: true, writable: true,
           disk: { total: 200000, free: 50000, used: null, mount: true }, textLimit: 1048576 };
         else if (p === "/api/sistem/list") {
           const at = url.searchParams.get("path") || "";
@@ -631,14 +631,15 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.locator("#cf-go").click();
     await page.getByText("Çöp boş",{exact:true}).waitFor();
     assert.deepEqual(trashWrites.at(-1),{path:"/api/trash/empty",data:{confirm:"onayla"}});
-    // DD-235: "Sistem (/)" in the sidebar: root view with a warning strip, no trash/archive/share actions,
+    // DD-235: "Sistem (/)" in the sidebar: root view (DD-238: no warning strip), no trash/archive/share actions,
     // permanent delete confirmed by typing the item's name, every call under /api/sistem/.
     await page.emulateMedia({colorScheme:"light"});
     await page.setViewportSize({width:1440,height:1000});
     await rail("Sistem (/)").click();
-    await page.locator(".offbar.sysbar").waitFor();
+    await page.locator("#fs-bar .crumb.root").getByText("/", {exact:true}).waitFor();
     assert.equal(new URL(page.url()).hash, "#/dosyalar/sistem");
-    assert.match(await page.locator(".offbar.sysbar").innerText(), /Root olarak çalışıyorsunuz/);
+    assert.equal(await page.locator(".offbar.sysbar").count(), 0, "DD-238: no 'Root olarak çalışıyorsunuz' strip");
+    assert(!/Root olarak çalışıyorsunuz|salt okunur/.test(await page.locator("#fs-panel").innerText()));
     assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/");
     await select("vmlinuz");
     assert.equal(await act("sil").count(), 1);
@@ -696,7 +697,7 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     assert.equal(await page.evaluate(() => scrollY), 0);
     await page.setViewportSize({width:1440,height:1000});
     await rail("Sunucu").click();
-    await page.locator(".offbar.sysbar").waitFor({state:"detached"});
+    await page.locator("#fs-bar .crumb.root").getByText("/srv", {exact:true}).waitFor();
     assert.equal(new URL(page.url()).hash, "#/dosyalar/klasor");
     assert.equal(await page.locator("#fs-bar .crumb.root").innerText(), "/srv");
     assert.deepEqual(errors, []);

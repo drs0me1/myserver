@@ -219,10 +219,8 @@
   .fx-disk { display:none; }
   .fx-grid { grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); padding:12px; }
 }
-/* DD-235: "Sistem (/)": the root view's sidebar entry and its warning strip. */
+/* DD-235: "Sistem (/)": the root view's sidebar entry (DD-238: no warning strip). */
 .fx-nav .rl-ico.t-sys { color:var(--danger); }
-.offbar.sysbar { border-color:var(--danger); background:var(--danger-soft); }
-.offbar.sysbar strong { color:var(--danger); }
 
 /* ---- DD-236: a file manager's window. On a desktop-width screen it has the viewport's height (fitFs) and
    only its parts scroll: the contents, the places/detail column, the trash and share lists. ---- */

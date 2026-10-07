@@ -810,10 +810,6 @@
     if (!box) return;
     const shown = fsShown();
     const kids = [];
-    if (fsSys) {
-      kids.push(h("div", { class: "offbar sysbar" }, h("div", null, h("strong", null, "Root olarak çalışıyorsunuz. "),
-        h("span", null, "Buradaki değişiklikler sunucunun kendisini değiştirir; silme kalıcıdır. /proc, /sys, /dev ve /run salt okunur."))));
-    }
     if (inTemp(pathText(fsPath))) {
       kids.push(h("div", { class: "offbar" }, h("div", null, h("strong", null, `${protectedOwner(pathText(fsPath))} bu klasöre yazıyor. `),
         h("span", null, "Buradaki dosyaları taşımak ya da silmek süren indirmeyi bozar."))));

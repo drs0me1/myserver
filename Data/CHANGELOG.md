@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — "Sistem (/)": full access, no warning strip (v2-220)
+
+- The red "Root olarak çalışıyorsunuz" strip is gone from Files' "Sistem (/)" view.
+- `/proc`, `/sys`, `/dev` and `/run` are no longer read-only there: folders and files can be
+  created, renamed, moved and deleted like anywhere else. The kernel still refuses most changes in
+  `/proc` and `/sys` and says so. Deleting under `/run` or `/dev` can stop a service until it
+  restarts or the server reboots. Nothing overwrites an existing file, and a mounted disk is still
+  never deleted (DD-238).
+
 ### 2026-10-07 — Files: details under the contents, the folder in the address (v2-219)
 
 - The selected item's details and actions moved from the right column to a fixed panel under the

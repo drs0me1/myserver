@@ -923,7 +923,8 @@ Contract in §5–§7 and `folder-shares.md`.
   - The backend refuses (403) any request whose Caddy-written `X-Konsol-Kanal` is not `tailscale`
     or whose client (`X-Forwarded-For`) is not another Tailscale device; a wrong `Host` is refused too.
   - Same traversal and no-overwrite rules as above. No trash, archives, shares or package-folder
-    marks. `/proc`, `/sys`, `/dev` and `/run` are read-only; folder sizes are not walked; new
+    marks. Since DD-238 no root folder is read-only (`/proc`, `/sys`, `/dev`, `/run` included; the
+    kernel's own refusals still apply) and no warning strip is shown; folder sizes are not walked; new
     folders are `0755`, uploads `0644`.
   - Delete (`/api/sistem/delete`) is permanent: `confirm` must be the item's name, or `onayla` for
     several. An item that is a mount point or has a mount below it is refused (409), and the

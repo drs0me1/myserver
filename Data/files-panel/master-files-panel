@@ -16,8 +16,9 @@
 # DD-235: --sistem kipi aynı kodu root olarak sunucunun tamamı (/) için çalıştırır (ayrı servis,
 # master-sistem-dosya). Yalnız Unix soketinde dinler, yalnız başka bir Tailscale cihazından gelen
 # isteği kabul eder (Caddy'nin yazdığı X-Konsol-Kanal ve X-Forwarded-For), yolları /api/sistem/*
-# altındadır. Çöp ve arşiv yoktur: silme kalıcıdır, onay ister ve bağlama noktasını aşmaz;
-# /proc, /sys, /dev ve /run salt okunurdur.
+# altındadır. Çöp ve arşiv yoktur: silme kalıcıdır, onay ister ve bağlama noktasını aşmaz.
+# DD-238: /proc, /sys, /dev ve /run de diğer klasörler gibi yönetilir (yöneticinin isteği); var olan
+# bir dosyanın üzerine yine hiçbir işlem yazmaz.
 #
 # Güvenlik: kökten çıkılamaz (her yol adımı bir dizin tanıtıcısından O_NOFOLLOW ile
 # açılır, sembolik bağlantı izlenmez); hiçbir işlem üzerine yazmaz (renameat2
@@ -83,11 +84,10 @@ CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' 
 O_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
 O_FILE = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
 RENAME_NOREPLACE = 1
-# DD-235: sistem kipi (root, /). Bu kök klasörler listelenir ama değiştirilemez; klasör boyutları
-# hesaplanmaz (/ yürüyüşü pahalı). İstekler yalnız başka bir Tailscale cihazından gelir.
+# DD-235: sistem kipi (root, /). Klasör boyutları hesaplanmaz (/ yürüyüşü pahalı). İstekler yalnız
+# başka bir Tailscale cihazından gelir. DD-238: salt okunur kök klasör yoktur.
 SYSTEM_PREFIX = "/api/sistem"
 SYSTEM_ACTOR = "sistem"
-SYSTEM_READONLY = ("proc", "sys", "dev", "run")
 CHANNEL_HEADER = "X-Konsol-Kanal"
 TAILNET_RANGES = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
 
@@ -369,13 +369,7 @@ class Files:
             raise PanelError(403, "arşiv çalışma alanına erişilemez")
         return parts
 
-    def check_writable(self, parts):
-        """DD-235: sistem kipinde /proc, /sys, /dev ve /run altına yazılmaz."""
-        if self.system and parts and parts[0] in SYSTEM_READONLY:
-            raise PanelError(403, "/%s salt okunur" % parts[0])
-
     def check_new_name(self, parts, name):
-        self.check_writable(parts)
         if not valid_name(name) or CONTROL_RE.search(name) or name != name.strip():
             raise PanelError(400, "geçersiz ad (boş olamaz, / içeremez, en çok 255 bayt)")
         if not parts and name in (self.trash, self.share, self.archive):
@@ -383,12 +377,9 @@ class Files:
 
     def check_source_names(self, parts, names, destination=False):
         # Toplu işlem başlamadan hepsini denetle; reddedilen öge kısmi taşıma yaratmasın.
-        self.check_writable(parts)
         for name in names:
             if not valid_name(name):
                 raise PanelError(400, "geçersiz ad")
-            if self.system and not parts and name in SYSTEM_READONLY:
-                raise PanelError(403, "/%s salt okunur" % name)
             if not parts and name in (self.trash, self.share, self.archive):
                 raise PanelError(403, "kök klasöre sistem çalışma alanı adıyla taşınamaz" if destination
                                  else "sistem çalışma alanı taşınamaz veya yeniden adlandırılamaz")
@@ -810,13 +801,12 @@ class Panel:
     def state(self):
         vfs = os.statvfs(self.args.root)
         if self.system:
-            # DD-235: çöp, kullanım toplamı ve paket klasörleri yok; salt okunur kökler bildirilir.
+            # DD-235: çöp, kullanım toplamı ve paket klasörleri yok (DD-238: salt okunur kök de yok).
             return {
                 "host": socket.gethostname(),
                 "version": self.args.version,
                 "root": self.args.root,
                 "sistem": True,
-                "readonly": list(SYSTEM_READONLY),
                 "writable": os.access(self.args.root, os.W_OK),
                 "disk": {"total": vfs.f_blocks * vfs.f_frsize, "free": vfs.f_bavail * vfs.f_frsize,
                          "used": None, "mount": True},

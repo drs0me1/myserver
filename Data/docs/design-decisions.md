@@ -13,6 +13,23 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-238: "Sistem (/)" without read-only roots or the root warning strip (v2-220)
+
+- **Request (user, 2026-10-07):** "Root olarak çalışıyorsunuz ibaresini kaldıralım. salt okunur dosyalara
+  da admin tam erişim sağlasın."
+- **Change:** the system view (DD-235) no longer refuses writes under `/proc`, `/sys`, `/dev` and
+  `/run` (`SYSTEM_READONLY` and `check_writable` are gone, `/api/sistem/state` has no `readonly`), and
+  the red "Root olarak çalışıyorsunuz…" strip is gone. The red lock on the sidebar entry and the
+  delete confirmation (type the item's name; "Root olarak silinir…") stay.
+- **What "full access" means here:** Konsol has no operation that writes into an existing file, so
+  kernel settings under `/proc/sys` or `/sys` cannot be changed and a device under `/dev` cannot be
+  overwritten from it. What opens is creating, renaming, moving and permanently deleting items there;
+  the kernel still refuses most of that on `/proc` and `/sys` (EPERM/EROFS, shown as the error).
+- **Trade-off (accepted by the administrator):** deleting or moving under `/run` (sockets, PID files,
+  locks) or `/dev` (device nodes) can stop services or devices until they recreate them or the host
+  reboots; a mount point or anything with a mount below it is still never deleted, and tailnet-only
+  access, the separate root unit and the typed confirmation are unchanged.
+
 ### DD-237: Files details in a fixed panel under the contents; the folder in the address (v2-219)
 
 - **Request (user, 2026-10-07):** "klasör yolunu ekleyelim" and move the area under Favoriler that opens
@@ -82,6 +99,7 @@ with its status and the file that holds it.
     and the recursive delete stops at a device change; a bind mount of the same disk would otherwise
     lose its source's files.
   - `/proc`, `/sys`, `/dev` and `/run` are listed but read-only; folder sizes are not walked.
+    *(Amended by DD-238: no read-only roots, no warning strip.)*
   - New folders are `0755`, uploads `0644` (root's), not the downloads tree's `0775/0664`.
   - No archives, shares or package-folder warnings (those belong to `/srv`).
 - **Tailnet only, twice.** The unit listens on `SYSTEM_FILES_SOCKET` (0660 root:caddy, peer
