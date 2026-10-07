@@ -235,6 +235,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-244 | Files details: one info line under the name, word actions, share actions in the row; a "Seç" picking mode (amends DD-243) | v2-226 | design-decisions.md |
 | DD-243 | Files as three separate panels; an 82 px one-line details panel with icon actions; no count in the path bar (amends DD-237) | v2-225 | design-decisions.md |
 | DD-242 | Home widgets in order: Sunucu and Hız side by side, Ağ a 2×1 row below, ◀ ▶ reorder them (amends DD-231) | v2-224 | design-decisions.md |
 | DD-241 | `master-onar` covers the installer's own settings (sysctl, Tailscale flags, timers, SSH, clock, modes, disk, dpkg) and reports the rest; Sağlık shows the last run and a 72 h / 1 week log | v2-223 | design-decisions.md |

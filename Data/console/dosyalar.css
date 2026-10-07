@@ -190,11 +190,6 @@
 .fx-preview .fx-art { width:76px; height:62px; } .fx-preview .fx-doc { width:58px; height:72px; } .fx-preview .fx-stack { width:72px; height:76px; }
 .fx-head h2 { margin:6px 0 0; font-size:13.5px; overflow-wrap:anywhere; }
 .fx-head small { font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
-.fx-hint { text-align:center; margin:0; }
-.fx-facts { margin:0; display:grid; gap:5px; font-size:11.5px; }
-.fx-facts > div { display:flex; justify-content:space-between; gap:8px; min-width:0; }
-.fx-facts dt { color:var(--muted); flex:none; }
-.fx-facts dd { margin:0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
 .fx-acts { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
 .fx-acts .btn { justify-content:center; min-width:0; padding-inline:6px; white-space:nowrap; background:var(--glass-2); }
 .fx-acts .btn svg { width:14px; height:14px; flex:none; }
@@ -261,43 +256,34 @@
    contents, the details under them and the places column. The details are one fixed line, half DD-237's
    height: the item, its facts (or a shared folder's one-line share) and the actions as icons. ---- */
 .fx-main > .fx-detail { flex:none; }
-.fx-mid { display:grid; gap:10px; min-width:0; }
 @media(min-width:1101px) {
   .fx { gap:12px; background:none; border:0; border-radius:0; box-shadow:none; overflow:visible; }
   .fx-main { gap:10px; }
   .fx-main > .fs-body, .fx-side { border-radius:var(--radius); border:1px solid var(--glass-line); background:var(--glass-2); box-shadow:var(--glass-shadow); overflow:hidden; }
-  .fx-main > .fx-detail { height:82px; overflow:hidden; display:grid; grid-template-columns:minmax(150px,200px) minmax(0,1fr) auto; align-items:center; gap:0 18px;
+  .fx-main > .fx-detail { height:82px; overflow:hidden; display:grid; grid-template-columns:minmax(150px,1fr) fit-content(68%); align-items:center; gap:0 16px;
     margin:0; padding:0 14px; border-radius:var(--radius); border:1px solid var(--glass-line); background:var(--glass-2); box-shadow:var(--glass-shadow); }
   .fx-main > .fx-detail .fx-head { grid-template-columns:auto minmax(0,1fr); justify-items:start; align-items:center; gap:2px 10px; text-align:left; }
   .fx-main > .fx-detail .fx-preview { grid-row:1 / span 2; display:grid; }
   .fx-main > .fx-detail .fx-head h2, .fx-main > .fx-detail .fx-head small { max-width:100%; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .fx-main > .fx-detail .fx-head small { font-size:11.5px; }
+  .fx-main > .fx-detail .fx-head small { font-size:12px; }
   .fx-main > .fx-detail .fx-preview .fx-art { width:36px; height:30px; }
   .fx-main > .fx-detail .fx-preview .fx-doc { width:28px; height:36px; }
   .fx-main > .fx-detail .fx-preview .fx-stack { width:34px; height:36px; }
-  .fx-main > .fx-detail .fx-mid { gap:6px; }
-  .fx-main > .fx-detail .fx-facts { display:flex; gap:16px; font-size:12px; white-space:nowrap; overflow:hidden; }
-  .fx-main > .fx-detail .fx-facts > div { flex:0 1 auto; justify-content:flex-start; gap:5px; }
-  .fx-main > .fx-detail .fx-facts dd { text-align:left; }
-  .fx-main > .fx-detail .fx-hint, .fx-main > .fx-detail .fx-note { margin:0; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .fx-main > .fx-detail .fx-share { flex-wrap:nowrap; gap:6px; }
-  .fx-main > .fx-detail .fx-chips { flex:0 1 auto; flex-wrap:nowrap; gap:5px; overflow:hidden; }
-  .fx-main > .fx-detail .fx-chip { padding:2px 8px; font-size:11.5px; }
-  .fx-main > .fx-detail .fx-act-label { display:none; }
-  .fx-main > .fx-detail .fx-acts { display:flex; gap:4px; }
-  .fx-main > .fx-detail .fx-acts .btn { width:36px; height:36px; padding:0; border-radius:50%; flex:none; }
-  .fx-main > .fx-detail .fx-acts .btn svg { width:17px; height:17px; }
-  .fx-main > .fx-detail .fx-share .btn { width:28px; height:28px; padding:0; border-radius:50%; flex:none; justify-content:center; background:var(--glass-2); }
+  .fx-main > .fx-detail .fx-acts { display:flex; flex-wrap:wrap; justify-content:flex-end; align-content:center; gap:5px; }
+  .fx-main > .fx-detail .fx-acts .btn { height:28px; padding:0 11px; border-radius:999px; font-size:12.5px; }
+  .fx-main > .fx-detail .fx-acts .btn svg { display:none; }
   .fx-side .fx-disk { margin-top:auto; }
 }
-/* A shared folder: one line of connection states, the account, Yönet and Kaldır. */
-.fx-share { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-width:0; }
-.fx-chips { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; min-width:0; }
-.fx-chip { padding:3px 10px; border-radius:999px; border:1px solid var(--glass-line); background:var(--glass-2); color:var(--muted); font-size:12px; white-space:nowrap; }
-.fx-chip[data-network]::before { content:"○ "; }
-.fx-chip.on { color:#2E9E6B; }
-.fx-chip.on::before { content:"● "; }
-.fx-share .btn { background:var(--glass-2); }
+@media(min-width:1101px) and (max-width:1279px) { .fx-main > .fx-detail .fx-acts .btn { padding:0 9px; font-size:12px; } }
+/* DD-244: a shared folder's open connections in the detail line. */
+.fx-shared.on { color:#2E9E6B; }
+/* DD-244: "Seç": every item shows a round check; a click adds or removes it. */
+.fx-pick[aria-pressed="true"] { background:var(--accent); border-color:transparent; color:var(--accent-ink); }
+.fx-rows.picking .fx-item::before { content:""; position:absolute; top:8px; left:8px; width:18px; height:18px; box-sizing:border-box; border-radius:50%;
+  border:1.5px solid color-mix(in srgb, var(--muted) 70%, transparent); background:var(--surface); }
+/* The tick is drawn with borders: the page's CSP allows no data: images. */
+.fx-rows.picking .fx-item.on::before { border-color:var(--accent); background:var(--accent); }
+.fx-rows.picking .fx-item.on::after { content:""; position:absolute; top:12px; left:14.5px; width:4.5px; height:8.5px; border:solid #fff; border-width:0 2.2px 2.2px 0; transform:rotate(45deg); }
 /* Favoriler: "Tümünü göster (N)" / "Daha az göster". */
 .fx-nav .rl-more { justify-self:start; margin:0 0 4px; padding:4px 8px; border:0; border-radius:8px; background:none; color:var(--accent); font:inherit; font-size:12.5px; cursor:pointer; }
 .fx-nav .rl-more:hover { background:var(--glass-2); }

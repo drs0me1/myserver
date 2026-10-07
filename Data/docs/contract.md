@@ -912,10 +912,14 @@ Contract in §5–§7 and `folder-shares.md`.
   (`#/dosyalar/klasor/…`, `#/dosyalar/sistem/…`); a malformed address opens the tree's root and the
   backends keep checking every path.
 - **Separate panels (DD-243).** On screens of at least 1101 px the contents, the details and the places
-  column are three glass panels with a small gap. The details are one fixed 82 px line: the item, its
-  facts or a shared folder's one-line share, and the actions as icons (their names are the buttons'
-  accessible names and tooltips; "Seçimi bırak" is one of them). The path bar shows no item count or
-  size; with nothing selected the details name the open folder's count and size.
+  column are three glass panels with a small gap. The details are one fixed 82 px panel: the item's
+  name with one info line under it (type, size, location, last change, a shared folder's open
+  connections; **DD-244**) and the actions as words ("Seçimi bırak", "Paylaşımı yönet/kaldır" among
+  them). The path bar shows no item count or size; with nothing selected the details name the open
+  folder's count and size.
+- **Seç (DD-244).** A toggle beside Yükle: each item shows a check and a click adds or removes it without
+  opening it; "Tümünü seç" is a detail action. Seç again, Esc, an empty-space click, "Seçimi bırak" or
+  another folder ends it.
 - **Navigation (DD-236).** Opening a folder repaints only the contents, the path, the
   places mark and the detail; the window's frame is built once per tree. The listing on screen stays
   (inert) until the next arrives; a failed open stays in place; back/forward keep each folder's

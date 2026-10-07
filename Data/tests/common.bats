@@ -3183,6 +3183,11 @@ PY
     # DD-243: the path bar shows no count or size (it resized the bar at every folder).
     run ! grep -qE 'updateMeta|fs-meta|pf-meta' "$js" "$V2_ROOT/console/konsol.css"
     grep -qF '.fx-main > .fx-detail { height:82px; overflow:hidden;' "$V2_ROOT/console/dosyalar.css"
+    # DD-244: a "Seç" mode beside Yükle; the detail actions are words; no data: images under the page's CSP.
+    grep -qF 'h("button", { type: "button", class: "btn btn-sm fx-pick", id: "fs-pick", "aria-pressed": "false", onclick: togglePick }, svg("check"), "Seç"),' "$js"
+    grep -qF 'if (fsPicking || (e && (e.shiftKey || e.ctrlKey || e.metaKey))) { toggleSel(item.name, !!(e && e.shiftKey)); return; }' "$js"
+    grep -qF '.fx-main > .fx-detail .fx-acts .btn svg { display:none; }' "$V2_ROOT/console/dosyalar.css"
+    run ! grep -q 'data:image' "$V2_ROOT/console/dosyalar.css"
     grep -qF '.fx-main > .fs-body, .fx-side { border-radius:var(--radius); border:1px solid var(--glass-line);' "$V2_ROOT/console/dosyalar.css"
     grep -q 'fsSel.clear();' "$js"
     # qBittorrent'in yazdığı klasör seçilemez.

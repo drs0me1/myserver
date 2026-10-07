@@ -13,6 +13,28 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-244: Files details as one info line with word actions; a "Seç" picking mode (v2-226)
+
+- **Request (user, 2026-10-07):** in the bottom details, the item's description and address "klasör ya da
+  dosya simgesi altında tek satır", the actions as words instead of icons ("yeniden adlandır, arşiv
+  oluştur, sil gibi"); then "çoklu seçici şeklinde bir seç fonksiyonu ... yükle düğmesi yanında";
+  mock-ups were approved.
+- **Info line:** under the name one line (`.fx-line`, its full text as the tooltip): type, count or size,
+  location, last change, the writing package for a reserved folder and, for a shared folder, its open
+  connections with their remaining days ("Paylaşılıyor: Tailscale (6 gün)", else "Paylaşım: <state>")
+  or "Paylaşılamaz". The facts list and the share chips (DD-237/243) are gone from the panel; the
+  account, addresses and cards stay on Paylaşımlar.
+- **Actions:** words; on a desktop-width screen the icon is hidden and the buttons wrap to at most two
+  rows on the right (`fit-content(68%)`, smaller type below 1280 px), narrower screens keep icon and
+  word. "Adlandır" became "Yeniden adlandır"; a shared folder's Yönet/Kaldır became the actions
+  "Paylaşımı yönet"/"Paylaşımı kaldır". Trash stays "Çöpe at" (a delete in the /srv view goes to the
+  trash); "Sistem (/)" keeps "Kalıcı sil".
+- **Seç:** a toggle (`#fs-pick`, `aria-pressed`) beside Yükle. While on, each item shows a round check
+  (drawn with CSS borders: the page's CSP allows no `data:` images), a click on an item or a list row's
+  name adds or removes it and never opens it (Shift still selects a range), and "Tümünü seç" is a detail
+  action, so the bar never changes width. Seç again, Esc, a click on empty space, "Seçimi bırak" or
+  opening another folder ends it and clears the selection.
+
 ### DD-243: Files as three separate panels; a one-line details panel; no count in the path bar (v2-225)
 
 - **Request (user, 2026-10-07):** "sağda bulunan favoriler ve root panelini yandaki tablodan ayıralım

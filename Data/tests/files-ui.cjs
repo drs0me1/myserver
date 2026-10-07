@@ -97,19 +97,19 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         assert.deepEqual(await card.locator(".dav-infuse dd").allTextContents(),[url.hostname,url.port || (url.protocol === "https:" ? "443" : "80"),url.pathname]);
       }
     };
-    // DD-237: the detail panel shows a shared folder in one line: each connection's state, the account,
-    // Yönet and Kaldır. Addresses and copy buttons stay on Paylaşımlar.
+    // DD-244: the detail line names a shared folder's open connections (else its state); "Paylaşımı yönet" and
+    // "Paylaşımı kaldır" are detail actions. Addresses, the account and copy buttons stay on Paylaşımlar.
     const checkShareSummary = async (locator, share = shares.items[0]) => {
-      await locator.locator(".fx-share").waitFor();
-      assert.deepEqual(await locator.locator(".fx-chip[data-network]").evaluateAll(n=>n.map(x=>x.dataset.network)),["tailscale","wan"]);
-      for (const scope of ["tailscale","wan"]) {
-        const c = share.connections[scope], text = await locator.locator(`.fx-chip[data-network="${scope}"]`).innerText();
-        assert.match(text, scope === "tailscale" ? /^Tailscale/ : /^(HTTP \(WAN\)|HTTPS|WAN)/);
-        assert.equal(/ açık · /.test(text), !!c.active, scope + ": " + text);
-      }
-      assert(new RegExp("Kullanıcı: " + share.username).test(await locator.locator(".fx-share").innerText()));
-      assert.equal(await locator.locator(".dav-address, .dav-connection").count(), 0, "addresses stay on Paylaşımlar");
-      for (const name of ["Yönet","Kaldır"]) assert.equal(await locator.getByRole("button",{name,exact:true}).count(), 1);
+      await locator.locator(".fx-shared").waitFor();
+      const line = await locator.locator(".fx-line").innerText(), open = ["tailscale","wan"].filter(scope => share.connections[scope].active);
+      if (open.length) {
+        assert.match(line, /Paylaşılıyor: /);
+        if (share.connections.tailscale.active) assert.match(line, /Tailscale \((\d+ gün|süresiz)\)/);
+        assert.equal(await locator.locator(".fx-shared.on").count(), 1);
+      } else assert.match(line, /Paylaşım: /);
+      assert.equal(await locator.locator(".dav-address, .dav-connection, .fx-chip").count(), 0, "addresses stay on Paylaşımlar");
+      assert(!line.includes(share.username), "the account stays on Paylaşımlar");
+      for (const name of ["Paylaşımı yönet","Paylaşımı kaldır"]) assert.equal(await locator.getByRole("button",{name,exact:true}).count(), 1);
     };
     // DD-232: grid tiles select on click (a second click opens); the right column holds the actions.
     const tile = name => page.locator(`#fs-table [data-item="${name}"]`);
@@ -414,10 +414,10 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
         wan:{enabled:selected.includes("wan"),permission:"rw",days:30,ack_write:true}});
       assert.equal(submitted.ack_wan_http,selected.includes("wan")?true:undefined);
       await checkShareSummary(page.locator("#fs-detail"),shares.items[1]);
-      await page.locator("#fs-detail").getByRole("button",{name:"Kaldır",exact:true}).click();
+      await page.locator("#fs-detail").getByRole("button",{name:"Paylaşımı kaldır",exact:true}).click();
       const beforeRemove = shareWrites.length;
       await page.locator("#cf-cancel").click(); assert.equal(shareWrites.length,beforeRemove);
-      await page.locator("#fs-detail").getByRole("button",{name:"Kaldır",exact:true}).click();
+      await page.locator("#fs-detail").getByRole("button",{name:"Paylaşımı kaldır",exact:true}).click();
       await page.locator("#cf-go").click();
       await act("paylas").waitFor();
       assert.equal(shares.items.length,1);
@@ -508,8 +508,11 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await page.locator("#fs-table").click({position:{x:4,y:4}});
     assert.equal(await title(),"Sunucu","Clicking empty grid space clears the selection");
     await select("media");
-    assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","cop"],"A shared folder shows its share instead of Paylaş");
-    assert.equal(await page.locator("#fs-detail .fx-chip[data-network]").count(),2);
+    assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","paylasim-yonet","paylasim-kaldir","cop"],"A shared folder offers its share instead of Paylaş");
+    // DD-244: the actions are words; the icons are dropped on a desktop-width screen (narrower ones keep both).
+    const wordsOnly = page.viewportSize().width >= 1101 ? "none" : "block";
+    assert.deepEqual(await page.locator("#fs-detail .fx-acts .btn").evaluateAll(bs=>bs.map(b=>[b.innerText.trim(),getComputedStyle(b.querySelector("svg")).display])).then(r=>r.slice(0,2)),
+      [["Klasörü aç",wordsOnly],["Yeniden adlandır",wordsOnly]]);
     await select("Belgeler ve uzun klasör adı");
     assert.deepEqual((await acts()).map(a=>a[0]),["ac","adlandir","tasi","arsiv","paylas","cop"]);
     await act("paylas").click();

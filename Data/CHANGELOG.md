@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: one-line details with word buttons; "Seç" for picking several items (v2-226)
+
+- Under the item's name the details panel shows one line: type, size, location, last change and, for a
+  shared folder, its open connections.
+- The actions are words again: Klasörü aç / İndir, Yeniden adlandır, Taşı, Arşiv oluştur, Arşivi aç,
+  Paylaş, Paylaşımı yönet, Paylaşımı kaldır, Çöpe at, Seçimi bırak.
+- A "Seç" button beside Yükle: while it is on, every item shows a round check and a click adds or
+  removes it (nothing opens); "Tümünü seç" is in the details panel. Seç again, Esc, "Seçimi bırak" or
+  opening another folder ends it (DD-244).
+
 ### 2026-10-07 — Files in three separate panels; a slimmer details line (v2-225)
 
 - The file list, the details under it and the Favoriler/Konumlar column are separate panels with a

@@ -412,7 +412,7 @@
     if (!$("sh").open) $("sh").showModal();
   }
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && current === "dosyalar" && fsSel.size && !document.querySelector("dialog[open]")) clearSel();
+    if (e.key === "Escape" && current === "dosyalar" && (fsSel.size || fsPicking) && !document.querySelector("dialog[open]")) clearSel();
   });
 
   /* ---------- onay penceresi ---------- */
@@ -463,6 +463,8 @@
   let fsLayout = "grid";
   try { fsLayout = localStorage.getItem("konsol-files-view") === "list" ? "list" : "grid"; } catch (e) { /* özel pencere */ }
   /* DD-145: kısayol sütunu, arama, çoklu seçim ve listenin içine bırakarak yükleme. */
+  // fsPicking (DD-244): "Seç" is on; a click adds or removes an item and never opens it.
+  let fsPicking = false;
   let fsRootDirs = null, fsQuery = "", fsSel = new Set(), fsLast = "", fsOpened = false, fsUps = [], upSeq = 0, upBusy = false, dragDepth = 0;
   /* DD-235: "Sistem (/)": the same page over the root backend's system view (/api/sistem/*). No trash,
      archives or shares there; delete is permanent and asks for the item's name. */
@@ -577,6 +579,7 @@
     fsAdding = false;
     fsRename = null;
     fsSel.clear();
+    fsPicking = false;
     fsQuery = "";
     // Phones scroll the page; the desktop window scrolls only its contents (DD-236).
     if (current === "dosyalar" && !FX_WIDE.matches) window.scrollTo({ top: 0 });
@@ -679,7 +682,16 @@
     return q ? all.filter((e) => e.name.toLocaleLowerCase("tr").includes(q)) : all;
   }
   const selItems = () => fsShown().filter((e) => fsSel.has(e.name));
-  function clearSel() { if (!fsSel.size) return; fsSel.clear(); renderRows(); renderDetail(); }
+  // Seçimi bırakmak "Seç" kipini de kapatır (Esc, boş alana tık, "Seçimi bırak").
+  function clearSel() { if (!fsSel.size && !fsPicking) return; fsSel.clear(); fsPicking = false; renderRows(); renderDetail(); paintBar(); }
+  function togglePick() {
+    if (fsPicking) { clearSel(); return; }
+    fsPicking = true; renderRows(); renderDetail(); paintBar();
+  }
+  function selectAll() {
+    fsSel = new Set(fsShown().map((e) => e.name).filter((n) => !inTemp(pathText(fsPath.concat(n)))));
+    renderRows(); renderDetail();
+  }
   // Izgarada tık: tek seçim; seçili tek ögeye yeniden tık onu açar. Çift tık da iki tıktır: ögeyi bir kez açar, açan tıktan
   // sonraki tık (e.detail > 1) yok sayılır; yoksa klasör iki kez açılıyordu (klasör/klasör → "bulunamadı") ya da dosya iki kez
   // iniyordu. Ctrl/Cmd ekler, Shift aralık seçer.
@@ -687,7 +699,7 @@
     if (item.type === "dir") fsGo(fsPath.concat(item.name)); else if (isText(item)) openText(item); else download(item);
   }
   function pickItem(item, e) {
-    if (e && (e.shiftKey || e.ctrlKey || e.metaKey)) { toggleSel(item.name, e.shiftKey); return; }
+    if (fsPicking || (e && (e.shiftKey || e.ctrlKey || e.metaKey))) { toggleSel(item.name, !!(e && e.shiftKey)); return; }
     if (e && e.detail > 1 && fsOpened) return;
     fsOpened = fsSel.size === 1 && fsSel.has(item.name);
     if (fsOpened) { openItem(item); return; }
@@ -764,6 +776,9 @@
         } }, svg(icon)))),
       picker,
       h("button", { type: "button", class: "btn btn-sm", onclick: () => $("fs-file").click() }, svg("upload"), "Yükle"),
+      // DD-244: "Seç" turns clicks into adding/removing items ("Tümünü seç" is in the detail panel, so the bar
+      // never changes width).
+      h("button", { type: "button", class: "btn btn-sm fx-pick", id: "fs-pick", "aria-pressed": "false", onclick: togglePick }, svg("check"), "Seç"),
       h("button", { type: "button", class: "pf-btn", title: "Yeni klasör", "aria-label": "Yeni klasör", onclick: startNewFolder }, svg("plus")),
       h("span", { class: "fx-progress", "aria-hidden": "true" })));
   }
@@ -783,6 +798,7 @@
     const q = $("fs-q");
     if (q.value !== fsQuery) q.value = fsQuery;
     document.querySelectorAll("#fs-bar [data-layout]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.layout === fsLayout ? "true" : "false"));
+    $("fs-pick").setAttribute("aria-pressed", fsPicking ? "true" : "false");
   }
   function startNewFolder() { fsAdding = true; renderRows(); const i = $("nf-name"); if (i) i.focus(); }
 
@@ -824,6 +840,7 @@
   function renderRows() {
     const box = $("fs-rows");
     if (!box) return;
+    box.classList.toggle("picking", fsPicking);
     const shown = fsShown();
     const kids = [];
     if (inTemp(pathText(fsPath))) {
@@ -1022,7 +1039,7 @@
             if (e.key === "Enter") { e.preventDefault(); doRename(item, e.target.value.trim()); }
           },
           onblur: (e) => doRename(item, e.target.value.trim()) }))
-      : h("button", { type: "button", class: "fname", onclick: () => (dir ? fsGo(fsPath.concat(item.name)) : isText(item) ? openText(item) : download(item)) },
+      : h("button", { type: "button", class: "fname", onclick: (e) => (fsPicking ? toggleSel(item.name, e.shiftKey) : dir ? fsGo(fsPath.concat(item.name)) : isText(item) ? openText(item) : download(item)) },
         h("span", { class: `ticon t-${kind}` }, svg(dir ? "folder" : kind)),
         h("span", null, h("strong", null, item.name, shareChip(pathText(fsPath.concat(item.name)))),
           h("small", null, dir ? `${item.count == null ? "?" : item.count} öge` : isText(item) ? "metin dosyası" : "")));
@@ -1229,18 +1246,24 @@
     box.hidden = fsView !== "files" || !fsList;
     if (box.hidden) { box.replaceChildren(); return; }
     const sel = selItems();
-    // DD-243: on a desktop-width screen the panel is one line and the actions show their icon only; the name is the
-    // button's accessible name and tooltip.
+    // DD-244: the actions are words (the icon is dropped on a desktop-width screen); the name is also the
+    // accessible name and tooltip.
     const action = (label, icon, fn, attrs = {}) => h("button", { type: "button", class: "btn btn-sm btn-quiet" + (attrs.danger ? " fx-danger" : ""),
       disabled: !!attrs.disabled, "aria-label": label, title: attrs.title || label, "data-act": attrs.act || null, onclick: fn },
       svg(icon), h("span", { class: "fx-act-label" }, label));
-    const head = (art, title, sub) => h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art),
-      h("h2", { id: "fs-detail-title" }, title), h("small", null, sub));
+    // DD-244: under the name, one line: what it is, its size, where it is and when it changed (and a shared
+    // folder's open connections); the whole line is the tooltip when it is cut.
+    const head = (art, title, parts) => {
+      const line = parts.filter(Boolean);
+      return h("div", { class: "fx-head" }, h("span", { class: "fx-preview" }, art), h("h2", { id: "fs-detail-title" }, title),
+        h("small", { class: "fx-line", title: line.map((p) => (typeof p === "string" ? p : p.textContent)).join(" · ") },
+          ...line.flatMap((p, i) => (i ? [" · ", p] : [p]))));
+    };
+    const all = fsPicking ? action("Tümünü seç", "check", selectAll, { act: "tumu" }) : null;
     if (!sel.length) {
       const shown = fsShown(), name = fsPath.length ? fsPath[fsPath.length - 1] : fsSys ? "Sistem" : "Sunucu";
-      box.replaceChildren(head(folderArt(), name, `${fsHere()} · ${shown.length} öge · ${bytes(shown.reduce((t, e) => t + (e.size || 0), 0))}`),
-        h("div", { class: "fx-mid" }, h("p", { class: "hint-s fx-hint" }, "Bir öge seçin; işlemleri burada görünür.")),
-        h("div", { class: "fx-acts" },
+      box.replaceChildren(head(folderArt(), name, [fsHere(), `${shown.length} öge`, bytes(shown.reduce((t, e) => t + (e.size || 0), 0))]),
+        h("div", { class: "fx-acts" }, all,
           action("Yeni klasör", "plus", startNewFolder, { act: "yeni" }),
           action("Yükle", "upload", () => $("fs-file")?.click(), { act: "yukle" })));
       return;
@@ -1248,9 +1271,8 @@
     if (sel.length > 1) {
       const dirs = sel.filter((i) => i.type === "dir").length, files = sel.length - dirs;
       const kinds = [dirs ? `${dirs} klasör` : "", files ? `${files} dosya` : ""].filter(Boolean).join(", ");
-      box.replaceChildren(head(stackArt(sel.length), `${sel.length} öge seçili`, `${kinds} · ${bytes(sel.reduce((t, e) => t + (e.size || 0), 0))}`),
-        h("div", { class: "fx-mid" }),
-        h("div", { class: "fx-acts" },
+      box.replaceChildren(head(stackArt(sel.length), `${sel.length} öge seçili`, [kinds, bytes(sel.reduce((t, e) => t + (e.size || 0), 0)), fsHere()]),
+        h("div", { class: "fx-acts" }, all,
           action("İndir", "download", () => sel.forEach((i) => i.type !== "dir" && download(i)), { disabled: !files, act: "indir" }),
           action("Taşı", "move", () => openMove(sel), { act: "tasi" }),
           fsSys ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), sel), { act: "arsiv" }),
@@ -1265,26 +1287,23 @@
     const eligible = !fsSys && directory && !inTemp(path) && !protectedList().some((p) => p.path.startsWith(path + "/")) && !path.split("/").some((p) => p.startsWith("."));
     const canExtract = !directory && archiveTools.canExtract(item.name), locked = inTemp(path);
     const type = directory ? "Klasör" : isText(item) ? "Metin dosyası" : extOf(item.name) ? `${extOf(item.name)} dosyası` : "Dosya";
+    const share = sh ? sharesPage.brief(sh) : null;
     box.replaceChildren(
-      head(itemArt(item), item.name, `${type} · ${directory ? (item.count ?? "?") + " öge" : bytes(item.size)}`),
-      // DD-243: the facts and, for a shared folder, its one-line share (or the reason it cannot be shared) share
-      // the middle column; a shared folder's state is in the share line, not repeated as a fact.
-      h("div", { class: "fx-mid" },
-        h("dl", { class: "fx-facts" },
-          h("div", null, h("dt", null, "Konum"), h("dd", { title: fsHere() }, fsHere())),
-          h("div", null, h("dt", null, "Değiştirme"), h("dd", null, since(item.mtime))),
-          directory && !sh ? h("div", null, h("dt", null, "Paylaşım"), h("dd", null, "—")) : null,
-          locked ? h("div", null, h("dt", null, "Yazan"), h("dd", null, protectedOwner(path))) : null),
-        // DD-237: a shared folder shows one line; the full cards and the access note live on Paylaşımlar.
-        sh ? sharesPage.summary(sh) : directory && !eligible && !fsSys ? h("p", { class: "hint-s fx-note" }, "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin.") : null),
-      h("div", { class: "fx-acts" },
+      head(itemArt(item), item.name, [type, directory ? (item.count ?? "?") + " öge" : bytes(item.size), fsHere(), since(item.mtime),
+        locked ? `Yazan: ${protectedOwner(path)}` : "",
+        // DD-237: the full share cards and the access note live on Paylaşımlar.
+        share ? h("span", { class: "fx-shared" + (share.on ? " on" : "") }, share.text)
+          : directory && !eligible && !fsSys ? h("span", { title: "Geçici/iç alan içeren klasör paylaşılmaz. Bir alt klasör seçin." }, "Paylaşılamaz") : ""]),
+      h("div", { class: "fx-acts" }, all,
         directory ? action("Klasörü aç", "folder", () => fsGo(fsPath.concat(item.name)), { act: "ac" })
           : action("İndir", "download", () => download(item), { act: "indir" }),
-        action("Adlandır", "pencil", () => { fsRename = item.name; renderRows(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }, { act: "adlandir" }),
+        action("Yeniden adlandır", "pencil", () => { fsRename = item.name; renderRows(); const inp = $("rn-name"); if (inp) { inp.focus(); inp.select(); } }, { act: "adlandir" }),
         action("Taşı", "move", () => openMove(item), { act: "tasi" }),
         locked || fsSys ? null : action("Arşiv oluştur", "box", () => archiveTools.open("zip", pathText(fsPath), [item]), { act: "arsiv" }),
         canExtract && !locked && !fsSys ? action("Arşivi aç", "boxOpen", () => archiveTools.open("unzip", pathText(fsPath), [item]), { act: "ac-arsiv" }) : null,
         eligible && !sh ? action("Paylaş", "share", () => openShareCreate(item, path), { act: "paylas" }) : null,
+        sh ? action("Paylaşımı yönet", "sliders", () => openShareInfo(sh), { act: "paylasim-yonet" }) : null,
+        sh ? action("Paylaşımı kaldır", "trash", () => sharesPage.remove(sh), { act: "paylasim-kaldir" }) : null,
         fsSys ? action("Kalıcı sil", "trash", () => askDelete(item), { danger: true, act: "sil" })
           : action("Çöpe at", "trash", () => askTrash(item), { danger: true, act: "cop" })));
   }

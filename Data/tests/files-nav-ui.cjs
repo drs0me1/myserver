@@ -115,6 +115,30 @@ let hold = {};   // path -> Promise to wait for before answering
     assert(split.gapBelow >= 8 && split.gapBelow <= 14 && split.gapSide >= 8 && split.gapSide <= 16 && split.h === 82 && split.frame === "0px" && split.card === "1px",
       `separate panels: ${JSON.stringify(split)}`);
     await page.keyboard.press("Escape");
+    // DD-244: "Seç": plain clicks add and remove items and never open them; the bar keeps its width; Esc ends it.
+    const barWidth = () => page.locator("#fs-bar .pathfield").evaluate((b) => Math.round(b.getBoundingClientRect().width));
+    const detailTitle = () => page.locator("#fs-detail-title").innerText();
+    const bar0 = await barWidth();
+    await page.locator("#fs-pick").click();
+    assert.equal(await page.locator("#fs-pick").getAttribute("aria-pressed"), "true");
+    assert.equal(await barWidth(), bar0, "Seç changed the bar's width");
+    assert.equal(await page.locator("#fs-rows.picking").count(), 1);
+    await tile("alt").click(); await tile("a.txt").click();
+    assert.equal(await detailTitle(), "2 öge seçili");
+    assert.equal(await crumb(), "klasor-60", "a click in Seç never opens a folder");
+    await tile("alt").click();
+    assert.equal(await detailTitle(), "a.txt", "a second click removes the item");
+    assert.deepEqual(await page.locator('#fs-detail [data-act="tumu"]').evaluate((b) => [b.innerText.trim(), getComputedStyle(b.querySelector("svg")).display]),
+      ["Tümünü seç", "none"], "desktop actions are words without icons");
+    await page.locator('#fs-detail [data-act="tumu"]').click();
+    assert.equal(await detailTitle(), "3 öge seçili");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#fs-pick").getAttribute("aria-pressed"), "false");
+    assert.equal(await page.locator("#fs-rows.picking").count(), 0);
+    assert.equal(await detailTitle(), "klasor-60");
+    await tile("a.txt").click();
+    assert.equal(await detailTitle(), "a.txt", "after Seç a click selects one item again");
+    await page.keyboard.press("Escape");
     // Back: at once from the cache, at the scroll position it was left at; read again behind the scenes.
     let release; hold[""] = new Promise((r) => { release = r; });
     await page.locator("#fs-back").click();
