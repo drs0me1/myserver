@@ -235,6 +235,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-247 | Folder tiles give the item count and the total size | v2-229 | design-decisions.md |
 | DD-246 | Konsol reboot (typed confirmation, tailnet only, delayed transient unit); Sağlık in two rows; the settings guard timer is on-demand for `master-onar` (amends DD-241, DD-245) | v2-228 | design-decisions.md |
 | DD-245 | Update control as an icon (words only while running); Ayarlar → Sistem in three cards, "Yerleşik altyapı" removed (amends DD-233, DD-239) | v2-227 | design-decisions.md |
 | DD-244 | Files details: one info line under the name, word actions, share actions in the row; a "Seç" picking mode (amends DD-243) | v2-226 | design-decisions.md |

@@ -134,7 +134,9 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       else if (p === "/api/konsol/islemler") result = { items: [] };
       else if (p === "/api/state") result = { root: "/srv", downloads:"downloads", protected: [{ path: "downloads/incomplete", owner: "Deneme Uygulaması" }], disk: { total: 100000, free: 80000 }, trash: { count: 0, size: 0 } };
       else if (p === "/api/list") result = { path: url.searchParams.get("path") || "", entries: [
-        ...(url.searchParams.get("path") ? ["movies", "series"] : ["media", "downloads", "Belgeler ve uzun klasör adı"]).map((name) => ({ name, type: "dir", count: 2, size: 1024, mtime: Date.now() / 1000 })),
+        // DD-247: "movies" was not walked (size null), "series" is empty.
+        ...(url.searchParams.get("path") ? [["movies", 2, null], ["series", 0, 0]] : [["media", 2, 1024], ["downloads", 2, 1024], ["Belgeler ve uzun klasör adı", 2, 1024]])
+          .map(([name, count, size]) => ({ name, type: "dir", count, size, mtime: Date.now() / 1000 })),
         ...(!url.searchParams.get("path") && !url.searchParams.get("dirs") ? [longFile,"sample.part02.rar"].map(name=>({name,type:"file",size:840*1024**2,mtime:Date.now()/1000})) : [])] };
       else if (p.startsWith("/api/sistem/")) {
         sysReads.push(p + url.search);
@@ -200,8 +202,13 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(result) });
     });
     await page.goto((process.env.KONSOL_URL || "http://127.0.0.1:8766") + "/#/dosyalar");
+    // DD-247: a folder tile and its info line give the item count and the walked total size, each part unbroken.
+    assert.equal(await tile("media").locator(".fx-sub").innerText(), "2 öge · 1 KB");
+    assert.equal(await tile("media").locator(".fx-sub > span").count(), 2);
+    assert.match(await tile("media").getAttribute("aria-label"), /^media, klasör, 2 öge · 1 KB$/);
     await select("media");
     assert.match(await page.locator("#fs-detail").innerText(), /media/);
+    assert.match(await page.locator("#fs-detail .fx-line").getAttribute("title"), /^Klasör · 2 öge · 1 KB · /);
     await page.screenshot({ path: path.join(shots, "desktop-list.png"), fullPage: true });
     await act("paylas").click();
     const tailscale = page.locator("#dav-tailscale"), wan = page.locator("#dav-wan"), ackWan = page.locator("#dav-ack-wan");
@@ -573,6 +580,8 @@ const shareWrites = [], deleted = [], longFile = "x".repeat(251) + ".iso";
     await tile("media").dblclick();
     await tile("movies").waitFor();
     assert.deepEqual(await page.locator("#fs-bar .crumb").allInnerTexts(), ["/srv","media"]);
+    assert.equal(await tile("movies").locator(".fx-sub").innerText(), "2 öge", "an unwalked folder shows only its count");
+    assert.equal(await tile("series").locator(".fx-sub").innerText(), "0 öge", "an empty folder shows no 0 B");
     await page.getByRole("searchbox", { name: "Bu klasörde ara" }).fill("series");
     assert.equal(await tile("movies").count(), 0);
     assert.equal(await tile("series").count(), 1);

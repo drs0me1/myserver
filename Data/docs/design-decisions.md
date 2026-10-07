@@ -13,6 +13,20 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-247: Folder tiles give the item count and the total size (v2-229)
+
+- **Request (user, 2026-10-07):** "dosyalar menüsünde klasör görünümlerinin altında öğe sayısı yazıyor.
+  toplam boyut bilgisi de yazalım"; of three mock-ups (one line, two lines, size first) the one-line
+  "248 öge · 1,82 TB" was approved.
+- **Why one line:** the details panel with nothing selected and "Çöpü boşalt" already say "N öge · size",
+  and a second line would make folder tiles taller than the file tiles beside them.
+- **Data:** no backend change. `/api/list` already walks each folder (`dir_size`, one `WALK_BUDGET` of
+  200,000 entries per listing) and the list view's Boyut column shows it. A folder past the budget, an
+  unreadable one and every folder in "Sistem (/)" (DD-235: sizes not walked) arrive with `size: null`.
+- **Rendering:** `dirFacts` gives the tile's `.fx-sub`, its `aria-label` and the details' info line the
+  same parts. The size is left out when it is `null` or the folder is empty: no "—" and no "0 B". Each
+  part is a `nowrap` span, so a narrow tile wraps only at the "·".
+
 ### DD-246: Reboot from Konsol; Sağlık in two rows; the settings guard timer is on demand (v2-228)
 
 - **Request (user, 2026-10-07):** the health card in two rows "açıklamalar alta sığabilsin"; a restart

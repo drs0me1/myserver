@@ -1003,9 +1003,12 @@
     return sh ? h("span", { class: "shchip", title: sh.url }, svg("share"), sharesPage.stateText(sh)) : null;
   }
 
+  // DD-247: a folder says its item count and, when the backend could walk it, its total size; an empty
+  // folder, an unwalked one (walk budget, "Sistem (/)") or an unreadable one says only its count.
+  const dirFacts = (item) => [`${item.count == null ? "?" : item.count} öge`, ...(item.count && item.size != null ? [bytes(item.size)] : [])];
   function fsTile(item) {
     const dir = item.type === "dir", here = pathText(fsPath.concat(item.name)), on = fsSel.has(item.name), sh = shareOf(here);
-    const sub = dir ? `${item.count == null ? "?" : item.count} öge` : bytes(item.size);
+    const facts = dir ? dirFacts(item) : [bytes(item.size)], sub = facts.join(" · ");
     if (fsRename === item.name) {
       return h("div", { class: "fx-item on" }, itemArt(item),
         h("input", { type: "text", id: "rn-name", class: "inline-input fx-rename", value: item.name, maxlength: "255", autocomplete: "off", spellcheck: "false",
@@ -1021,7 +1024,8 @@
       onclick: (e) => pickItem(item, e),
       onkeydown: (e) => { if (e.key === "Escape") clearSel(); } },
       itemArt(item), sh ? h("span", { class: "fx-badge", title: "Paylaşılıyor" }, svg("share")) : null,
-      h("span", { class: "fx-name" }, item.name), h("span", { class: "fx-sub" }, sub));
+      h("span", { class: "fx-name" }, item.name),
+      h("span", { class: "fx-sub" }, ...facts.flatMap((f, i) => (i ? [" · ", h("span", null, f)] : [h("span", null, f)]))));
   }
   function newFolderTile() {
     return h("div", { class: "fx-item on" }, folderArt(),
@@ -1293,7 +1297,7 @@
     const type = directory ? "Klasör" : isText(item) ? "Metin dosyası" : extOf(item.name) ? `${extOf(item.name)} dosyası` : "Dosya";
     const share = sh ? sharesPage.brief(sh) : null;
     box.replaceChildren(
-      head(itemArt(item), item.name, [type, directory ? (item.count ?? "?") + " öge" : bytes(item.size), fsHere(), since(item.mtime),
+      head(itemArt(item), item.name, [type, ...(directory ? dirFacts(item) : [bytes(item.size)]), fsHere(), since(item.mtime),
         locked ? `Yazan: ${protectedOwner(path)}` : "",
         // DD-237: the full share cards and the access note live on Paylaşımlar.
         share ? h("span", { class: "fx-shared" + (share.on ? " on" : "") }, share.text)

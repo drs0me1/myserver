@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-07 — Files: folder tiles show their total size (v2-229)
+
+- Under a folder in the icon view, and in its details line, the item count is followed by the folder's
+  total size: "248 öge · 1,82 TB". An empty folder, or one whose size could not be calculated (a very
+  large folder, or the "Sistem (/)" view), still shows only its count (DD-247).
+
 ### 2026-10-07 — Restart from Konsol; Sağlık in two rows; a false "Zamanlayıcılar" finding fixed (v2-228)
 
 - Ayarlar → Sistem → Panel ve sunucu has "Yeniden başlat": after typing "onayla" the server reboots a

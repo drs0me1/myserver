@@ -921,6 +921,9 @@ Contract in §5–§7 and `folder-shares.md`.
   connections; **DD-244**) and the actions as words ("Seçimi bırak", "Paylaşımı yönet/kaldır" among
   them). The path bar shows no item count or size; with nothing selected the details name the open
   folder's count and size.
+- **Folder count and size (DD-247).** A folder's icon-view tile and its info line give "N öge · size"; the
+  size is the backend's walked total and is left out when the folder is empty or was not walked (walk
+  budget, "Sistem (/)", unreadable), leaving the count alone.
 - **Seç (DD-244).** A toggle beside Yükle: each item shows a check and a click adds or removes it without
   opening it; "Tümünü seç" is a detail action. Seç again, Esc, an empty-space click, "Seçimi bırak" or
   another folder ends it.
