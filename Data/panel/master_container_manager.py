@@ -19,7 +19,7 @@ import uuid
 
 import master_settings as settings
 import master_container_config as config
-from master_containers import Containers, ContainerError, epoch, listening, mask, name_of, ports_of, TAILS, update_status
+from master_containers import Containers, ContainerError, epoch, listening, name_of, ports_of, TAILS, update_status
 
 ACTIONS = frozenset(('create', 'save', 'start', 'stop', 'restart', 'remove', 'adopt', 'image-pull',
                      'image-remove', 'image-update', 'volume-create', 'volume-remove', 'network-create', 'network-remove'))
@@ -293,17 +293,19 @@ class Inventory(Containers):
             else: raise
         return self.decorate(row,True)
 
+    # DD-251: a Konsol or App Store container is a systemd unit whose output goes to the journal, so its
+    # log is that unit's journal: every start, restart and re-creation, as it was written. Any other
+    # container has only its own `podman logs`.
     def gunluk(self,name,tail):
         name_of(name)
-        if self.inspect(name): return super().gunluk(name,tail)
         if name in self.apps: unit=self.apps[name]['unit']
         elif name in self.definitions: unit='konsol-'+name+'.service'
         else: return super().gunluk(name,tail)
         tail=int(tail) if str(tail).isdigit() and int(tail) in TAILS else 200
         rc,text,_=self.run(['journalctl','-u',unit,'-n',str(tail),'--no-pager','-o','short-iso'],30)
         if rc: raise ContainerError(502,'Konteyner günlüğü okunamadı.')
-        lines=[mask(l) for l in text.splitlines() if l.strip()]
-        return {'name':name,'lines':lines[-tail:],'truncated':len(lines)>=tail,'masked':True}
+        lines=[l for l in text.splitlines() if l.strip()]
+        return {'name':name,'lines':lines[-tail:],'truncated':len(lines)>=tail}
 
 
 class Service:

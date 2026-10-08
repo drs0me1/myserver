@@ -137,16 +137,12 @@ class ContainerViewTests(unittest.TestCase):
                                       {"host_ip": "0.0.0.0", "host_port": 8081, "container_port": 80, "protocol": "tcp"}])
         self.assertEqual((w["network"], w["labels"], w["command"]), ("bridge", {"version": "", "source": "", "title": ""}, "nginx -g daemon off;"))
 
-    def test_logs_are_masked_and_the_tail_is_bounded(self):
+    def test_logs_are_returned_as_written_and_the_tail_is_bounded(self):
+        # DD-251: no masking or other filter; only blank lines go.
         code, log = self.call("gunluk", ad="deneme-qbit")
-        self.assertEqual((code, log["name"], log["masked"], log["truncated"]), (200, "deneme-qbit", True, False))
-        text = "\n".join(log["lines"])
-        for secret in ("Zq3pL9ab2", "abc.def.ghi", "XYZ", "12345"):
-            self.assertNotIn(secret, text)
-        self.assertIn("username is: admin", text, "a user name is not a secret")
-        self.assertIn("password is provided for this session: ••••", text)
-        self.assertIn("token=•••• api_key: •••• Private key = ••••", text)
-        self.assertEqual(len(log["lines"]), 4, "blank lines are dropped")
+        self.assertEqual((code, log["name"], log["truncated"]), (200, "deneme-qbit", False))
+        self.assertNotIn("masked", log)
+        self.assertEqual(log["lines"], [l for l in LOGS.splitlines() if l], "every line as the runtime wrote it")
         self.assertEqual(self.ctx.calls[-1][0], ["podman", "logs", "--timestamps", "--tail", "200", "deneme-qbit"])
         self.call("gunluk", ad="deneme-qbit", satir="500")
         self.assertEqual(self.ctx.calls[-1][0][4], "500")
@@ -210,7 +206,7 @@ class ContainerRouteTests(unittest.TestCase):
             self.assertEqual(unix_get(sock, "/api/konsol/konteynerler/ayrinti?ad=yok", {"X-Konsol": "1"})[0], 404)
             status, _h, body = unix_get(sock, "/api/konsol/konteynerler/gunluk?ad=deneme-qbit&satir=100", {"X-Konsol": "1"})
             self.assertEqual(status, 200)
-            self.assertNotIn("Zq3pL9ab2", body.decode())
+            self.assertIn("Zq3pL9ab2", body.decode(), "DD-251: the log is not filtered")
             self.assertEqual(unix_get(sock, "/api/konsol/konteynerler/baslat", {"X-Konsol": "1"})[0], 404)
             for path in ("/api/konsol/konteynerler/liste", "/api/konsol/konteynerler/durdur"):
                 self.assertEqual(unix_get(sock, path, {"X-Konsol": "1", "Content-Type": "application/json"}, "POST", b"{}")[0], 404)

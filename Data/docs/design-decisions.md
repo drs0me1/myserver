@@ -13,6 +13,25 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-251: Container logs in full and unfiltered (v2-234)
+
+- **Request (user, 2026-10-08):** after a filebrowser test container's first password could not be found
+  in Günlük: "konsol içerisindeki günlük tam olarak gösterim sağlasın", then "konsol kontainer
+  günlüklerini olduğu gibi almalı, herhangi bir filtre olmadan çalışmalı".
+- **Two causes:** the log came from `podman logs`, which shows only the current container; a Konsol
+  restart re-creates it, so the earlier run's lines (the generated password) were gone from the view
+  although the journal kept them. And DD-208 replaced values after password/token/key words with
+  "••••" before they left the server.
+- **Now:** a Konsol definition (`konsol-<name>.service`) or an App Store container (its package unit)
+  is read with `journalctl -u <unit> -n <tail> -o short-iso` whether the container is live or not, so
+  the tail spans every start, restart and re-creation and also shows the unit's own start/stop lines.
+  Any other container keeps `podman logs --timestamps`. No line is masked or otherwise changed; only
+  blank lines are dropped. The `masked` field is gone from the answer.
+- **Trade-off (flagged, the operator's choice):** what an application prints — temporary passwords,
+  tokens — is shown to whoever opens the page, also over the public HTTPS name when that is on (it
+  needs the Konsol account). Environment variables stay hidden as before (DD-208). Package pages'
+  own logs (`master-modul gunluk`, e.g. qBittorrent's temporary password line) are not part of this.
+
 ### DD-250: Favourite folders in Files, kept by the root backend (v2-232)
 
 - **Request (user, 2026-10-07):** "klasörlere bir favoriler tanımı yapalım klasör seçilince alta
@@ -1285,7 +1304,8 @@ Presentation amended by DD-213; installed-only tiles and cumulative traffic sema
   `ProtectSystem=full`, `RestrictNamespaces`, `NoNewPrivileges` do not block them), container
   names are validated, `Config.Env` is never returned (images carry passwords there) and
   `password|parola|passwd|secret|token|api key|private key … : value` is masked in log lines
-  before they leave the server. Nothing here starts, stops or removes a container: that belongs
+  before they leave the server. *(Amended by DD-251: no masking; managed containers' logs are their
+  unit journals.)* Nothing here starts, stops or removes a container: that belongs
   to the application that owns it.
 - **Why base and not a package:** a runtime is not something an operator "uses"; applications
   depend on it, and the engine has no dependency key. As a package it would also have needed a

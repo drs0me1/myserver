@@ -405,7 +405,7 @@ keys and the absence of any automatic update.
 `test_containers.py` drives `panel/master_containers.py` with canned `podman` JSON: the list
 (containers, host network, ps ports, images, storage size), a calm answer when podman is
 missing or fails, `inspect` mapping (sorted mounts, port bindings, three labels, health, never
-the environment), log masking of password/token/key values with a bounded tail, name and path
+the environment), unfiltered log lines (DD-251) with a bounded tail, name and path
 gates and RFC 3339 parsing; a route test runs the real backend handler on a Unix socket (shared
 gates, 400/404 answers, no write route: POST → 404, no podman write verb).
 `konteynerler-ui.cjs` now drives the main-sidebar manager (DD-211) under the production CSP:

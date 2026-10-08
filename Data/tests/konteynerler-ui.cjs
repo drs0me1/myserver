@@ -201,7 +201,7 @@ function settle(op) {
           if (!D[name]) return json(404, { error: "konteyner bulunamadı" });
           return json(200, Object.assign(detailBase(name), JSON.parse(JSON.stringify(D[name]))));
         }
-        if (p.endsWith("/gunluk")) return json(200, { name: url.searchParams.get("ad"), lines: LOG_LINES, truncated: false, masked: true });
+        if (p.endsWith("/gunluk")) return json(200, { name: url.searchParams.get("ad"), lines: LOG_LINES, truncated: false });
         if (p.endsWith("/guncellemeler")) {
           if (url.searchParams.has("yenile")) updChecked = Math.floor(Date.now() / 1000);
           return json(200, { checked_at: updChecked, items: JSON.parse(JSON.stringify(UPD)), cached: !url.searchParams.has("yenile") });

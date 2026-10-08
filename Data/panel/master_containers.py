@@ -5,8 +5,8 @@ Podman is part of the base (the App Store's container runtime). The root backend
 for GET /api/konsol/konteynerler/{liste,ayrinti,gunluk}; everything comes from `podman` itself
 (ps, inspect, images, system df, logs) run inside the backend's sandbox, which is enough for
 reading, and, for a container on the host network, from /proc (the sockets it listens on, DD-215).
-Nothing here starts, stops or removes a container: that belongs to the application that owns it. Environment variables are never returned (they may hold passwords), and log lines mask
-values that follow words like password or token before they leave the server.
+Nothing here starts, stops or removes a container: that belongs to the application that owns it. Environment variables are never returned (they may hold passwords).
+DD-251: log lines are returned as the runtime gives them, with no masking or other filter (only blank lines go).
 """
 import ipaddress
 import json
@@ -17,14 +17,7 @@ import time
 
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 TAILS = (100, 200, 500, 1000)
-# "A temporary password is provided for this session: X", "token=..." , "API key: ..." → the value is masked.
-SECRET_RE = re.compile(r"((?i:password|passwd|parola|secret|token|api[_ -]?key|private[_ -]?key)[^\n:=]{0,60}[:=]\s*)(\S+)")
-MASK = "••••"
 LABEL_KEYS = {"version": "org.opencontainers.image.version", "source": "org.opencontainers.image.source", "title": "org.opencontainers.image.title"}
-
-
-def mask(line):
-    return SECRET_RE.sub(lambda m: m.group(1) + MASK, line)
 
 
 def epoch(value):
@@ -355,5 +348,5 @@ class Containers:
         ok, text, message = self.podman("logs", "--timestamps", "--tail", str(tail), name, timeout=30)
         if not ok:
             raise ContainerError(404 if "no such" in message.lower() else 502, "Konteyner bulunamadı" if "no such" in message.lower() else "Günlük okunamadı: %s" % message)
-        lines = [mask(l) for l in (text or "").splitlines() if l.strip()]
-        return {"name": name, "lines": lines[-tail:], "truncated": len(lines) >= tail, "masked": True}
+        lines = [l for l in (text or "").splitlines() if l.strip()]
+        return {"name": name, "lines": lines[-tail:], "truncated": len(lines) >= tail}

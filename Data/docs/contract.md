@@ -593,7 +593,9 @@ Contract in §5–§7 and `folder-shares.md`.
     Inventory merges real Podman state, installed App Store applications and saved
     definitions, including stopped containers with no live runtime object. Failed
     reads are shown as unavailable, never as empty collections or zero measurements.
-    Details include mounts, port bindings and masked log tails (100/200/500/1000 lines).
+    Details include mounts, port bindings and log tails (100/200/500/1000 lines) exactly as written, with no
+    masking (**DD-251**); a Konsol or App Store container's tail is its unit's journal, across restarts and
+    re-creations, any other container's is its `podman logs`.
     The list (**DD-213**) shows only the application/container name, status, resources
     and access; no image subtitle or ownership column. Its three icon actions keep fixed
     places (**DD-214**): start/stop and edit immediately before the name, remove at the

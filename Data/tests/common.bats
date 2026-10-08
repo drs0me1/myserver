@@ -3500,9 +3500,11 @@ PY
     grep -qF 'if path == "/api/konsol/konteynerler/islem":' "$V2_ROOT/panel/master-panel"
     grep -qF 'self.panel.containers.submit(data)' "$V2_ROOT/panel/master-panel"
     grep -qF -- '--property=RuntimeMaxSec=900' "$V2_ROOT/panel/master_container_manager.py"
-    # Podman read commands only, secrets masked, the environment never returned.
+    # Podman read commands only, the environment never returned; logs unfiltered, a managed container's
+    # from its unit journal (DD-251).
     run ! grep -qE '"(run|create|pull|rm|rmi|stop|start|kill|exec|restart|reset)"' "$mc"
-    grep -q '^SECRET_RE = re.compile' "$mc"
+    run ! grep -qE 'SECRET_RE|MASK|mask\(' "$mc" "$V2_ROOT/panel/master_container_manager.py"
+    grep -qF "rc,text,_=self.run(['journalctl','-u',unit,'-n',str(tail),'--no-pager','-o','short-iso'],30)" "$V2_ROOT/panel/master_container_manager.py"
     run ! grep -qE '"Env"|\.get\("Env"' "$mc"
     run ! grep -qiE 'qbittorrent|wireguard|torrent' "$mc" "$js" "$css"
     # Main sidebar page: CSP-safe, scoped styles and script loaded before the shell.

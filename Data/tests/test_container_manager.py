@@ -93,11 +93,18 @@ class ManagerTests(unittest.TestCase):
         self.assertTrue(answer['resource_errors']['volumes'])
         self.assertEqual(answer['containers'][0]['name'],'web')
 
-    def test_missing_live_container_uses_managed_journal_and_masks_it(self):
+    def test_managed_container_log_is_its_unit_journal_unfiltered(self):
+        # DD-251: a Konsol container's log is its unit's journal (every start and re-creation), live or not,
+        # and nothing in it is masked.
         self.save()
-        log = self.s.view().gunluk('web',200)
-        self.assertEqual(log['lines'],['token=••••','clean log'])
-        self.assertIn(['journalctl','-u','konsol-web.service','-n','200','--no-pager','-o','short-iso'],self.calls)
+        for live in (False, True):
+            with self.subTest(live=live), patch.object(self.s.view().__class__, 'inspect', return_value={'Name': 'web'} if live else None):
+                self.calls.clear()
+                log = self.s.view().gunluk('web',200)
+                self.assertEqual(log['lines'],['token=secret','clean log'])
+                self.assertNotIn('masked', log)
+                self.assertIn(['journalctl','-u','konsol-web.service','-n','200','--no-pager','-o','short-iso'],self.calls)
+                self.assertFalse(any(c[:2] == ['podman','logs'] for c in self.calls), 'podman logs would show only the current run')
 
     def test_unknown_action_and_stale_save_never_launch_worker(self):
         self.save()

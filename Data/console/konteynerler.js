@@ -585,7 +585,8 @@ window.createContainerManager = ({ h, svg, api, post, enc, toast, fail, ask, byt
       logError ? h("p", { class: "err-s", role: "alert" }, logError) : null,
       h("div", { class: "pd-log", tabindex: "0", role: "log", "aria-label": `${c.name} günlüğü` },
         logLoading && !LOG ? h("span", { class: "pd-muted" }, "Okunuyor…") : shown.length ? shown.map((l) => h("div", { class: "pd-line" }, mark(l))) : h("span", { class: "pd-muted" }, q ? "Eşleşen satır yok." : "Günlük kaydı yok.")),
-      h("p", { class: "pd-muted" }, "Bilinen gizli değerler (parola, belirteç) sunucuda maskelenir; uygulamanın kendi çıktısı yine de hassas bilgi içerebilir."))];
+      // DD-251: the log as written, no filter: a Konsol or App Store container's lines come from its unit's journal.
+      h("p", { class: "pd-muted" }, "Günlük olduğu gibi, filtresiz gösterilir; uygulamanın yazdığı parola ve belirteçler de görünür. Konsol ve App Store konteynerlerinde yeniden başlatmalardan önceki satırlar da vardır."))];
   }
 
   /* ---------------- kaynak sekmeleri ---------------- */

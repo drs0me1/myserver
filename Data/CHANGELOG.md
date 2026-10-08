@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-08 — Podman: container logs in full, unfiltered (v2-234)
+
+- The Günlük section of a container on the Podman page shows the log exactly as it was written:
+  passwords, tokens and keys are no longer replaced with "••••".
+- For containers Konsol or the App Store runs, the log now covers every start, restart and
+  re-creation (read from the service's system journal), so a line printed before a restart — such as
+  an application's first generated password — is still there (DD-251).
+
 ### 2026-10-07 — Files: the favourite star follows the folder's name (v2-233)
 
 - In the details under the contents, the favourite star now sits right after the folder's name instead
