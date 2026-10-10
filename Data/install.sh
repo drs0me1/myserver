@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 umask 077
 
-V2_VERSION="2026.08.06-v2-235"
+V2_VERSION="2026.08.06-v2-236"
 V2_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=common.sh
@@ -489,6 +489,32 @@ EOF
         log WARN "apt-daily-upgrade zamanlayıcısı yeniden başlatılamadı"
 }
 
+# DD-253: Caddy's repository (Cloudsmith) answers 402 for days when the project's bandwidth limit
+# is reached, and apt-get update then fails as a whole. A host that already has Caddy needs that
+# list only to upgrade Caddy, so a refresh that fails on that repository alone goes on with the
+# other lists and Caddy is not upgraded this run; the reason is written to the mark file. Any other
+# failing repository, or a host without Caddy (stage 6 installs it from there), still fails. apt
+# keeps that repository disabled: no signature check is relaxed. retry runs this in a child bash,
+# so the repository, the mark file and APT_OPTS come as arguments.
+apt_update_caddy_tolerant() {
+    local repo="$1" mark="$2" out status errors
+    shift 2
+    out="$(mktemp)" || return 1
+    LC_ALL=C apt-get "$@" update 2>&1 | tee "$out"
+    status="${PIPESTATUS[0]}"
+    if [[ "$status" -ne 0 ]] &&
+        dpkg-query -W -f='${Status}' caddy 2>/dev/null | grep -q 'install ok installed'; then
+        errors="$(grep '^E: ' "$out" || true)"
+        if [[ -n "$errors" ]] && ! grep -vF -e "$repo" -e 'E: Some index files failed to download.' <<<"$errors" >/dev/null; then
+            sed -nE 's/^E: Failed to fetch [^ ]+ +([0-9]{3}) +([^[]*[^[ ]).*/\1 \2/p' <<<"$errors" | head -n1 >"$mark"
+            [[ -s "$mark" ]] || echo "erişilemiyor" >"$mark"
+            status=0
+        fi
+    fi
+    rm -f "$out"
+    return "$status"
+}
+
 # DD-166: distribution-signed RAR dependencies; preserve operator source files.
 # OS-DIVERGENCE: rar-repository (debian/ubuntu) — non-free vs universe/multiverse [DD-166]
 ensure_rar_repository() {
@@ -518,7 +544,8 @@ deb [signed-by=$keyring] $mirror $OS_CODENAME $components
 deb [signed-by=$keyring] $mirror $OS_CODENAME-updates $components
 deb [signed-by=$keyring] $security $OS_CODENAME-security $components
 EOF
-    retry "apt-rar-update" 3 "$APT_LOCK_TIMEOUT" -- apt-get "${APT_OPTS[@]}" update
+    retry "apt-rar-update" 3 "$APT_LOCK_TIMEOUT" -- \
+        apt_update_caddy_tolerant "$CADDY_APT_REPO" /dev/null "${APT_OPTS[@]}"
 }
 
 stage_1() {
@@ -533,7 +560,13 @@ stage_1() {
     # ufw kapısının reddettiği "tek şeyin iki sahibi" sınıfının aynısı.
     # SUSPEND apt kancasınca okunur; Debian'da needrestart kurulu değil, no-op.
     export NEEDRESTART_SUSPEND=1
-    retry "apt-update" 3 "$APT_LOCK_TIMEOUT" -- apt-get "${APT_OPTS[@]}" update
+    local caddy_mark
+    caddy_mark="$(mktemp)"
+    retry "apt-update" 3 "$APT_LOCK_TIMEOUT" -- apt_update_caddy_tolerant "$CADDY_APT_REPO" "$caddy_mark" "${APT_OPTS[@]}"
+    if [[ -s "$caddy_mark" ]]; then
+        log WARN "Caddy deposu yanıt vermiyor ($(head -c 80 "$caddy_mark")); Caddy bu kez güncellenmeden devam ediliyor (DD-253)"
+    fi
+    rm -f "$caddy_mark"
     ensure_rar_repository
     if [[ "$RUN_FULL_UPGRADE" -eq 1 ]]; then
         retry "apt-upgrade" 2 "$APT_LOCK_TIMEOUT" -- \
@@ -1126,12 +1159,11 @@ stage_6() {
             # DD-153: apt zırhlı anahtarı kendisi okur (signed-by *.asc); gnupg gerekmez.
             local caddy_key
             caddy_key="$(mktemp)"
-            retry "caddy-key" 3 60 -- curl -1sLf \
-                'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' -o "$caddy_key"
+            retry "caddy-key" 3 60 -- curl -1sLf "$CADDY_APT_REPO/gpg.key" -o "$caddy_key"
             install -m 0644 "$caddy_key" /usr/share/keyrings/caddy-stable-archive-keyring.asc
             rm -f "$caddy_key"
-            atomic_write /etc/apt/sources.list.d/caddy-stable.list 0644 <<'EOF'
-deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+            atomic_write /etc/apt/sources.list.d/caddy-stable.list 0644 <<EOF
+deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.asc] $CADDY_APT_REPO/deb/debian any-version main
 EOF
             retry "apt-update-caddy" 3 "$APT_LOCK_TIMEOUT" -- apt-get "${APT_OPTS[@]}" update
         fi

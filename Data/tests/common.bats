@@ -103,8 +103,10 @@ EOF
     # DD-152: no Docker repository any more.
     run ! grep -q 'download.docker.com' "$V2_ROOT/install.sh"
     run ! grep -q 'trixie' "$V2_ROOT/install.sh"
-    # Caddy repo stays distro-agnostic (any-version) — same line on ubuntu.
-    grep -q 'caddy/stable/deb/debian any-version main' "$V2_ROOT/install.sh"
+    # Caddy repo stays distro-agnostic (any-version) — same line on ubuntu; its base URL is the
+    # one CADDY_APT_REPO in defaults.env (DD-253).
+    grep -qF '$CADDY_APT_REPO/deb/debian any-version main' "$V2_ROOT/install.sh"
+    grep -qx 'CADDY_APT_REPO="https://dl.cloudsmith.io/public/caddy/stable"' "$V2_ROOT/config/defaults.env"
     # ufw active is a hard stop before any mutation (stage_0).
     awk '/^stage_0\(\)/,/^stage_1\(\)/' "$V2_ROOT/install.sh" |
         grep -q "ufw aktif"
@@ -124,7 +126,9 @@ EOF
     grep -q 'APT_OPTS=(-o DPkg::Lock::Timeout=' "$V2_ROOT/install.sh"
     # DD-150: the WireGuard packages are installed by the WireGuard module, not here;
     # DD-152: no Docker repository update or packages either; DD-208: Podman is one base call.
-    [ "$(grep -cF 'apt-get "${APT_OPTS[@]}"' "$V2_ROOT/install.sh")" -eq 8 ]
+    # DD-253: stage 1's and the RAR refresh pass APT_OPTS through apt_update_caddy_tolerant.
+    [ "$(grep -cF 'apt-get "${APT_OPTS[@]}"' "$V2_ROOT/install.sh")" -eq 6 ]
+    [ "$(grep -cE 'apt_update_caddy_tolerant "\$CADDY_APT_REPO" [^ ]+ "\$\{APT_OPTS\[@\]\}"' "$V2_ROOT/install.sh")" -eq 2 ]
     grep -qF 'apt-get install -y --no-install-recommends' "$V2_ROOT/scripts/master-modul"
     grep -qF -- '-o DPkg::Lock::Timeout=300 "$@"' "$V2_ROOT/scripts/master-modul"
     # DD-197: packages are declared in each package's manifest; the engine installs them.
@@ -176,6 +180,54 @@ EOF
     retry() { return 98; }
     run ensure_rar_repository
     [ "$status" -eq 0 ]
+}
+
+@test "a Caddy repository outage alone does not stop apt-update on a host that has Caddy" {
+    # DD-253: Cloudsmith answers 402 when the Caddy project's bandwidth limit is reached and
+    # apt-get update fails as a whole; only that repository may be skipped, and only with Caddy.
+    eval "$(awk '/^apt_update_caddy_tolerant\(\)/,/^}/' "$V2_ROOT/install.sh")"
+    local repo=https://dl.cloudsmith.io/public/caddy/stable
+    mkdir -p "$TMP/bin"
+    printf '#!/bin/bash\nprintf "%%s\\n" "$*" >"%s/apt-args"\ncat "%s/apt-out"\nexit "$(cat "%s/apt-rc")"\n' \
+        "$TMP" "$TMP" "$TMP" >"$TMP/bin/apt-get"
+    printf '#!/bin/bash\ncat "%s/caddy-status"\n' "$TMP" >"$TMP/bin/dpkg-query"
+    chmod +x "$TMP/bin/apt-get" "$TMP/bin/dpkg-query"
+    caddy_down="E: Failed to fetch $repo/deb/debian/dists/any-version/InRelease  402  Payment Required [IP: 192.0.2.1 443]
+E: The repository '$repo/deb/debian any-version InRelease' is no longer signed."
+    printf '%s\n' "Hit:1 https://deb.debian.org/debian trixie InRelease" "$caddy_down" >"$TMP/apt-out"
+    echo 100 >"$TMP/apt-rc"
+    printf 'install ok installed' >"$TMP/caddy-status"
+    PATH="$TMP/bin:$PATH" run apt_update_caddy_tolerant "$repo" "$TMP/mark" -o DPkg::Lock::Timeout=60
+    [ "$status" -eq 0 ]
+    [ "$(cat "$TMP/mark")" = "402 Payment Required" ]
+    [ "$(cat "$TMP/apt-args")" = "-o DPkg::Lock::Timeout=60 update" ]
+    # Another failing repository still stops the run.
+    printf '%s\n' "$caddy_down" "E: Failed to fetch https://deb.debian.org/debian/dists/trixie/InRelease  Temporary failure resolving 'deb.debian.org'" >"$TMP/apt-out"
+    : >"$TMP/mark"
+    PATH="$TMP/bin:$PATH" run apt_update_caddy_tolerant "$repo" "$TMP/mark"
+    [ "$status" -eq 100 ]
+    [ ! -s "$TMP/mark" ]
+    # Without Caddy (a first install) the repository is needed: stop.
+    printf '%s\n' "$caddy_down" >"$TMP/apt-out"
+    printf 'deinstall ok config-files' >"$TMP/caddy-status"
+    PATH="$TMP/bin:$PATH" run apt_update_caddy_tolerant "$repo" "$TMP/mark"
+    [ "$status" -eq 100 ]
+    [ ! -s "$TMP/mark" ]
+    # A clean refresh passes through untouched.
+    echo 0 >"$TMP/apt-rc"
+    printf 'install ok installed' >"$TMP/caddy-status"
+    PATH="$TMP/bin:$PATH" run apt_update_caddy_tolerant "$repo" "$TMP/mark"
+    [ "$status" -eq 0 ]
+    [ ! -s "$TMP/mark" ]
+    # Stage 1 and the RAR refresh use it with the one configured repository; stage 6's
+    # first-install refresh stays strict, and the repository literal lives only in defaults.env.
+    grep -qx 'CADDY_APT_REPO="https://dl.cloudsmith.io/public/caddy/stable"' "$V2_ROOT/config/defaults.env"
+    awk '/^stage_1\(\)/,/^apply_udp_netbuf_floor\(\)/' "$V2_ROOT/install.sh" |
+        grep -qF 'retry "apt-update" 3 "$APT_LOCK_TIMEOUT" -- apt_update_caddy_tolerant "$CADDY_APT_REPO" "$caddy_mark" "${APT_OPTS[@]}"'
+    awk '/^ensure_rar_repository\(\)/,/^}/' "$V2_ROOT/install.sh" | grep -qF 'apt_update_caddy_tolerant "$CADDY_APT_REPO" /dev/null'
+    awk '/^stage_6\(\)/,/^stage_7\(\)/' "$V2_ROOT/install.sh" |
+        grep -qF 'retry "apt-update-caddy" 3 "$APT_LOCK_TIMEOUT" -- apt-get "${APT_OPTS[@]}" update'
+    run ! grep -q 'dl\.cloudsmith\.io' "$V2_ROOT/install.sh"
 }
 
 @test "require_supported_os records version and architecture" {
@@ -1434,6 +1486,11 @@ EOF
     [ "$status" -ne 0 ]
     grep -qx 'durum=hata' "$TMP/log/guncelleme.durum"
     grep -qx 'mesaj=Tailscale oturumu açık değil' "$TMP/log/guncelleme.durum"
+    # systemd-inhibit's closing "env failed with exit status N." names no cause (DD-253).
+    printf 'echo "[10:00:03] apt-update: 3 deneme başarısız (son kod 100)" >&2\necho "env failed with exit status 1."\nexit 1\n' >"$TMP/inhibit.sh"
+    run env STATE_FILE="$TMP/state.env" KUR_BETIK_URL="file://$TMP/inhibit.sh" bash "$tool" uygula "$sha" 2026.08.06-v2-212
+    [ "$status" -ne 0 ]
+    grep -qx 'mesaj=apt-update: 3 deneme başarısız (son kod 100)' "$TMP/log/guncelleme.durum"
     # Malformed requests never write a result.
     rm -f "$TMP/log/guncelleme.durum"
     for args in "uygula main 2026.08.06-v2-212" "uygula $sha v2-212" "kur $sha 2026.08.06-v2-212" "uygula $sha"; do

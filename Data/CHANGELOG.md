@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-10 — Updates go on while Caddy's package repository is down (v2-236)
+
+- When Caddy's package repository does not answer (it returns "402 Payment Required" when its
+  bandwidth limit is reached), an update or re-run of a server that already has Caddy no longer
+  stops in stage 1: it goes on with a warning and Caddy keeps its current version until the
+  repository is back. Any other repository error still stops the run (DD-253).
+- A failed Konsol update now shows the installer's own error instead of
+  "env failed with exit status 1.".
+
 ### 2026-10-10 — Caddy: addresses the operator enters (v2-235)
 
 - Ayarlar → Caddy has "+ Elle adres": give a name, a Tailscale name (`<ad>.<yerel alan>`) and a port

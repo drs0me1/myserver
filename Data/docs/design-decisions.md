@@ -13,6 +13,25 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-253: A Caddy repository outage does not stop a host that has Caddy (v2-236)
+
+- **Report (user, 2026-10-10):** Konsol's update of `nrm` to v2-235 stopped in stage 1 with
+  "env failed with exit status 1.". The log showed the cause: Caddy's apt repository on Cloudsmith
+  answered `402 Payment Required` for every file (its bandwidth limit, a known recurring state that
+  lasts until the limit rolls over), so `apt-get update` failed three times and the run died. The
+  user chose to go on with a warning ("apt-get update çalıştırmadan devam edelim").
+- **Now:** stage 1's refresh (and the RAR repository refresh) runs through
+  `apt_update_caddy_tolerant`. When the refresh fails, Caddy is installed and every `E:` line names
+  `CADDY_APT_REPO` (or is apt's generic "Some index files failed" line), the run goes on with the
+  other lists and logs "Caddy deposu yanıt vermiyor (402 Payment Required); Caddy bu kez
+  güncellenmeden devam ediliyor". Any other failing repository still stops the run; a host without
+  Caddy still stops, because stage 6 installs Caddy from that repository. apt keeps the repository
+  disabled (no `trusted=yes`, no relaxed signature check); Caddy keeps its installed version until
+  the repository answers. The repository URL is `CADDY_APT_REPO` in `defaults.env` only.
+- **Konsol's message:** `install.sh` runs under `systemd-inhibit … env bash install.sh`, which ends a
+  failed run with "env failed with exit status N."; `master-guncelle` showed that last line. It now
+  skips it and shows the installer's own last line.
+
 ### DD-252: Manual Caddy addresses for a loopback port, guarded by the application's own login (v2-235)
 
 - **Request (user, 2026-10-10):** "caddy için local kullanıcı bağlantısı ekleyelim. podman gezgin

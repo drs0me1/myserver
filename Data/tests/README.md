@@ -573,6 +573,12 @@ independent DAV network gates, remembered off domains, native qBittorrent auth
 requirements, duplicate/DNS rejection, first-row certificate failure, crash
 rollback and module projection persistence. It reuses isolated transaction
 fixtures and does not claim real ACME issuance.
+Caddy repository outage (v2-236, DD-253): `common.bats` runs `apt_update_caddy_tolerant` against a
+stubbed apt-get/dpkg-query: a 402 on Caddy's repository alone passes and records "402 Payment Required"
+on a host with Caddy, another failing repository or a host without Caddy stops, a clean refresh passes
+untouched; stage 1 and the RAR refresh use it, stage 6's first-install refresh stays strict, and the
+repository URL lives only in `defaults.env`. The root-only `master-guncelle` test checks that the
+closing "env failed with exit status N." line is skipped in Konsol's message.
 Manual addresses (v2-235, DD-252): the tailnet and public sites and the `modul-elle.conf` line, no
 Konsol routes on the public site, refused upstreams (other hosts, Konsol's own and package ports,
 malformed ports) and names (fixed, package, DNS-answered, invalid), the limit, the tailnet switch and

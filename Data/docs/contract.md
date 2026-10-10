@@ -1800,6 +1800,7 @@ the run started.**
 | Failure point | Behaviour |
 |---|---|
 | Any stage aborts | The installer exits non-zero with the failing stage and line, and the log path |
+| Caddy's apt repository unreachable (e.g. Cloudsmith 402) while Caddy is installed | Stage 1 goes on with the other package lists and logs a warning; Caddy keeps its installed version. Any other failing repository, or a host without Caddy, still aborts (**DD-253**) |
 | Firewall application fails partway | The staging chain is discarded; the previously active policy stays in force. A host that cannot get a complete policy does not get a partial one |
 | `ip6tables` missing while IPv6 forwarding is on | Hard failure. No IPv4-only degradation |
 | dnsmasq installed but not yet configured | The unit is **masked** during the window between package installation and configuration, so it cannot start as an open resolver on `0.0.0.0:53` |
