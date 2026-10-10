@@ -165,7 +165,8 @@ The installer is destructive: firewall, systemd, network state. Treat every chan
   qBittorrent WAN requires its permanent
   native login, CSRF/Host checks and login-attempt ban; no preferences are
   rewritten. All public names share TCP443 and its existing socket budgets.
-  No Tunnel, arbitrary upstreams or automatic DNS writes. Certificate readiness is a
+  No Tunnel, upstreams other than a `127.0.0.1` port (DD-252: the operator's manual addresses,
+  guarded by the application's own login) or automatic DNS writes. Certificate readiness is a
   local pinned-IP trust/hostname check, not proof of public reachability.
   See `Data/docs/folder-shares.md` for limits and the scoped expiry/recovery timer.
 

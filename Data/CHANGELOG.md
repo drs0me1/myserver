@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-10 — Caddy: addresses the operator enters (v2-235)
+
+- Ayarlar → Caddy has "+ Elle adres": give a name, a Tailscale name (`<ad>.<yerel alan>`) and a port
+  on this server (127.0.0.1), and optionally open it on the internet with an HTTPS name, e.g. a Podman
+  container's web interface published on 127.0.0.1.
+- The address appears in the table like the other rows, with its own Tailscale and internet
+  switches and a Sil button; its Tailscale name is answered by the server's DNS.
+- On the internet the application's own login is the only guard; Konsol's sign-in is not put in
+  front. Konsol's own ports and applications that already have a row cannot be used (DD-252).
+
 ### 2026-10-08 — Podman: container logs in full, unfiltered (v2-234)
 
 - The Günlük section of a container on the Podman page shows the log exactly as it was written:

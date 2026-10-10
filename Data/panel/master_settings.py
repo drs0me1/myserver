@@ -681,12 +681,17 @@ class Manager:
         run(["systemctl", "is-active", "--quiet", GUARD_TIMER])
         paths = [*self.dns_paths(), self.dns_file] if change["dns"] else []
         files_active = False
+        manual_dns = False
         if change["web"]:
             import master_publications
             # Snapshot private projections too: a first-time row has no saved
             # web key for the publisher to reconstruct after a failed apply.
             paths += [Path(self.e["CADDY_MODULES_DIR"]) / (name + ".caddy")
                       for name in master_publications.module_ids(self.e)]
+            # DD-252: a manual address also owns a tailnet DNS line; it is restored with the rest.
+            manual_dns = data["web"]["service"].startswith(master_publications.MANUAL_PREFIX)
+            if manual_dns:
+                paths.append(Path(self.e["DNSMASQ_CONF_DIR"]) / master_publications.MANUAL_DNS)
         if change["domain"]:
             require(Path(self.e["CADDYFILE"]).is_file(), "Caddy yapılandırması bulunamadı.")
             paths += [*self.dns_paths(), self.dns_file, *self.domain_paths()]
@@ -695,13 +700,16 @@ class Manager:
         p = {"id": secrets.token_hex(16), "boot": boot_id(), "until": time.monotonic() + 180,
              "phase": "applying", "candidate": candidate, "changes": change,
              "files": {str(path): self.snapshot(path) for path in paths},
-             "old_domain": self.e["LOCAL_DOMAIN"], "files_active": files_active}
+             "old_domain": self.e["LOCAL_DOMAIN"], "files_active": files_active, "manual_dns": manual_dns}
         save_json(self.pending_path, p)
         try:
             if change["web"]:
                 row = data["web"]
-                self.https_apply(candidate["web"][row["service"]]["domain"] if row["enabled"] else None,
+                # A removed manual address has no row and nothing to certify.
+                self.https_apply(candidate["web"][row["service"]]["domain"] if row.get("enabled") else None,
                                  row["service"])
+                if manual_dns:
+                    self.manual_dns_apply(candidate)
             if change["https"]:
                 self.https_apply(candidate["https"]["domain"])
             if change["domain"]:
@@ -742,12 +750,31 @@ class Manager:
                 elif service == "panel":
                     require(master_publications.panel_active(self.e),
                             "Panel internet yayını açılamadı; Konsol hesabını ve sunucunun WAN IPv4 adresini kontrol edin.")
+                elif service.startswith(master_publications.MANUAL_PREFIX):
+                    require(master_publications.manual_active(self.e, service),
+                            "İnternet yayını açılamadı; sunucunun WAN IPv4 adresini kontrol edin.")
                 elif not shares.wan_active():
                     raise SettingsError(shares.wan_info()["reason"] or
                                         "WAN HTTPS dinleyicisi açılamadı; paylaşım servisini ve WAN adresini kontrol edin.")
                 master_https.wait_certificate(self.e, name)
         except master_shares.ShareError as err:
             raise SettingsError(str(err)) from err
+
+    def manual_dns_apply(self, candidate):
+        """DD-252: the tailnet names of manual addresses, under the DNS tab's off switches."""
+        import master_publications
+        path = Path(self.e["DNSMASQ_CONF_DIR"]) / master_publications.MANUAL_DNS
+        text = master_publications.manual_dns(self.e, candidate)
+        text = self.filter_dns(text, candidate) if text else ""
+        before = path.read_text() if path.exists() else ""
+        if text == before:
+            return
+        if text:
+            atomic(path, text, 0o644)
+        else:
+            path.unlink(missing_ok=True)
+        self.dns_test()
+        run(["systemctl", "restart", "dnsmasq"], timeout=20)
 
     def confirm(self, data):
         p = self.pending()
@@ -821,6 +848,9 @@ class Manager:
         if p["changes"].get("https") or p["changes"].get("web"):
             self.https_apply()
         self.restore(p["files"])
+        if p.get("manual_dns"):
+            self.dns_test()
+            run(["systemctl", "restart", "dnsmasq"], timeout=20)
         if p["changes"].get("domain"):
             self.set_domain_state(p["old_domain"])
             self.domain_reload(p["files_active"])

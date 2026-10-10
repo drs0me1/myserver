@@ -192,7 +192,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-188 | Audit stage 3: bounded authentication, short write locks and resource sandbox | live | design-decisions.md |
 | DD-189 | Audit stage 4: desired-service/kernel health and IPv4 DNS projection | live | design-decisions.md |
 | DD-190 | Optional public WebDAV HTTPS without widening private administration | live | design-decisions.md |
-| DD-191 | Fixed publication table with independent private and public gates | live; Panel row opened by DD-195 | design-decisions.md |
+| DD-191 | Fixed publication table with independent private and public gates | live; Panel row opened by DD-195; manual loopback addresses by DD-252 | design-decisions.md |
 | DD-192 | Per-connection WebDAV policies and dual-card Shares | live | design-decisions.md |
 | DD-193 | Cross-review follow-ups for v2-159..v2-164 | live | design-decisions.md |
 | DD-194 | Konsol sign-in with a one-time setup code | live for the public name; public rules by DD-195, tailnet sign-in and the code removed by DD-205 | design-decisions.md |
@@ -235,6 +235,7 @@ Every `DD-*` number with its title, status and file, sorted by number (DD-89 bel
 | DD-231 | Home widgets in 1×1 and 2×2 cells; live rates split from application traffic | v2-210; layout amended by DD-242 | design-decisions.md |
 | DD-233 | Konsol "Güncelle" button: GitHub version check, pinned commit, unattended re-run in its own unit | v2-212 | design-decisions.md |
 | DD-232 | Finder-style Files window (icons, right-hand places/detail column, no dock) and a two-card sidebar | v2-211 | design-decisions.md |
+| DD-252 | Manual Caddy addresses: a tailnet name and an optional public HTTPS name for a `127.0.0.1` port, the application's own login as the guard (amends DD-191) | v2-235 | design-decisions.md |
 | DD-251 | Container logs exactly as written: unit journal for Konsol/App Store containers across restarts, no masking (amends DD-208) | v2-234 | design-decisions.md |
 | DD-250 | Favourite folders in Files: a star after the folder's name in the details, listed first in the places column, kept in `KONSOL_AUTH_DIR/favoriler.json` | v2-232; star after the name v2-233 | design-decisions.md |
 | DD-249 | Files text editor (CodeMirror 6 bundle, CSP-safe styles); atomic, version-checked saves, as root in "Sistem (/)" (amends DD-235) | v2-231 | design-decisions.md |

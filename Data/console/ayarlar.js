@@ -366,14 +366,14 @@ window.createSettingsPage = ({ h, svg, api, post, toast, fail, paintWeb, loadSet
       live.manage.publications ? publications() : note("Caddy yayın tablosu okunamadı; sayfayı yenileyin.", true),
       h("details", { class: "as-web-details" }, h("summary", null, "Etkin Caddy yapılandırması"), h("article", { class: "card", id: "cfg-web" })));
   }
-  async function savePublication(row, item) {
+  async function savePublication(row, item, done = `${row.name} erişim ayarları kaydedildi.`) {
     if (locked() || dirty()) return;
     busy = true; webBusy = row.service; message = "Yayın ve sertifika doğrulanıyor…"; draw();
     try {
       const result = await post("/api/konsol/ayarlar/uygula", { revision: baseRevision, web: { service: row.service, ...item } });
       if (!result.committed || result.pending) throw new Error("Sunucu kalıcı kaydı doğrulamadı.");
       delete webDrafts[row.service];
-      message = `${row.name} erişim ayarları kaydedildi.`; toast(message);
+      message = done; toast(message);
     } catch (e) { error(new Error(`${e.message} Sonucu Yenile ile kontrol edin.`)); }
     finally { await loadSettings(true); webBusy = ""; busy = false; draw(); }
   }
@@ -393,6 +393,48 @@ window.createSettingsPage = ({ h, svg, api, post, toast, fail, paintWeb, loadSet
       if (word.value.trim().toLocaleLowerCase("tr") !== "onayla") { word.focus(); return; }
       close(); savePublication(row, { ...item, confirm: "onayla" });
     });
+  }
+  // DD-252: an address the operator enters — a tailnet name and an optional public HTTPS
+  // name for a port on this server's loopback. The application's own login guards it.
+  const HOST_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]+)$/;
+  function addManual() {
+    // A custom message stays until cleared; typing clears it so the corrected form can submit.
+    const plain = { autocapitalize: "none", autocomplete: "off", spellcheck: false, oninput: (e) => e.target.setCustomValidity("") };
+    const name = h("input", { name: "name", required: true, maxlength: 40, placeholder: "Gezgin" });
+    const local = h("input", { name: "local", required: true, maxlength: 31, pattern: "[a-z][a-z0-9\\-]{0,30}", placeholder: "gezgin", ...plain });
+    const port = h("input", { name: "port", type: "number", required: true, min: 1, max: 65535, step: 1, placeholder: "8080" });
+    const tail = h("input", { name: "tail", type: "checkbox", checked: true });
+    const wan = h("input", { name: "wan", type: "checkbox" });
+    const domain = h("input", { name: "domain", maxlength: 253, placeholder: "gezgin.example.com", disabled: true, ...plain });
+    wan.addEventListener("change", () => { domain.disabled = !wan.checked; domain.required = wan.checked; });
+    const dialog = modal("Elle adres ekle", h("div", { class: "as-stack" },
+      h("div", { class: "as-formgrid" },
+        field("Ad", name, "Tabloda görünen ad."),
+        field("Tailscale adı", local, `Adres: <ad>.${live.domain}`),
+        field("Hedef port", port, "Bu sunucuda 127.0.0.1 üzerinde dinleyen port. Podman’daki kapsayıcının arayüz portunu yerel (127.0.0.1) yayınlayın."),
+        field("HTTPS alan adı", domain, `DNS A kaydı: ${live.wan?.ipv4 || "WAN IPv4"} · proxy kapalı (DNS only)`)),
+      h("label", { class: "as-inline" }, tail, h("span", null, "Tailscale’den aç")),
+      h("label", { class: "as-inline" }, wan, h("span", null, "İnternetten HTTPS ile aç")),
+      note("İnternette uygulamanın kendi girişi tek korumadır; önüne Konsol girişi konmaz. Uygulamada güçlü bir parola kullanın.", true)),
+    (_form, close) => {
+      const value = local.value.trim().toLowerCase(), host = domain.value.trim().toLowerCase().replace(/\.$/, "");
+      const full = value + "." + live.domain;
+      local.setCustomValidity(live.manage.publications.some((row) => row.local === full) || live.manage.names.some((r) => r.name === full)
+        ? "Bu ad zaten kullanılıyor." : "");
+      domain.setCustomValidity(wan.checked && !HOST_RE.test(host) ? "Tam alan adını girin; URL, IP, port veya yol eklemeyin." : "");
+      if (![name, local, port, domain].every((x) => x.reportValidity())) return;
+      close();
+      const label = name.value.trim();
+      savePublication({ service: "elle-" + value, name: label },
+        { tail: tail.checked, enabled: wan.checked, domain: wan.checked ? host : "", elle: { name: label, local: value, upstream: "127.0.0.1:" + Number(port.value) } },
+        `${label} eklendi.`);
+    });
+    dialog.querySelector('[type="submit"]').textContent = "Ekle";
+  }
+  function removeManual(row) {
+    const dialog = modal(`${row.name} silinsin mi?`, note(`${row.local}${row.enabled && row.domain ? " ve https://" + row.domain : ""} kapanır. ${row.upstream} üzerindeki uygulama çalışmaya devam eder.`, true),
+      (_form, close) => { close(); savePublication(row, { sil: true }, `${row.name} silindi.`); });
+    dialog.querySelector('[type="submit"]').textContent = "Sil";
   }
   function publications() {
     const rows = live.manage.publications;
@@ -450,17 +492,21 @@ window.createSettingsPage = ({ h, svg, api, post, toast, fail, paintWeb, loadSet
       discardButton = row.installed ? h("button", {type:"button", class:"btn btn-sm btn-quiet", hidden:!changed, disabled:locked(), onclick:() => { delete webDrafts[row.service]; draw(); }}, "Vazgeç") : null;
       return h("tr", { class:changed ? "changed" : "", "data-publication":row.service },
         cell("Uygulama", h("strong", null, name), h("code", null, row.local), h("small", null,
-          panel ? "Konsol hesabı · Tailscale her zaman açık" : !row.installed ? "Kurulu değil" : row.service === "paylasim" ? "Klasör hesabı + ağ izni" : "Uygulamanın kendi girişi")),
+          panel ? "Konsol hesabı · Tailscale her zaman açık" : !row.installed ? "Kurulu değil" : row.service === "paylasim" ? "Klasör hesabı + ağ izni"
+            : row.manual ? `Elle adres → ${row.upstream} · uygulamanın kendi girişi` : "Uygulamanın kendi girişi")),
         cell("Tailscale", toggle(name + " Tailscale erişimi", current.tail, on => edit("tail", on), "as-web-tail-" + row.service, disabled || panel)),
         cell("İnternet", toggle(name + " internet erişimi", current.enabled, on => edit("enabled", on), "as-web-wan-" + row.service, disabled)),
         cell("HTTPS alan adı", domain, address ? (row.service === "paylasim" ? h("small", null, address + "/s/…/ · tam adres Paylaşımlar’da")
           : h("a", { href:address, target:"_blank", rel:"noopener" }, address)) : h("small", null, "Doğrudan HTTPS · DNS only")),
         cell("Durum / işlem", badge(webBusy === row.service ? "Uygulanıyor…" : labels[row.status] || "Durum bilinmiyor", !webBusy && row.status === "ready"),
           draftNote, saveButton, discardButton,
+          row.manual ? h("button", {type:"button", class:"btn btn-sm btn-quiet", disabled, onclick:() => removeManual(row)}, "Sil") : null,
           row.expires ? h("small", null, "Sertifika: ", h("time", {datetime:new Date(row.expires * 1000).toISOString()}, new Date(row.expires * 1000).toLocaleDateString("tr-TR"))) : null,
           row.message ? h("small", null, row.message) : null));
     }), "as-publications");
     const box = card("Adresler ve erişim", "Tailscale ve internet yayını birbirinden bağımsızdır", content,
+      h("div", { class: "as-toolbar" }, note("Elle adres: bu sunucudaki bir porta (127.0.0.1) Tailscale adı ve isteğe bağlı internet HTTPS adı verir."),
+        h("button", { type: "button", class: "btn btn-sm", disabled: locked() || !!dirty(), onclick: addManual }, "+ Elle adres")),
       note(`DNS A kaydı: ${live.wan?.ipv4 || "WAN IPv4 okunamadı"} · proxy kapalı (DNS only) · HTTPS TCP ${live.manage.https?.https_port || 443}.`),
       note("WebDAV’ın ana ağ seçimi klasör izinlerini genişletmez. Kapalı ağdaki yeni istekler reddedilir; devam eden aktarımlar tamamlanabilir. Sertifika hazır olması internetten erişimin test edildiği anlamına gelmez."),
       rows.some(row => row.mode === "http" && row.wan_active) ? note("Eski WebDAV WAN erişimi HTTP kullanıyor. HTTPS alan adı kaydedin; kapatınca HTTP’ye otomatik dönülmez.", true)
@@ -483,7 +529,7 @@ window.createSettingsPage = ({ h, svg, api, post, toast, fail, paintWeb, loadSet
   function dns() {
     const d = draft.dns;
     const names = [...live.manage.names.map((r) => ({ ...r, enabled: !d.disabled.includes(r.name) })), ...d.records.map((r) => ({ ...r, source: "Özel" }))];
-    const rows = names.map((r, i) => h("tr", null, td(h("strong", null, r.name)), td(r.target === "tailscale" ? live.tailscale : r.target), td(r.source === "base" ? "Temel" : r.source),
+    const rows = names.map((r, i) => h("tr", null, td(h("strong", null, r.name)), td(r.target === "tailscale" ? live.tailscale : r.target), td(r.source === "base" ? "Temel" : r.source === "elle" ? "Elle adres (Caddy)" : r.source),
       td(toggle(r.name, r.enabled, (on) => {
         if (r.source === "Özel") d.records.find((x) => x.name === r.name).enabled = on;
         else d.disabled = on ? d.disabled.filter((n) => n !== r.name) : [...d.disabled, r.name];

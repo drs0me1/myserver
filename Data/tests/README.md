@@ -573,6 +573,13 @@ independent DAV network gates, remembered off domains, native qBittorrent auth
 requirements, duplicate/DNS rejection, first-row certificate failure, crash
 rollback and module projection persistence. It reuses isolated transaction
 fixtures and does not claim real ACME issuance.
+Manual addresses (v2-235, DD-252): the tailnet and public sites and the `modul-elle.conf` line, no
+Konsol routes on the public site, refused upstreams (other hosts, Konsol's own and package ports,
+malformed ports) and names (fixed, package, DNS-answered, invalid), the limit, the tailnet switch and
+removal leaving no file, a failed dnsmasq restart rolling back sites, name and settings, a local-domain
+rename, and stale-site cleanup that keeps a name ending in `-wan`. `publications-ui.cjs` adds one with
+its validation (a taken name, a bad HTTPS name), saves its switch, cancels and confirms removal, and
+keeps one in the layout checks.
 
 `PLAYWRIGHT_MODULE="$(npm root -g)/playwright" node Data/tests/publications-ui.cjs`
 starts its own local static server and runs the actual console with intercepted

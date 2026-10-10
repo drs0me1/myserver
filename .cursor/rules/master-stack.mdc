@@ -217,7 +217,7 @@ Ana hedef, `Data/` altındaki kurulum ağacını sade, okunabilir ve güvenli tu
   deneme engeli doğrulanır; uygulama tercihleri değiştirilmez. HTTPS adları
   tek TCP443 ve mevcut soket bütçelerini paylaşır. Klasörler eski HTTP ile internete
   açıkken HTTPS yayını açılamaz; HTTPS yayını açıkken eski HTTP WebDAV erişimi
-  HTTPS alan adı kaydedilene kadar kullanılamaz (v2-169; WebDAV'ın modu tek başına engel değil). Tünel, keyfi upstream ve DNS yazımı yoktur.
+  HTTPS alan adı kaydedilene kadar kullanılamaz (v2-169; WebDAV'ın modu tek başına engel değil). Tünel, `127.0.0.1` portu dışında upstream ve DNS yazımı yoktur; operatörün elle girdiği adresler (DD-252) yalnız bu sunucudaki bir porta gider ve uygulamanın kendi girişiyle korunur.
 - Caddy host üzerinde systemd servisi olarak çalışacak.
 - Yönetim ve yerel adlar yalnız `TAILSCALE_IPV4` üzerinde açıkça `http://`
   kullanır; Tailscale WebDAV `SHARE_PORT` değişmez. WireGuard web dinleyicisi yoktur.

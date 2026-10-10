@@ -19,6 +19,7 @@ class PublicationTests(unittest.TestCase):
     def setUp(self):
         fixtures.HttpsSettingsTests.setUp(self)
         self.env["TORRENT_UI_PORT"] = "61006"
+        self.env["FILES_PANEL_PORT"] = "61009"
         self.env["KONSOL_AUTH_DIR"] = str(self.root / "konsol")
         (self.root / "konsol").mkdir(mode=0o700)
         self.state.write_text("".join(k + "=" + v + "\n" for k, v in self.env.items()))
@@ -406,6 +407,113 @@ class PublicationTests(unittest.TestCase):
         (self.root / "modules").write_text("paylasim\tcalisiyor\n")
         self.s.publish()
         self.assertFalse((self.root / "sites/torrent.caddy").exists())
+
+    # --- DD-252: addresses the operator enters ----------------------------------
+
+    def manual(self, local="gezgin", port=8090, tail=True, enabled=True, domain="gezgin.example.net", name="Gezgin"):
+        return self.payload(service="elle-" + local, tail=tail, enabled=enabled, domain=domain,
+                            elle={"name": name, "local": local, "upstream": "127.0.0.1:%d" % port})
+
+    def test_manual_address_opens_its_tailnet_and_public_names(self):
+        result = self.m.apply(self.manual())
+        self.assertEqual(result, {"pending": None, "committed": True})
+        saved = self.m.config()
+        self.assertEqual(saved["elle"], {"elle-gezgin": {"name": "Gezgin", "local": "gezgin", "upstream": "127.0.0.1:8090"}})
+        self.assertEqual(saved["web"]["elle-gezgin"], {"tail": True, "enabled": True, "domain": "gezgin.example.net"})
+        private = (self.root / "sites/elle-gezgin.caddy").read_text()
+        self.assertIn("http://gezgin.ayc {\n\treverse_proxy 127.0.0.1:8090\n}", private)
+        public = (self.root / "sites/elle-gezgin-wan.caddy").read_text()
+        self.assertIn("https://gezgin.example.net:443 {\n\tbind 8.8.8.8\n", public)
+        self.assertIn("reverse_proxy 127.0.0.1:8090 {", public)
+        self.assertIn("disable_http_challenge", public)
+        # The application's own login is the guard: no Konsol routes or session check.
+        self.assertNotIn("konsol", public.replace("# ", ""))
+        self.assertNotIn("forward_auth", public)
+        self.assertEqual((self.root / "dns/modul-elle.conf").read_text().splitlines()[1:],
+                         ["interface-name=gezgin.ayc,tailscale0/4"])
+        self.assertIn(["systemctl", "restart", "dnsmasq"], self.calls)
+        self.assertIn("Gezgin", pubs.https_apps_active(self.env))
+        tls.wait_certificate.assert_called_with(self.m.e, "gezgin.example.net")
+        row = next(r for r in pubs.status(self.env) if r["service"] == "elle-gezgin")
+        self.assertEqual((row["manual"], row["local"], row["upstream"]), (True, "gezgin.ayc", "127.0.0.1:8090"))
+        self.assertIn("yanıt vermiyor", row["message"])  # nothing listens on the fixture port
+
+    def test_manual_address_refuses_konsol_and_package_ports_and_foreign_upstreams(self):
+        bad = {"upstream": ("10.0.0.5:80", "localhost:8090", "127.0.0.1:0", "127.0.0.1:70000",
+                            "127.0.0.1:61009", "127.0.0.1:61010", "127.0.0.1:61006", "127.0.0.1:8090/x"),
+               "local": ("panel", "paylas", "torrent", "Gezgin", "1gezgin", "gez gin", "gezgin.ev"),
+               "name": ("", "x" * 41, "a\nb")}
+        for key, values in bad.items():
+            for value in values:
+                payload = self.manual()
+                payload["web"]["elle"][key] = value
+                if key == "local":
+                    payload["web"]["service"] = "elle-" + value
+                with self.subTest(key=key, value=value), self.assertRaises(settings.SettingsError):
+                    self.m.validate(payload)
+        renamed = self.manual()
+        renamed["web"]["service"] = "elle-baska"
+        with self.assertRaises(settings.SettingsError):
+            self.m.validate(renamed)
+        with self.assertRaises(settings.SettingsError):  # the gates alone need an existing address
+            self.m.validate(self.payload(service="elle-gezgin", enabled=False, domain=""))
+        self.assertNotIn("elle", self.m.config())
+
+    def test_manual_name_already_answered_by_dns_is_refused(self):
+        (self.root / "dns/modul-baska.conf").write_text("interface-name=gezgin.ayc,tailscale0/4\n")
+        with self.assertRaisesRegex(settings.SettingsError, "zaten kullanılıyor"):
+            self.m.validate(self.manual())
+
+    def test_manual_limit(self):
+        saved = {"elle": {"elle-a%d" % i: {"name": "A", "local": "a%d" % i, "upstream": "127.0.0.1:%d" % (9000 + i)}
+                          for i in range(pubs.MANUAL_LIMIT)}}
+        request = self.manual(enabled=False, domain="")["web"]
+        with self.assertRaisesRegex(settings.SettingsError, "En çok"):
+            pubs.validate(self.env, saved, request)
+
+    def test_manual_tailnet_off_then_removal_leaves_nothing(self):
+        self.m.apply(self.manual(enabled=False, domain=""))
+        self.assertTrue((self.root / "sites/elle-gezgin.caddy").exists())
+        self.assertFalse((self.root / "sites/elle-gezgin-wan.caddy").exists())
+        self.assertNotIn("Gezgin", pubs.https_apps_active(self.env))
+        self.m.apply(self.payload(service="elle-gezgin", tail=False, enabled=False, domain=""))
+        self.assertFalse((self.root / "sites/elle-gezgin.caddy").exists())
+        self.assertFalse((self.root / "dns/modul-elle.conf").exists())
+        self.m.apply({"revision": self.m.revision(), "web": {"service": "elle-gezgin", "sil": True}})
+        saved = self.m.config()
+        self.assertEqual((saved["elle"], "elle-gezgin" in saved["web"]), ({}, False))
+        self.assertEqual(sorted(p.name for p in (self.root / "sites").glob("elle-*")), [])
+        with self.assertRaisesRegex(settings.SettingsError, "bulunamadı"):
+            self.m.validate({"revision": self.m.revision(), "web": {"service": "elle-gezgin", "sil": True}})
+
+    def test_manual_dns_failure_rolls_back_sites_name_and_settings(self):
+        before = self.m.config()
+        self.fail_once = "restart dnsmasq"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.m.apply(self.manual())
+        self.assertEqual(self.m.config(), before)
+        self.assertFalse(self.m.pending_path.exists())
+        self.assertFalse((self.root / "dns/modul-elle.conf").exists())
+        self.assertEqual(sorted(p.name for p in (self.root / "sites").glob("elle-*")), [])
+        self.assertNotIn("Gezgin", pubs.https_apps_active(self.env))
+
+    def test_manual_names_follow_a_local_domain_change(self):
+        self.m.apply(self.manual(enabled=False, domain=""))
+        # The rename itself is under test, not the transaction's reload.
+        with patch.object(self.m, "domain_reload"), patch.object(self.m, "pending", return_value={"files_active": False}):
+            self.m.domain_apply(dict(self.m.config(), domain="ev"))
+        self.assertIn("http://gezgin.ev {", (self.root / "sites/elle-gezgin.caddy").read_text())
+        self.assertIn("interface-name=gezgin.ev,tailscale0/4", (self.root / "dns/modul-elle.conf").read_text())
+        self.assertEqual(pubs.manual_private_site(self.m.e, pubs.manual(self.m.e)["elle-gezgin"]).split("\n")[1],
+                         "http://gezgin.ev {")
+
+    def test_stale_manual_sites_are_removed_but_names_ending_in_wan_kept(self):
+        self.m.apply(self.manual(local="ev-wan", enabled=False, domain=""))
+        (self.root / "sites/elle-eski.caddy").write_text("http://eski.ayc {\n\trespond 200\n}\n")
+        (self.root / "sites/elle-eski-wan.caddy").write_text("# stale\n")
+        extras = pubs.extra_sites(self.env)
+        self.assertEqual((extras["elle-eski.caddy"], extras["elle-eski-wan.caddy"]), ("", ""))
+        self.assertIn("http://ev-wan.ayc {", extras["elle-ev-wan.caddy"])
 
 
 if __name__ == "__main__":

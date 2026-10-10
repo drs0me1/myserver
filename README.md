@@ -146,7 +146,9 @@ policy and on/off controls. Incoming-network tabs are Tailscale (default), Inter
 WireGuard (when installed, with per-network selection) and protected loopback.
 Listener binding is labelled separately from permission; Technical rules shows
 all chains read-only (**DD-164**). Details stay visible; narrow screens scroll the table.
-Caddy shows routes and offers a local-domain suffix change (**DD-157**).
+Caddy shows routes and offers a local-domain suffix change (**DD-157**); "+ Elle adres" gives a port
+on this server (127.0.0.1, e.g. a Podman container's interface) a Tailscale name and an optional public
+HTTPS name, guarded by the application's own login (**DD-252**).
 DNS-only changes use one Apply action and persist immediately after validation
 and restart, without a timed confirmation (**DD-163**). The panel's own DNS
 name cannot be disabled; failed applies restore previous settings.

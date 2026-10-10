@@ -232,6 +232,12 @@ the ones agreed on 2026-08-05:
   are shared over legacy WebDAV HTTP, and while an HTTPS publication row is on,
   legacy HTTP WebDAV internet access is unavailable until an HTTPS name is saved
   (v2-169). No Caddy admin publication.
+- DD-252 allows addresses the operator enters in Settings → Caddy: a name, a tailnet name
+  (`http://<local>.${LOCAL_DOMAIN}`, its line in `modul-elle.conf`) and an upstream that is a port on
+  `127.0.0.1`, with the same independent Tailscale/internet switches and HTTPS name. The public site
+  shares the WAN port and its budgets; the application's own login is its only guard. Konsol's own
+  loopback backends (`FILES_PANEL_PORT`, `SHARE_PORT`) and package publications' upstreams are refused;
+  no other host, Tunnel or DNS write.
 - DD-195 allows Konsol itself on that port (`moduller/panel-wan.caddy`). The
   public site imports the same `(konsol)` snippet as the tailnet site, so the
   Konsol session check covers its pages, Files API and root API alike; Caddy
@@ -1418,6 +1424,8 @@ asking; a domain confirmed in Konsol (`SETTINGS_FILE.domain`) takes precedence
 | `paylas.${LOCAL_DOMAIN}` (built-in folder sharing) | `${TAILSCALE_IPV4}` | `http://paylas.…/s/<id>/` and `http://${TAILSCALE_IPV4}:61010/s/<id>/` | `127.0.0.1:61010` (**DD-158**, **DD-159**) |
 | Public WebDAV domain (optional, separate from `LOCAL_DOMAIN`) | Not a private dnsmasq record; public DNS must resolve only to `${WAN_IPV4}` | `https://<public-domain>/s/<id>/`, bound to `${WAN_IPV4}:${SHARE_HTTPS_PORT}`; legacy HTTP/off modes in §3.1 (**DD-190**) | `SHARE_WAN_BACKEND:61010` |
 | `panel.${LOCAL_DOMAIN}` (Konsol) | `${TAILSCALE_IPV4}` | `http://panel.…` (`import konsol tailscale`) | page files from `CONSOLE_WEB_DIR` (installed packages' pages under `uygulama/<id>/`); `/api/konsol/*` and `/api/uygulama/*` → Unix socket `PANEL_SOCKET` (`/run/master-panel/api.sock`, **DD-180**), other `/api/*` → `127.0.0.1:61009` (**DD-140**) |
+| `<local>.${LOCAL_DOMAIN}` (manual address, **DD-252**) | `${TAILSCALE_IPV4}` (`modul-elle.conf`) | `http://<local>.…` (`moduller/elle-<local>.caddy`) | `127.0.0.1:<port>` the operator entered |
+| Public name of a manual address (optional, **DD-252**) | Not a private dnsmasq record; public DNS must resolve only to `${WAN_IPV4}` | `https://<public-domain>`, bound to `${WAN_IPV4}:${SHARE_HTTPS_PORT}` (`moduller/elle-<local>-wan.caddy`) | the same loopback port |
 | Public Konsol domain (optional, **DD-195**) | Not a private dnsmasq record; public DNS must resolve only to `${WAN_IPV4}` | `https://<public-domain>`, bound to `${WAN_IPV4}:${SHARE_HTTPS_PORT}` (`import konsol internet`) | the same routes as `panel.${LOCAL_DOMAIN}`, with backend Host `panel.${LOCAL_DOMAIN}` |
 
 `SERVICE_NAMES` is `panel`.

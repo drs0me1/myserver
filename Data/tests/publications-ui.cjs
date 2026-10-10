@@ -38,8 +38,11 @@ const server = http.createServer((req,res) => {
         if(body.web.service==="panel") assert.equal(body.web.tail,true,"Konsol's tailnet address never closes");
         if(hold) await new Promise(resolve=>{release=resolve;});
         if(failure) { const error=failure;failure="";return route.fulfill({status:400,contentType:"application/json",body:JSON.stringify({error})}); }
-        const row=data.manage.publications.find(r=>r.service===body.web.service);
-        Object.assign(row,body.web,{status:body.web.enabled?"ready":"disabled"});
+        // DD-252: manual addresses are added with their definition and removed with "sil".
+        if(body.web.elle) data.manage.publications.push({service:body.web.service,name:body.web.elle.name,local:body.web.elle.local+".ayc",
+          manual:true,upstream:body.web.elle.upstream,installed:true,running:true});
+        if(body.web.sil) data.manage.publications=data.manage.publications.filter(r=>r.service!==body.web.service);
+        else Object.assign(data.manage.publications.find(r=>r.service===body.web.service),body.web,{status:body.web.enabled?"ready":"disabled"});
         data.manage.revision="r"+(writes.length+1); result={committed:true,pending:null};
       } else if(url.pathname==="/api/konsol/moduller") result={items:[]};
       else if(url.pathname==="/api/konsol/islemler") result={items:[]};
@@ -136,6 +139,44 @@ const server = http.createServer((req,res) => {
     await save("panel").click(); await settled();
     assert.equal(await confirm.count(),0);
     assert.deepEqual(writes.at(-1).web,{service:"panel",tail:true,enabled:false,domain:"konsol.example.net"});
+    // DD-252: a manual address — a tailnet name and an optional HTTPS name for a port on this server.
+    const dialogs=page.locator("dialog.as-dialog"), adds=writes.length;
+    const manual=async(name,local,port)=>{
+      await table.getByRole("button",{name:"+ Elle adres",exact:true}).click();
+      await dialogs.getByRole("textbox",{name:"Ad",exact:true}).fill(name);
+      await dialogs.getByRole("textbox",{name:"Tailscale adı",exact:true}).fill(local);
+      await dialogs.getByRole("spinbutton",{name:"Hedef port",exact:true}).fill(String(port));
+    };
+    await manual("Gezgin","torrent",8090);
+    assert(await dialogs.getByRole("textbox",{name:"HTTPS alan adı",exact:true}).isDisabled(),"No HTTPS name until internet is chosen");
+    await dialogs.getByRole("button",{name:"Ekle",exact:true}).click();
+    assert.equal(writes.length,adds,"A name already in use never reaches the API");
+    await dialogs.getByRole("textbox",{name:"Tailscale adı",exact:true}).fill("gezgin");
+    await dialogs.getByRole("checkbox",{name:"İnternetten HTTPS ile aç"}).check();
+    await dialogs.getByRole("textbox",{name:"HTTPS alan adı",exact:true}).fill("https://gezgin.example.net");
+    await dialogs.getByRole("button",{name:"Ekle",exact:true}).click();
+    assert.equal(writes.length,adds,"An invalid HTTPS name never reaches the API");
+    assert.match(await dialogs.innerText(),/kendi girişi tek korumadır/);
+    await dialogs.getByRole("textbox",{name:"HTTPS alan adı",exact:true}).fill("gezgin.example.net");
+    await dialogs.getByRole("button",{name:"Ekle",exact:true}).click(); await settled();
+    assert.deepEqual(writes.at(-1).web,{service:"elle-gezgin",tail:true,enabled:true,domain:"gezgin.example.net",
+      elle:{name:"Gezgin",local:"gezgin",upstream:"127.0.0.1:8090"}});
+    assert.match(await row("elle-gezgin").innerText(),/gezgin\.ayc[\s\S]*127\.0\.0\.1:8090/);
+    assert.equal(await row("elle-gezgin").getByRole("link").getAttribute("href"),"https://gezgin.example.net");
+    // Its switches save like any row's; removal asks first and sends only the id.
+    await row("elle-gezgin").getByRole("switch",{name:"Gezgin internet erişimi"}).click(); await save("elle-gezgin").click(); await settled();
+    assert.deepEqual(writes.at(-1).web,{service:"elle-gezgin",tail:true,enabled:false,domain:"gezgin.example.net"});
+    await row("elle-gezgin").getByRole("button",{name:"Sil",exact:true}).click();
+    await dialogs.getByRole("button",{name:"Vazgeç",exact:true}).click();
+    assert.equal(await row("elle-gezgin").count(),1);
+    await row("elle-gezgin").getByRole("button",{name:"Sil",exact:true}).click();
+    assert.match(await dialogs.innerText(),/gezgin\.ayc kapanır\. 127\.0\.0\.1:8090/);
+    await dialogs.getByRole("button",{name:"Sil",exact:true}).click(); await settled();
+    assert.deepEqual(writes.at(-1).web,{service:"elle-gezgin",sil:true});
+    assert.equal(await row("elle-gezgin").count(),0);
+    await manual("Gezgin","gezgin",8090);   // kept for the layout checks below
+    await dialogs.getByRole("button",{name:"Ekle",exact:true}).click(); await settled();
+    assert.deepEqual(writes.at(-1).web.elle,{name:"Gezgin",local:"gezgin",upstream:"127.0.0.1:8090"});
     for(const colorScheme of ["light","dark"]) {
       await page.emulateMedia({colorScheme});
       for(const width of [1440,1024,736,390,320]) {
@@ -147,7 +188,7 @@ const server = http.createServer((req,res) => {
         const inputBox=await localInput.boundingBox(), buttonBox=await local.getByRole("button",{name:"Güncelle",exact:true}).boundingBox();
         assert(buttonBox.x>=inputBox.x+inputBox.width && Math.abs(buttonBox.y+buttonBox.height-inputBox.y-inputBox.height)<2,"Input and Update share a row");
         assert(guideBox.y>inputBox.y+inputBox.height,"DNS instructions sit below the controls");
-        for(const id of ["panel","torrent","paylasim"]) assert(await row(id).getByRole("textbox").isVisible());
+        for(const id of ["panel","torrent","paylasim","elle-gezgin"]) assert(await row(id).getByRole("textbox").isVisible());
         await page.screenshot({path:path.join(shots,`${colorScheme}-${width}.png`),fullPage:true});
       }
     }

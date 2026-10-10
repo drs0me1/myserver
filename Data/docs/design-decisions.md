@@ -13,6 +13,34 @@ Entries that describe removed or replaced behaviour are kept verbatim in
 and [`decisions-index.md`](decisions-index.md) lists every `DD-*` number
 with its status and the file that holds it.
 
+### DD-252: Manual Caddy addresses for a loopback port, guarded by the application's own login (v2-235)
+
+- **Request (user, 2026-10-10):** "caddy için local kullanıcı bağlantısı ekleyelim. podman gezgin
+  kontainer arayüzü gezgin.<alan adı> olarak bağlayalım", then "kullanıcı caddy manuel adres
+  girebilsin". The operator's choices: open on the internet and on Tailscale; the application's own
+  login (Konsol's sign-in is not put in front, so its share links keep working); the target only a
+  port on this server's loopback.
+- **Amends DD-191** ("not a general proxy editor … no arbitrary upstream"): Settings → Caddy now also
+  holds addresses the operator enters. Each has a name, a tailnet name (`<local>.<LOCAL_DOMAIN>`,
+  never renamed: remove and add again) and an upstream `127.0.0.1:<port>`, plus the usual Tailscale
+  and internet switches and HTTPS name. Stored in `SETTINGS_FILE` as `elle` (definitions) and `web`
+  (switches), id `elle-<local>`; at most 16.
+- **What it writes:** `CADDY_MODULES_DIR/elle-<local>.caddy` (`http://<local>.<LOCAL_DOMAIN>`, Tailscale
+  IPv4 via `default_bind`), `elle-<local>-wan.caddy` (the public name on `WAN_IPV4:SHARE_HTTPS_PORT`,
+  TLS-ALPN, `X-Forwarded-For` set by Caddy) and one `interface-name` line per open tailnet name in
+  `DNSMASQ_CONF_DIR/modul-elle.conf` (under the DNS tab's off switches). The share publisher writes
+  the sites with the other projections; Settings writes the DNS file in the same revision-checked
+  transaction, snapshots it and restores it on failure. A local-domain change renames both like any
+  module file. Public rows count in the shared HTTPS port, its budgets and the WAN firewall line.
+- **Limits:** only `127.0.0.1:<port>`; Konsol's own loopback backends (`FILES_PANEL_PORT`, which has
+  no login, and `SHARE_PORT`) and every package publication's upstream (qBittorrent keeps its row and
+  checks) are refused. The tailnet name may not be one another owner already answers (panel, paylas,
+  a package's name, a base/package DNS line or the operator's DNS records). No other host, port range,
+  path or Konsol route; no Tunnel or DNS API token; the public DNS A record stays manual.
+- **Trade-off (flagged, the operator's choice):** nothing checks the application's login the way
+  qBittorrent's row is checked (DD-199): the public name exposes whatever answers on that port, and
+  its own password is the only guard. The status line says when nothing answers on the port.
+
 ### DD-251: Container logs in full and unfiltered (v2-234)
 
 - **Request (user, 2026-10-08):** after a filebrowser test container's first password could not be found
@@ -2102,6 +2130,9 @@ Presentation amended by DD-213; installed-only tiles and cumulative traffic sema
 
 ### DD-191: Fixed publication table with independent private and public gates (v2-162)
 
+- **Amended by DD-252:** the operator may add addresses for a port on this server's loopback (its
+  own tailnet name and an optional public name, the application's own login as the guard). Other
+  upstreams, Tunnels and DNS API tokens stay excluded.
 - **Amended by DD-195:** the Panel row's internet switch and name are editable;
   its Tailscale switch stays fixed on. See DD-195 for the extra backend gate.
 - **Amended (v2-169, user report):** a fresh install refused the first HTTPS

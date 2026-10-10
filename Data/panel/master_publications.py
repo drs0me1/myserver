@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Caddy publication catalogue from package declarations (DD-191, DD-195, DD-199).
+"""Caddy publication catalogue from package declarations (DD-191, DD-195, DD-199, DD-252).
 
 Settings owns transactions; the share publisher applies the projection under its
-locks. The built-in WebDAV row and the Konsol (panel) row are fixed; every other row
-comes from a package manifest with PAKET_YAYIN=1: a name, a local name, a loopback
-upstream and an optional security module inside the package folder. No arbitrary
-upstreams or tunnels. Application preferences are inspected, never rewritten.
+locks. The built-in WebDAV row and the Konsol (panel) row are fixed; package rows
+come from a manifest with PAKET_YAYIN=1: a name, a local name, a loopback upstream
+and an optional security module inside the package folder. DD-252 adds addresses the
+operator enters in Settings → Caddy: a name, a local name and a port on this server's
+loopback, guarded by the application's own login. No other upstreams or tunnels.
+Application preferences are inspected, never rewritten.
 """
 import argparse
 import http.client
@@ -13,6 +15,7 @@ import ipaddress
 import os
 from pathlib import Path
 import re
+import socket
 import sys
 
 import master_https as tls
@@ -24,6 +27,16 @@ UPSTREAM_RE = re.compile(r"^127\.0\.0\.1:[1-9][0-9]{0,4}$")
 LOCAL_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}$")
 NAME_RE = re.compile(r"^[^\x00-\x1f]{1,40}$")
 CHECK_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}\.py$")
+# DD-252: operator-entered addresses. The id carries the local name, which never changes;
+# its files are CADDY_MODULES_DIR/elle-<local>.caddy (tailnet) and elle-<local>-wan.caddy (internet),
+# and every tailnet name is one line of DNSMASQ_CONF_DIR/modul-elle.conf.
+MANUAL_PREFIX = "elle-"
+MANUAL_LIMIT = 16
+MANUAL_DNS = "modul-elle.conf"
+MANUAL_FIELDS = ("name", "local", "upstream")
+# Konsol's own loopback backends have no login of their own (Files) or are already
+# published with their checks (WebDAV); a manual address never puts one on a name.
+RESERVED_PORT_KEYS = ("FILES_PANEL_PORT", "SHARE_PORT")
 
 
 def packages(env):
@@ -53,6 +66,26 @@ def packages(env):
     return dict(sorted(result.items(), key=lambda item: (item[1]["order"], item[0])))
 
 
+def manual(env, value=None):
+    """Operator-entered addresses (DD-252): {id: {name, local, upstream}}, in local-name order."""
+    value = tls.settings(env) if value is None else value
+    items = value.get("elle", {})
+    require(isinstance(items, dict) and len(items) <= MANUAL_LIMIT, "Elle adres kaydı geçersiz.")
+    result = {}
+    for mid, item in items.items():
+        require(isinstance(item, dict) and set(item) == set(MANUAL_FIELDS)
+                and all(isinstance(item[k], str) for k in MANUAL_FIELDS)
+                and NAME_RE.fullmatch(item["name"]) and LOCAL_RE.fullmatch(item["local"])
+                and mid == MANUAL_PREFIX + item["local"] and UPSTREAM_RE.fullmatch(item["upstream"])
+                and int(item["upstream"].rpartition(":")[2]) < 65536, "Elle adres kaydı geçersiz.")
+        result[mid] = dict(item)
+    return dict(sorted(result.items()))
+
+
+def manual_ids(rows):
+    return [mid for mid in rows if mid.startswith(MANUAL_PREFIX)]
+
+
 def module_ids(env):
     """Rows that own a private Caddy site file: the packages, then the built-in WebDAV."""
     return (*packages(env), BUILTIN_ID)
@@ -70,6 +103,8 @@ def config(env, value=None):
     rows = {mid: {"tail": True, "enabled": False, "domain": ""} for mid in packages(env)}
     rows[BUILTIN_ID] = {"tail": True, "enabled": dav["mode"] != "off", "domain": dav["domain"]}
     rows[PANEL_ID] = {"tail": True, "enabled": False, "domain": ""}
+    for mid in manual(env, value):
+        rows[mid] = {"tail": True, "enabled": False, "domain": ""}
     for key, item in web.items():
         if key not in rows:
             continue  # a row saved for a package that no longer ships stays in the file, unused
@@ -89,7 +124,8 @@ def config(env, value=None):
 def https_apps_enabled(env, rows=None):
     """A saved application or Panel internet row: Caddy's one WAN port is then TCP 443 (v2-169)."""
     rows = config(env) if rows is None else rows
-    return any(rows[mid]["enabled"] for mid in packages(env)) or rows[PANEL_ID]["enabled"]
+    return (any(rows[mid]["enabled"] for mid in packages(env)) or rows[PANEL_ID]["enabled"]
+            or any(rows[mid]["enabled"] for mid in manual_ids(rows)))
 
 
 def legacy_http_active(env):
@@ -170,19 +206,111 @@ def panel_active(env, rows=None):
         return False
 
 
-def https_apps_active(env, rows=None):
-    """Names of the HTTPS publications active right now (packages, then Konsol); [] when none."""
+def manual_active(env, mid, rows=None):
+    """A manual address's public site exists with its row on, a saved name and an assigned
+    WAN IPv4. The application behind it keeps its own login (DD-252); nothing is probed."""
     try:
         rows = config(env) if rows is None else rows
+        return (mid in rows and mid.startswith(MANUAL_PREFIX) and rows[mid]["enabled"]
+                and bool(rows[mid]["domain"]) and wan_ready(env))
+    except (SettingsError, OSError, ValueError, KeyError):
+        return False
+
+
+def https_apps_active(env, rows=None):
+    """Names of the HTTPS publications active right now (packages, Konsol, then manual
+    addresses); [] when none."""
+    try:
+        rows = config(env) if rows is None else rows
+        items = manual(env)
     except (SettingsError, OSError, ValueError, KeyError):
         return []
     names = [info["name"] for mid, info in packages(env).items() if package_active(env, mid, rows)]
     if panel_active(env, rows):
         names.append("Konsol")
+    names += [info["name"] for mid, info in items.items() if manual_active(env, mid, rows)]
     return names
 
 
+def reserved_ports(env):
+    """Loopback ports a manual address may not name: Konsol's own backends and every
+    package publication's upstream (those keep their row and checks)."""
+    ports = {int(env[key]) for key in RESERVED_PORT_KEYS if str(env.get(key, "")).isdigit()}
+    ports |= {int(info["upstream"].rpartition(":")[2]) for info in packages(env).values()}
+    return ports
+
+
+def taken_names(env, saved):
+    """Names other owners already answer in the local domain: the base and package DNS
+    files, the operator's own DNS records and the fixed Caddy names."""
+    domain = env["LOCAL_DOMAIN"]
+    names = {"panel." + domain, "paylas." + domain}
+    names |= {info["local"] + "." + domain for info in packages(env).values()}
+    paths = [Path(env["DNSMASQ_CONF_FILE"])] if env.get("DNSMASQ_CONF_FILE") else []
+    if env.get("DNSMASQ_CONF_DIR"):
+        paths += [p for p in sorted(Path(env["DNSMASQ_CONF_DIR"]).glob("modul-*.conf")) if p.name != MANUAL_DNS]
+    for path in paths:
+        try:
+            text = read_regular(path, 1 << 20)[0].decode()
+        except FileNotFoundError:
+            continue
+        for line in text.splitlines():
+            line = line.removeprefix("# konsol-off: ")
+            if line.startswith("interface-name="):
+                names.add(line.partition("=")[2].partition(",")[0])
+    dns = saved.get("dns", {}) if isinstance(saved.get("dns", {}), dict) else {}
+    names |= {r.get("name") for r in dns.get("records", []) if isinstance(r, dict)}
+    return names
+
+
+def validate_manual(env, saved, request):
+    """Add, change or remove an operator-entered address (DD-252)."""
+    service = request.get("service")
+    require(isinstance(service, str) and service.startswith(MANUAL_PREFIX), "Bilinmeyen Caddy yayını.")
+    items = manual(env, saved)
+    if "sil" in request:
+        require(set(request) == {"service", "sil"} and request["sil"] is True, "Caddy yayın alanları geçersiz.")
+        require(service in items, "Elle adres bulunamadı.")
+        saved["elle"] = {k: v for k, v in items.items() if k != service}
+        saved.setdefault("web", {}).pop(service, None)
+        return saved
+    fields = {"service", "tail", "enabled", "domain"}
+    require(fields <= set(request) <= fields | {"elle"}, "Caddy yayın alanları geçersiz.")
+    if "elle" in request:
+        item = request["elle"]
+        require(isinstance(item, dict) and set(item) == set(MANUAL_FIELDS)
+                and all(isinstance(item[k], str) for k in MANUAL_FIELDS), "Elle adres alanları geçersiz.")
+        name, local, upstream = item["name"].strip(), item["local"].strip().lower(), item["upstream"].strip()
+        require(bool(NAME_RE.fullmatch(name)), "Ad 1–40 karakter olmalı.")
+        require(bool(LOCAL_RE.fullmatch(local)),
+                "Tailscale adı küçük harfle başlamalı; yalnız küçük harf, rakam ve tire (en çok 31).")
+        require(service == MANUAL_PREFIX + local, "Elle adresin Tailscale adı değiştirilemez; silip yeniden ekleyin.")
+        require(bool(UPSTREAM_RE.fullmatch(upstream)) and int(upstream.rpartition(":")[2]) < 65536,
+                "Hedef bu sunucuda bir port olmalı: 127.0.0.1:port.")
+        require(int(upstream.rpartition(":")[2]) not in reserved_ports(env),
+                "Bu port Konsol'un ya da bir uygulama yayınının kendi portu; elle adres olarak açılamaz.")
+        if service not in items:
+            require(len(items) < MANUAL_LIMIT, "En çok %d elle adres eklenebilir." % MANUAL_LIMIT)
+            require(local + "." + env["LOCAL_DOMAIN"] not in taken_names(env, saved),
+                    "%s.%s adı zaten kullanılıyor." % (local, env["LOCAL_DOMAIN"]))
+        items[service] = {"name": name, "local": local, "upstream": upstream}
+        saved["elle"] = items
+    else:
+        require(service in items, "Elle adres bulunamadı.")
+    require(type(request["tail"]) is bool and type(request["enabled"]) is bool,
+            "Ağ seçimleri açık veya kapalı olmalı.")
+    gate = {"tail": request["tail"], "enabled": request["enabled"], "domain": tls.domain(request["domain"])}
+    saved.setdefault("web", {})[service] = gate
+    config(env, saved)  # one HTTPS name per enabled row, a name for an enabled row
+    if gate["enabled"]:
+        require(not legacy_http_active(env), LEGACY_HTTP_BUSY)
+        tls.check_dns(env, gate["domain"])
+    return saved
+
+
 def validate(env, saved, request):
+    if isinstance(request, dict) and isinstance(request.get("service"), str) and request["service"].startswith(MANUAL_PREFIX):
+        return validate_manual(env, saved, request)
     fields = {"service", "tail", "enabled", "domain"}
     require(isinstance(request, dict) and fields <= set(request) <= fields | {"confirm"},
             "Caddy yayın alanları geçersiz.")
@@ -264,6 +392,33 @@ def package_site(env, mid, info, rows):
             "\t}\n}\n" % (info["name"], domain, port, env["WAN_IPV4"], tls.tls_block(), info["upstream"], domain, authority))
 
 
+def manual_private_site(env, info):
+    """The tailnet name of a manual address (default_bind is the Tailscale IPv4)."""
+    return ("# Elle adres (DD-252): Tailscale; upstream on this server's loopback.\n"
+            "http://%s.%s {\n\treverse_proxy %s\n}\n" % (info["local"], env["LOCAL_DOMAIN"], info["upstream"]))
+
+
+def manual_public_site(env, info, domain):
+    """The public name of a manual address: one name, TLS-ALPN, its loopback upstream.
+    The application's own login is the guard (DD-252); the client address is Caddy's."""
+    return ("# Elle adres (DD-252): internet; the application's own login remains the guard.\n"
+            "https://%s:%s {\n\tbind %s\n%s"
+            "\treverse_proxy %s {\n"
+            "\t\theader_up X-Forwarded-For {http.request.remote.host}\n"
+            "\t}\n}\n" % (domain, env["SHARE_HTTPS_PORT"], env["WAN_IPV4"], tls.tls_block(), info["upstream"]))
+
+
+def manual_dns(env, value=None):
+    """modul-elle.conf: one interface-name line per manual address open on the tailnet;
+    "" when there is none (the file is then removed)."""
+    rows, items = config(env, value), manual(env, value)
+    lines = ["interface-name=%s.%s,%s/4" % (info["local"], env["LOCAL_DOMAIN"], env["TAILSCALE_IF"])
+             for mid, info in items.items() if rows[mid]["tail"]]
+    if not lines:
+        return ""
+    return "# Elle adresler (DD-252); kaynak Ayarlar → Caddy.\n" + "\n".join(lines) + "\n"
+
+
 def panel_site(env, rows):
     # The snippet keeps backend Host checks and writes the channel the backend
     # trusts; no other route, upstream or module is reachable through this name.
@@ -290,11 +445,20 @@ def extra_sites(env):
     for mid, info in pkgs.items():
         result[mid + "-wan.caddy"] = package_site(env, mid, info, rows) if package_active(env, mid, rows) else ""
     result["panel-wan.caddy"] = panel_site(env, rows) if panel_active(env, rows) else ""
-    # A public site left by a package that no longer ships is removed, never kept by accident.
+    items = manual(env)
+    for mid, info in items.items():
+        result[mid + ".caddy"] = manual_private_site(env, info) if rows[mid]["tail"] else ""
+        result[mid + "-wan.caddy"] = manual_public_site(env, info, rows[mid]["domain"]) if manual_active(env, mid, rows) else ""
+    # A public site left by a package that no longer ships, or the sites of a removed
+    # manual address, are removed, never kept by accident.
     try:
         for name in os.listdir(env["CADDY_MODULES_DIR"]):
             stem = name[:-len("-wan.caddy")] if name.endswith("-wan.caddy") else ""
             if stem and stem not in pkgs and stem not in (BUILTIN_ID, PANEL_ID) and re.fullmatch(r"[a-z]{2,16}", stem):
+                result.setdefault(name, "")
+            base = name[:-len(".caddy")] if name.startswith(MANUAL_PREFIX) and name.endswith(".caddy") else ""
+            if (base and base not in items and base.removesuffix("-wan") not in items
+                    and re.fullmatch(re.escape(MANUAL_PREFIX) + r"[a-z][a-z0-9-]{0,34}", base)):
                 result.setdefault(name, "")
     except (OSError, KeyError):
         pass
@@ -327,6 +491,7 @@ def status(env):
                 except (OSError, ValueError, KeyError):
                     pass
         out.append(row)
+    out += manual_status(env, rows)
     row = dict(rows[BUILTIN_ID], service=BUILTIN_ID, name="WebDAV", local="paylas." + env["LOCAL_DOMAIN"],
                installed=BUILTIN_ID in states, running=states.get(BUILTIN_ID) == "calisiyor", expires=None,
                status="disabled", message="İnternet yayını kapalı.")
@@ -337,6 +502,38 @@ def status(env):
         row["message"] = ("HTTPS alan adı tanımlanmadı. Bir uygulamanın veya Panel'in internet yayını açıkken "
                           "WebDAV internet erişimi için HTTPS alan adı gerekir.")
     out.append(row)
+    return out
+
+
+def upstream_answers(upstream, timeout=0.3):
+    """Whether something listens on the manual address's loopback port (status only)."""
+    host, _, port = upstream.rpartition(":")
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def manual_status(env, rows):
+    out = []
+    for mid, info in manual(env).items():
+        row = dict(rows[mid], service=mid, name=info["name"], local=info["local"] + "." + env["LOCAL_DOMAIN"],
+                   manual=True, upstream=info["upstream"], installed=True, running=True, expires=None,
+                   status="disabled", message="İnternet yayını kapalı.")
+        if row["enabled"]:
+            row.update(status="error", message="%s yayını veya sertifikası doğrulanamadı." % info["name"])
+            if manual_active(env, mid, rows):
+                try:
+                    row.update(expires=tls.certificate(env, row["domain"]), status="ready", message="Sertifika doğrulandı.")
+                except (OSError, ValueError, KeyError, SettingsError):
+                    pass
+            else:
+                row["message"] = "Sunucunun internet IPv4 adresi kullanılamıyor; internet yayını kapalı."
+        if not upstream_answers(info["upstream"]):
+            row["message"] = "Hedef %s yanıt vermiyor; uygulamanın çalıştığını ve portunu kontrol edin. %s" % (
+                info["upstream"], row["message"])
+        out.append(row)
     return out
 
 
